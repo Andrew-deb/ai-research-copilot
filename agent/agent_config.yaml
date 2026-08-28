@@ -1,0 +1,51 @@
+agent:
+  name: "ai-research-copilot"
+  version: "1.0.0"
+  description: "Agentic AI Research Assistant and Learning Mentor powered by FastMCP and Lakebase"
+
+model:
+  provider: "openrouter" # Options: openrouter, databricks_serving, openai
+  name: "openai/gpt-oss-120b:free"
+  temperature: 0.2
+  max_tokens: 4096
+  top_p: 0.95
+
+context:
+  system_prompt_path: "agent/system_prompt.md"
+  max_history_turns: 15
+  context_window_limit: 32768
+
+mcp_server:
+  type: "sse" # Options: sse, stdio
+  url: "http://localhost:8000/sse"
+  secret_scope: "database"
+  timeout_seconds: 30
+  max_consecutive_tool_calls: 8
+
+tools:
+  - name: "search_papers"
+    description: "Search academic literature across OpenAlex and Semantic Scholar"
+  - name: "get_paper_details"
+    description: "Fetch comprehensive metadata and citations for a paper by UUID or DOI"
+  - name: "get_similar_papers"
+    description: "Retrieve semantically similar papers and recommendations"
+  - name: "compare_papers"
+    description: "Compare 2+ research papers side-by-side on methodologies and impact"
+  - name: "explain_topic"
+    description: "Retrieve Wikipedia prerequisite explanations for foundational concepts"
+  - name: "create_collection"
+    description: "Create a new paper collection/syllabus for a user"
+  - name: "list_collections"
+    description: "List all paper collections belonging to the current user"
+  - name: "get_collection_details"
+    description: "Get full metadata and ordered papers within a collection"
+  - name: "add_paper_to_collection"
+    description: "Add a research paper into a user collection with sequence ordering"
+  - name: "remove_paper_from_collection"
+    description: "Remove a paper from a user collection"
+  - name: "generate_reading_plan"
+    description: "Generate an optimal pedagogical curriculum sequenced by chronology and citation impact"
+  - name: "mark_paper_status"
+    description: "Update reading status for a paper (not_started, reading, completed, skipped)"
+  - name: "save_note"
+    description: "Save a researcher note or annotation on a paper"
