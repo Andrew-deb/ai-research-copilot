@@ -1,24 +1,9 @@
 -- =============================================================================
--- 03_create_trace_table.sql — MCP Server Telemetry / Observability
+-- 03_create_trace_table.sql — MCP server telemetry
 -- =============================================================================
---
--- This table records every tool call made through the MCP server, providing
--- full observability into agent behavior. The TraceMiddleware (a cross-cutting
--- concern in the middleware layer) writes to this table automatically — no
--- individual tool needs to know about tracing.
---
--- This follows the same pattern established in Day 3's weather MCP server,
--- where every tool invocation was logged with timing, status, and session
--- context for debugging and auditing.
---
--- USE CASES:
---   • Debug agent behavior: "Why did the agent call search_papers 5 times?"
---   • Performance monitoring: "Which tools are slowest?"
---   • Usage analytics: "Which tools do users trigger most?"
---   • Audit trail: "What actions did user X take in session Y?"
---
+-- Written by TraceMiddleware automatically on every tool call.
+-- Tracks timing, session context, tool name, and errors for observability.
 -- =============================================================================
-
 
 CREATE TABLE IF NOT EXISTS mcp_traces (
     trace_id        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -38,14 +23,7 @@ CREATE TABLE IF NOT EXISTS mcp_traces (
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Index on session_id for "show me all tool calls in this conversation."
 CREATE INDEX IF NOT EXISTS idx_mcp_traces_session ON mcp_traces (session_id);
-
--- Index on tool_name for "how often is search_papers called?"
-CREATE INDEX IF NOT EXISTS idx_mcp_traces_tool ON mcp_traces (tool_name);
-
--- Index on user_email for "what did this user do?"
-CREATE INDEX IF NOT EXISTS idx_mcp_traces_user ON mcp_traces (user_email);
-
--- Index on created_at for time-range queries (e.g., last 24 hours of activity).
+CREATE INDEX IF NOT EXISTS idx_mcp_traces_tool    ON mcp_traces (tool_name);
+CREATE INDEX IF NOT EXISTS idx_mcp_traces_user    ON mcp_traces (user_email);
 CREATE INDEX IF NOT EXISTS idx_mcp_traces_created ON mcp_traces (created_at);
