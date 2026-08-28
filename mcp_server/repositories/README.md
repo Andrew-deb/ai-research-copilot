@@ -25,8 +25,8 @@ This package isolates all database interactions and SQL queries for the MCP serv
 
 ### 4. Direct Cosine Similarity via pgvector
 * Queries leverage the `<=>` cosine distance operator against `VECTOR(384)` columns.
-* Cosine distance (range $0.0$ to $2.0$) is dynamically translated to cosine similarity ($1.0 - \text{distance}$) so ranking scores are intuitive (higher = closer match).
-* Queries are explicitly indexed with Hierarchical Navigable Small World (HNSW) graphs, maintaining sub-second $O(\log N)$ latency.
+* Cosine distance (range `0.0` to `2.0`, where `0.0` is identical) is dynamically translated to cosine similarity (`1.0 - distance`) so ranking scores are intuitive (higher = closer match).
+* Queries are explicitly indexed with Hierarchical Navigable Small World (HNSW) graphs, maintaining sub-second `O(log N)` search latency.
 
 ### 5. Independent Repository per Databricks App
 * Both `mcp_server` and `dashboard` maintain dedicated `lakebase.py` modules.
