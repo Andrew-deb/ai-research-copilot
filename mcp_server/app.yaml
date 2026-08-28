@@ -1,0 +1,7 @@
+command:
+  - "python"
+  - "research_mcp_server.py"
+
+env:
+  - name: "PYTHONUNBUFFERED"
+    value: "1"

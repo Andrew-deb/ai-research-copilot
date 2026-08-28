@@ -1,0 +1,200 @@
+"""
+mcp_server/research_mcp_server.py — AI Research & Learning Copilot FastMCP Server.
+
+Exposes 13 specialized tools to AI Agents (Claude, Gemini, OpenAI) for literature
+discovery, curriculum sequencing, collection management, and research progress tracking.
+
+Design Principle:
+  Tools act purely as interface definitions. Every @mcp.tool function is a single-line
+  delegation to its respective service module, wrapped with telemetry middleware.
+"""
+
+import logging
+from typing import List, Optional
+
+from mcp.server.fastmcp import FastMCP
+
+from mcp_server.config import MCP_SERVER_NAME, MCP_SERVER_VERSION
+from mcp_server.middleware.request_context import get_current_user_id
+from mcp_server.middleware.trace_middleware import trace_tool
+from mcp_server.services import collection_service, discovery_service, planning_service, progress_service
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+logger = logging.getLogger("mcp_server")
+
+# Initialize FastMCP Server
+mcp = FastMCP(
+    name=MCP_SERVER_NAME,
+    instructions="AI Research & Learning Copilot MCP Server providing literature discovery, pedagogical reading plans, paper comparison, and research tracking tools."
+)
+
+
+# =============================================================================
+# 1. Literature Discovery Tools
+# =============================================================================
+
+@mcp.tool()
+@trace_tool("search_papers")
+def search_papers(query: str, limit: int = 10) -> List[dict]:
+    """
+    Search academic research papers across OpenAlex and Semantic Scholar.
+    Returns standardized paper records with titles, abstracts, DOIs, venues, and AI TLDRs.
+    """
+    return discovery_service.search_papers(query=query, limit=limit)
+
+
+@mcp.tool()
+@trace_tool("get_paper_details")
+def get_paper_details(paper_id_or_doi: str) -> dict:
+    """
+    Fetch comprehensive paper metadata, abstract, authors, and citation counts by UUID or DOI.
+    """
+    return discovery_service.get_paper_details(paper_id_or_doi=paper_id_or_doi)
+
+
+@mcp.tool()
+@trace_tool("get_similar_papers")
+def get_similar_papers(paper_id: str, limit: int = 5) -> List[dict]:
+    """
+    Retrieve semantically similar papers and recommended next reads for a given paper.
+    """
+    return discovery_service.get_similar_papers(paper_id=paper_id, limit=limit)
+
+
+@mcp.tool()
+@trace_tool("compare_papers")
+def compare_papers(paper_ids: List[str]) -> dict:
+    """
+    Compare 2 or more research papers side-by-side on methodologies, influence, and citations.
+    """
+    return discovery_service.compare_papers(paper_ids=paper_ids)
+
+
+@mcp.tool()
+@trace_tool("explain_topic")
+def explain_topic(topic: str) -> dict:
+    """
+    Retrieve accessible prerequisite definitions and Wikipedia explanations for foundational concepts.
+    """
+    return discovery_service.explain_topic(topic=topic)
+
+
+# =============================================================================
+# 2. Collection Management Tools
+# =============================================================================
+
+@mcp.tool()
+@trace_tool("create_collection")
+def create_collection(name: str, description: Optional[str] = None) -> dict:
+    """
+    Create a new curated paper collection/syllabus for the researcher.
+    """
+    return collection_service.create_collection(
+        user_id=get_current_user_id(),
+        name=name,
+        description=description
+    )
+
+
+@mcp.tool()
+@trace_tool("list_collections")
+def list_collections() -> List[dict]:
+    """
+    List all paper collections and reading lists belonging to the current user.
+    """
+    return collection_service.list_collections(user_id=get_current_user_id())
+
+
+@mcp.tool()
+@trace_tool("get_collection_details")
+def get_collection_details(collection_id: str) -> dict:
+    """
+    Get full metadata and the ordered list of papers inside a specific collection.
+    """
+    return collection_service.get_collection_details(
+        collection_id=collection_id,
+        user_id=get_current_user_id()
+    )
+
+
+@mcp.tool()
+@trace_tool("add_paper_to_collection")
+def add_paper_to_collection(collection_id: str, paper_id: str, sequence_order: int = 0) -> dict:
+    """
+    Add a research paper into a user collection with an optional sequence order.
+    """
+    return collection_service.add_paper_to_collection(
+        collection_id=collection_id,
+        paper_id=paper_id,
+        sequence_order=sequence_order,
+        user_id=get_current_user_id()
+    )
+
+
+@mcp.tool()
+@trace_tool("remove_paper_from_collection")
+def remove_paper_from_collection(collection_id: str, paper_id: str) -> dict:
+    """
+    Remove a paper from a user collection.
+    """
+    return collection_service.remove_paper_from_collection(
+        collection_id=collection_id,
+        paper_id=paper_id,
+        user_id=get_current_user_id()
+    )
+
+
+# =============================================================================
+# 3. Curriculum Planning Tools
+# =============================================================================
+
+@mcp.tool()
+@trace_tool("generate_reading_plan")
+def generate_reading_plan(collection_id: str) -> dict:
+    """
+    Generate an optimal curriculum/reading plan for a collection, ordering papers by
+    chronological prerequisites and citation impact scores.
+    """
+    return planning_service.generate_reading_plan(
+        collection_id=collection_id,
+        user_id=get_current_user_id()
+    )
+
+
+# =============================================================================
+# 4. Progress & Annotation Tools
+# =============================================================================
+
+@mcp.tool()
+@trace_tool("mark_paper_status")
+def mark_paper_status(paper_id: str, status: str) -> dict:
+    """
+    Update reading status for a paper ('not_started', 'reading', 'completed', 'skipped').
+    """
+    return progress_service.mark_paper_status(
+        user_id=get_current_user_id(),
+        paper_id=paper_id,
+        status=status
+    )
+
+
+@mcp.tool()
+@trace_tool("save_note")
+def save_note(paper_id: str, note_text: str) -> dict:
+    """
+    Save a researcher note or annotation on a paper for future synthesis and semantic search.
+    """
+    return progress_service.save_note(
+        user_id=get_current_user_id(),
+        paper_id=paper_id,
+        note_text=note_text
+    )
+
+
+# =============================================================================
+# Entrypoint for Local / STDIO / SSE execution
+# =============================================================================
+
+if __name__ == "__main__":
+    logger.info(f"Starting {MCP_SERVER_NAME} v{MCP_SERVER_VERSION}...")
+    mcp.run()
