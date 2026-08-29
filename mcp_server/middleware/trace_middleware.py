@@ -12,8 +12,8 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Callable
 
-from mcp_server.middleware.request_context import get_current_user_email
-from mcp_server.repositories import lakebase
+from middleware.request_context import get_current_user_email
+from repositories import lakebase
 
 logger = logging.getLogger("mcp_trace")
 
