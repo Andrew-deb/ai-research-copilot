@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Collections — Research Copilot{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{{ url_for('static', filename='css/collections.css') }}">{% endblock %}
+
+{% block content %}
+<h1 class="page-title">Collections</h1>
+<p class="page-lead">Curated reading lists. Generate a pedagogically sequenced reading plan for any collection.</p>
+
+<section class="panel">
+  <h2>New collection</h2>
+  <form class="stack-form" method="post" action="{{ url_for('collections.create_collection') }}">
+    <label>Name
+      <input type="text" name="name" required maxlength="200" placeholder="e.g. Transformer Foundations">
+    </label>
+    <label>Description <span class="hint">(optional)</span>
+      <input type="text" name="description" placeholder="Core papers, in reading order">
+    </label>
+    <button type="submit" class="btn btn-primary">Create collection</button>
+  </form>
+</section>
+
+<section class="panel">
+  <h2>Your collections</h2>
+  {% if collections %}
+    <div class="collection-grid">
+      {% for c in collections %}
+        <a class="collection-card" href="{{ url_for('collections.collection_detail', collection_id=c.collection_id) }}">
+          <h3>{{ c.name }}</h3>
+          {% if c.description %}<p>{{ c.description }}</p>{% endif %}
+          <span class="collection-count">{{ c.paper_count }} paper{{ '' if c.paper_count == 1 else 's' }}</span>
+        </a>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="empty">No collections yet — create one above.</p>
+  {% endif %}
+</section>
+{% endblock %}

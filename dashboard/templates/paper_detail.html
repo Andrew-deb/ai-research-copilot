@@ -45,9 +45,10 @@
 
       <h2>Add to collection</h2>
       {% if collections %}
-        <form class="inline-form" method="post" action="{{ url_for('collections.add_paper', collection_id='PLACEHOLDER') }}" id="add-to-collection">
+        <form class="inline-form" id="add-to-collection"
+              data-url-template="{{ url_for('collections.add_paper', collection_id='CID') }}">
           <input type="hidden" name="paper_id" value="{{ paper.paper_id }}">
-          <select name="__collection" required>
+          <select name="collection_id" required>
             <option value="" disabled selected>Choose a collection…</option>
             {% for c in collections %}
               <option value="{{ c.collection_id }}">{{ c.name }}</option>
