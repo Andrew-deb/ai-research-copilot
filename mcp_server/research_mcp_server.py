@@ -10,9 +10,18 @@ Design Principle:
 """
 
 import logging
+import os
+import sys
 from typing import List, Optional
 
+# Allow both `python -m mcp_server.research_mcp_server` (repo root on path) and a
+# bare `python research_mcp_server.py` (script dir on path) — a Databricks App may
+# do either depending on how the source is synced.
+if __package__ in (None, ""):
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from mcp.server.fastmcp import FastMCP
+from starlette.responses import JSONResponse
 
 from mcp_server.config import MCP_SERVER_NAME, MCP_SERVER_VERSION
 from mcp_server.middleware.request_context import get_current_user_id
@@ -27,6 +36,22 @@ mcp = FastMCP(
     name=MCP_SERVER_NAME,
     instructions="AI Research & Learning Copilot MCP Server providing literature discovery, pedagogical reading plans, paper comparison, and research tracking tools."
 )
+
+
+# =============================================================================
+# HTTP health routes (only active for the sse / streamable-http transports).
+# Databricks Apps probe the app over HTTP before routing traffic; the MCP
+# protocol path (/mcp or /sse) is not a plain GET, so we add explicit ones.
+# =============================================================================
+
+@mcp.custom_route("/", methods=["GET"])
+async def _root(_request):
+    return JSONResponse({"status": "ok", "server": MCP_SERVER_NAME, "version": MCP_SERVER_VERSION})
+
+
+@mcp.custom_route("/healthz", methods=["GET"])
+async def _healthz(_request):
+    return JSONResponse({"status": "ok"})
 
 
 # =============================================================================
@@ -192,9 +217,32 @@ def save_note(paper_id: str, note_text: str) -> dict:
 
 
 # =============================================================================
-# Entrypoint for Local / STDIO / SSE execution
+# Entrypoint
 # =============================================================================
+#
+# Transport is chosen by MCP_TRANSPORT:
+#   - "streamable-http" (default) → HTTP server, MCP endpoint at /mcp   ← Databricks Apps
+#   - "sse"                       → HTTP server, MCP endpoint at /sse
+#   - "stdio"                     → local MCP clients (Claude Desktop, MCP Inspector)
+#
+# For an HTTP transport the server binds MCP_HOST:PORT, where PORT is
+# DATABRICKS_APP_PORT (injected by Databricks Apps) or 8080.
 
 if __name__ == "__main__":
-    logger.info(f"Starting {MCP_SERVER_NAME} v{MCP_SERVER_VERSION}...")
-    mcp.run()
+    transport = os.getenv("MCP_TRANSPORT", "streamable-http")
+
+    if transport in ("streamable-http", "sse"):
+        mcp.settings.host = os.getenv("MCP_HOST", "0.0.0.0")
+        mcp.settings.port = int(os.getenv("DATABRICKS_APP_PORT") or os.getenv("PORT") or "8080")
+        # Stateless = no server-side session affinity, which the AI Gateway / a
+        # Databricks Apps load balancer in front of the server needs.
+        mcp.settings.stateless_http = os.getenv("MCP_STATELESS", "true").lower() == "true"
+        mcp.settings.json_response = os.getenv("MCP_JSON_RESPONSE", "true").lower() == "true"
+        logger.info(
+            "Starting %s v%s — %s on %s:%s",
+            MCP_SERVER_NAME, MCP_SERVER_VERSION, transport, mcp.settings.host, mcp.settings.port,
+        )
+    else:
+        logger.info("Starting %s v%s — stdio", MCP_SERVER_NAME, MCP_SERVER_VERSION)
+
+    mcp.run(transport=transport)

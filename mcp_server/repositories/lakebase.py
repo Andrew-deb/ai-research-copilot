@@ -14,11 +14,14 @@ so the Spark pipeline and API syncs are safe to re-run without duplicates.
 import base64
 import json
 import logging
+import os
+import threading
 from contextlib import contextmanager
 from typing import Any, Generator
 
 import psycopg2
 import psycopg2.extras
+import psycopg2.pool
 
 from mcp_server.config import DATABASE_URL, EMBEDDING_DIMENSION
 
@@ -26,26 +29,63 @@ logger = logging.getLogger(__name__)
 
 
 # =============================================================================
-# Connection plumbing
+# Connection plumbing — pooled
 # =============================================================================
+# One TLS connect per query adds a full handshake to every tool call. A
+# per-process pool connects once and reuses. Mirrors dashboard/repositories.
+
+_POOL: psycopg2.pool.ThreadedConnectionPool | None = None
+_POOL_LOCK = threading.Lock()
+_POOL_MIN = int(os.getenv("DB_POOL_MIN", "1"))
+_POOL_MAX = int(os.getenv("DB_POOL_MAX", "6"))
+
+
+def _get_pool() -> psycopg2.pool.ThreadedConnectionPool:
+    global _POOL
+    if _POOL is None:
+        with _POOL_LOCK:
+            if _POOL is None:
+                if not DATABASE_URL:
+                    raise RuntimeError("DATABASE_URL is not configured. Check your .env or secret scope.")
+                _POOL = psycopg2.pool.ThreadedConnectionPool(
+                    _POOL_MIN, _POOL_MAX, dsn=DATABASE_URL,
+                    keepalives=1, keepalives_idle=30, keepalives_interval=10, keepalives_count=3,
+                )
+                logger.info("Lakebase connection pool ready (min=%d max=%d)", _POOL_MIN, _POOL_MAX)
+    return _POOL
+
 
 @contextmanager
 def get_connection() -> Generator[psycopg2.extensions.connection, None, None]:
-    """
-    Context manager that yields a psycopg2 connection and closes it on exit.
-    Raises RuntimeError if DATABASE_URL is not configured.
-    """
-    if not DATABASE_URL:
-        raise RuntimeError("DATABASE_URL is not configured. Check your .env or secret scope.")
-    conn = psycopg2.connect(DATABASE_URL)
+    """Yield a pooled connection; commit on success, roll back on error, return to pool."""
+    pool = _get_pool()
+    conn = pool.getconn()
+    broken = False
     try:
         yield conn
         conn.commit()
     except Exception:
-        conn.rollback()
+        broken = getattr(conn, "closed", 0) != 0
+        if not broken:
+            try:
+                conn.rollback()
+            except psycopg2.Error:
+                broken = True
         raise
     finally:
-        conn.close()
+        try:
+            pool.putconn(conn, close=broken)
+        except psycopg2.pool.PoolError:
+            pass
+
+
+def close_pool() -> None:
+    """Close every pooled connection — call on process shutdown."""
+    global _POOL
+    with _POOL_LOCK:
+        if _POOL is not None:
+            _POOL.closeall()
+            _POOL = None
 
 
 def run_query(sql: str, params: tuple = ()) -> list[dict]:
