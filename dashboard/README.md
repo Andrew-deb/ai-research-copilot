@@ -29,15 +29,16 @@ dashboard/
 ├── static/
 │   ├── css/                    # base + 4 page stylesheets
 │   └── js/                     # main + 4 page scripts (vanilla, no build step)
-├── app.yaml                    # Databricks App deployment config (gunicorn)
-└── requirements.txt
+└── app.yaml                    # Databricks App deployment config (gunicorn)
 ```
+
+Dependencies live in the project-root `requirements.txt` (one unified file for the whole project). `middleware/README.md`, `services/README.md`, and `routes/README.md` document each layer.
 
 ## Setup
 
 ```bash
-# From the project root, with .env containing DATABASE_URL and OPENROUTER_API_KEY
-pip install -r dashboard/requirements.txt
+# From ai-research-copilot/, with .env containing DATABASE_URL and OPENROUTER_API_KEY
+pip install -r requirements.txt
 
 # Run locally
 flask --app dashboard.app run --debug --port 8080
@@ -45,7 +46,7 @@ flask --app dashboard.app run --debug --port 8080
 python -m dashboard.app
 ```
 
-Open <http://localhost:8080>. With no `X-Forwarded-Email` header (i.e. local dev), every request is attributed to the seeded `demo@research-copilot.dev` user.
+Open <http://localhost:8080>. With `REQUIRE_FORWARDED_AUTH` unset (local default) and no `X-Forwarded-Email` header, every request is attributed to the seeded `demo@research-copilot.dev` user. See `context/setup/setup_guide.md` for the full local + Databricks walkthrough.
 
 ## Pages
 
@@ -67,7 +68,9 @@ Open <http://localhost:8080>. With no `X-Forwarded-Email` header (i.e. local dev
 
 **Query embedding matches the pipeline** — `embedding.py` loads the identical model and `normalize_embeddings=True` the Spark pipeline used for the stored vectors. Anything else silently degrades cosine ranking.
 
-**Thin routes, typed exceptions** — Routes validate input, call one service function, and return. Services raise `ValidationError` / `PaperNotFoundError` / `ExternalAPIError`; `middleware/error_handler.py` turns them into JSON (for `fetch`) or a flashed redirect (for form posts). No route contains `try/except`.
+**Thin routes, typed exceptions** — Routes validate input, call one service function, and return. Services raise `ValidationError` / `PaperNotFoundError` / `ExternalAPIError`; `middleware/error_handler.py` turns them into JSON (for `fetch`), an error page (for `GET` navigations), or a flashed redirect (for form posts). No route contains `try/except`.
+
+**Two auth modes** — `REQUIRE_FORWARDED_AUTH=false` (local): missing `X-Forwarded-Email` ⇒ demo user. `REQUIRE_FORWARDED_AUTH=true` (Databricks App): missing header ⇒ `401`. `/healthz` and `/static/*` are always exempt so deploy health checks pass before the database is reachable. Covered by `tests/test_auth.py`.
 
 **Progressive enhancement** — Every action works as a plain HTML form. JavaScript upgrades the same endpoints to `fetch` calls (drag-reorder, Kanban drag, RAG answers, inline notes) and the routes detect the caller and respond with JSON instead of a redirect.
 
