@@ -14,7 +14,7 @@ import urllib.parse
 
 import requests
 
-from mcp_server.config import OPENALEX_EMAIL, WIKIPEDIA_BASE_URL, WIKIPEDIA_RATE_LIMIT_DELAY
+from config import OPENALEX_EMAIL, WIKIPEDIA_BASE_URL, WIKIPEDIA_RATE_LIMIT_DELAY
 
 logger = logging.getLogger(__name__)
 
