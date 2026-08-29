@@ -8,9 +8,9 @@ paper details retrieval, neural recommendations, paper comparison, and Wikipedia
 import logging
 from typing import List, Optional
 
-from mcp_server.brokers import openalex_broker, semantic_scholar_broker, wikipedia_broker
-from mcp_server.exceptions import PaperNotFoundError, ValidationError
-from mcp_server.repositories import lakebase
+from brokers import openalex_broker, semantic_scholar_broker, wikipedia_broker
+from exceptions import PaperNotFoundError, ValidationError
+from repositories import lakebase
 
 logger = logging.getLogger(__name__)
 
