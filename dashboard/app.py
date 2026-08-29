@@ -13,10 +13,10 @@ import logging
 
 from flask import Flask
 
-from dashboard.config import DEBUG, SECRET_KEY
-from dashboard.middleware.auth import register_auth
-from dashboard.middleware.error_handler import register_error_handlers
-from dashboard.routes import register_routes
+from config import DEBUG, SECRET_KEY
+from middleware.auth import register_auth
+from middleware.error_handler import register_error_handlers
+from routes import register_routes
 
 logging.basicConfig(
     level=logging.INFO,
