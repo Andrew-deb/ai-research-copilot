@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}{{ collection.name }} — Research Copilot{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{{ url_for('static', filename='css/collections.css') }}">{% endblock %}
+
+{% block content %}
+<article class="collection-detail" data-collection-id="{{ collection.collection_id }}"
+         data-reorder-url="{{ url_for('collections.reorder', collection_id=collection.collection_id) }}">
+  <a class="backlink" href="{{ url_for('collections.list_collections') }}">← All collections</a>
+  <h1 class="page-title">{{ collection.name }}</h1>
+  {% if collection.description %}<p class="page-lead">{{ collection.description }}</p>{% endif %}
+
+  <div class="collection-toolbar">
+    <span class="collection-count">{{ collection.paper_count }} paper{{ '' if collection.paper_count == 1 else 's' }}</span>
+    {% if collection.papers %}
+      <form method="post" action="{{ url_for('collections.generate_plan', collection_id=collection.collection_id) }}">
+        <button type="submit" class="btn btn-primary">Generate reading plan</button>
+      </form>
+    {% endif %}
+  </div>
+
+  {% if collection.papers %}
+    <ol class="reading-list js-sortable">
+      {% for paper in collection.papers %}
+        <li class="reading-item" data-paper-id="{{ paper.paper_id }}" draggable="true">
+          <span class="drag-handle" title="Drag to reorder">⠿</span>
+          <span class="seq">{{ paper.sequence_order }}</span>
+          <div class="reading-item-body">
+            <a class="paper-title" href="{{ url_for('search.paper_detail', paper_id=paper.paper_id) }}">{{ paper.title }}</a>
+            <div class="paper-meta">
+              {{ paper.venue or 'Unknown venue' }}{% if paper.publication_year %} · {{ paper.publication_year }}{% endif %}
+              {% if paper.citation_count %} · {{ paper.citation_count }} citations{% endif %}
+              {% if paper.reading_status %} · <span class="pill pill-{{ paper.reading_status }}">{{ paper.reading_status | replace('_', ' ') }}</span>{% endif %}
+            </div>
+            {% if paper.tldr %}<p class="paper-tldr">{{ paper.tldr }}</p>{% endif %}
+          </div>
+          <form method="post" action="{{ url_for('collections.remove_paper', collection_id=collection.collection_id, paper_id=paper.paper_id) }}">
+            <button type="submit" class="btn btn-ghost btn-danger" title="Remove from collection">Remove</button>
+          </form>
+        </li>
+      {% endfor %}
+    </ol>
+    <p class="hint">Drag rows to reorder, or generate a reading plan to sequence by publication year and citation impact.</p>
+  {% else %}
+    <p class="empty">This collection is empty. Add papers from <a href="{{ url_for('search.search_page') }}">Search</a> or a paper's detail page.</p>
+  {% endif %}
+</article>
+{% endblock %}
+
+{% block extra_js %}<script src="{{ url_for('static', filename='js/collections.js') }}"></script>{% endblock %}
