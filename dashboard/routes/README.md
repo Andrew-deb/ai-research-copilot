@@ -4,15 +4,15 @@ One blueprint per URL area. Route functions are thin: parse and validate request
 
 ## Blueprints
 
-| File | Prefix | Key endpoints |
-|------|--------|---------------|
-| `home.py` | `/` | `GET /` — dashboard overview |
-| `goals.py` | `/goals` | `GET` list · `POST` create · `GET /<id>/matches` (JSON) · `POST /<id>/status` |
-| `search.py` | *(none)* | `GET /search` (keyword or semantic) · `GET /search/semantic` (JSON) · `POST /search/ask` (RAG, JSON) · `GET /paper/<id>` — detail |
-| `collections.py` | `/collections` | `GET` list · `POST` create · `GET /<id>` detail · `POST /<id>/papers` add · `POST /<id>/papers/<pid>/remove` · `POST /<id>/plan` generate · `POST /<id>/reorder` |
-| `progress.py` | *(none)* | `GET /progress` — Kanban board · `POST /paper/<id>/status` · `POST /paper/<id>/notes` |
+| File | Routes |
+|------|--------|
+| `home.py` | `GET /` — dashboard overview |
+| `goals.py` | `GET /goals` list · `POST /goals` create · `GET /goals/<id>/matches` (JSON) · `POST /goals/<id>/status` |
+| `search.py` | `GET /search` (keyword or semantic) · `GET /search/semantic` (JSON) · `POST /search/ask` (RAG, JSON) · `GET /paper/<id>` detail |
+| `collections.py` | `GET /collections` list · `POST /collections` create · `GET /collection/<id>` detail · `POST /collection/<id>/papers` add · `POST /collection/<id>/papers/<pid>/remove` · `POST /collection/<id>/plan` · `POST /collection/<id>/reorder` |
+| `progress.py` | `GET /progress` — Kanban board · `POST /paper/<id>/status` · `POST /paper/<id>/notes` |
 
-`helpers.py` holds shared request helpers (kept out of `__init__.py` to avoid a circular import).
+Blueprints declare full paths rather than `url_prefix`, so URLs match the plan's page table exactly (`/goals`, `/collection/<id>`, `/paper/<id>`) with no trailing-slash redirects. `helpers.py` holds shared request helpers (kept out of `__init__.py` to avoid a circular import).
 
 ---
 
