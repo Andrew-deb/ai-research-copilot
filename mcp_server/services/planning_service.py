@@ -8,8 +8,8 @@ citation dependencies and publication chronology, and manages user learning goal
 import logging
 from typing import List, Optional
 
-from mcp_server.exceptions import CollectionNotFoundError, GoalNotFoundError, ValidationError
-from mcp_server.repositories import lakebase
+from exceptions import CollectionNotFoundError, GoalNotFoundError, ValidationError
+from repositories import lakebase
 
 logger = logging.getLogger(__name__)
 
