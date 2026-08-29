@@ -14,7 +14,7 @@ from typing import Any
 
 import requests
 
-from mcp_server.config import (
+from config import (
     OPENALEX_BASE_URL,
     OPENALEX_EMAIL,
     OPENALEX_RATE_LIMIT_DELAY,
