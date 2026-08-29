@@ -1,4 +1,4 @@
-"""dashboard/routes/goals.py — Learning goals (`/goals`)."""
+"""dashboard/routes/goals.py — Learning goals."""
 
 from flask import Blueprint, jsonify, render_template, url_for
 
@@ -6,16 +6,16 @@ from dashboard.middleware.auth import current_user_id
 from dashboard.routes.helpers import action_response, form_or_json
 from dashboard.services import goal_service
 
-bp = Blueprint("goals", __name__, url_prefix="/goals")
+bp = Blueprint("goals", __name__)
 
 
-@bp.get("")
+@bp.get("/goals")
 def list_goals():
     goals = goal_service.list_goals(current_user_id())
     return render_template("goals.html", goals=goals)
 
 
-@bp.post("")
+@bp.post("/goals")
 def create_goal():
     data = form_or_json("title", "description")
     goal = goal_service.create_goal(current_user_id(), data["title"], data.get("description"))
@@ -26,7 +26,7 @@ def create_goal():
     )
 
 
-@bp.get("/<goal_id>/matches")
+@bp.get("/goals/<goal_id>/matches")
 def goal_matches(goal_id: str):
     """JSON — papers pgvector matches to this goal, for the expandable panel on goals.html."""
     detail = goal_service.get_goal_detail(current_user_id(), goal_id)
@@ -45,7 +45,7 @@ def goal_matches(goal_id: str):
     })
 
 
-@bp.post("/<goal_id>/status")
+@bp.post("/goals/<goal_id>/status")
 def update_status(goal_id: str):
     data = form_or_json("status")
     goal = goal_service.set_status(current_user_id(), goal_id, data["status"])

@@ -1,4 +1,4 @@
-"""dashboard/routes/collections.py — Collections and reading plans (`/collections`)."""
+"""dashboard/routes/collections.py — Collections and reading plans."""
 
 from flask import Blueprint, render_template, request, url_for
 
@@ -6,16 +6,16 @@ from dashboard.middleware.auth import current_user_id
 from dashboard.routes.helpers import action_response, form_or_json
 from dashboard.services import collection_service
 
-bp = Blueprint("collections", __name__, url_prefix="/collections")
+bp = Blueprint("collections", __name__)
 
 
-@bp.get("")
+@bp.get("/collections")
 def list_collections():
     collections = collection_service.list_collections(current_user_id())
     return render_template("collections.html", collections=collections)
 
 
-@bp.post("")
+@bp.post("/collections")
 def create_collection():
     data = form_or_json("name", "description")
     collection = collection_service.create_collection(
@@ -28,13 +28,13 @@ def create_collection():
     )
 
 
-@bp.get("/<collection_id>")
+@bp.get("/collection/<collection_id>")
 def collection_detail(collection_id: str):
     detail = collection_service.get_collection_detail(current_user_id(), collection_id)
     return render_template("collection_detail.html", collection=detail)
 
 
-@bp.post("/<collection_id>/papers")
+@bp.post("/collection/<collection_id>/papers")
 def add_paper(collection_id: str):
     data = form_or_json("paper_id")
     result = collection_service.add_paper(current_user_id(), collection_id, data["paper_id"])
@@ -45,7 +45,7 @@ def add_paper(collection_id: str):
     )
 
 
-@bp.post("/<collection_id>/papers/<paper_id>/remove")
+@bp.post("/collection/<collection_id>/papers/<paper_id>/remove")
 def remove_paper(collection_id: str, paper_id: str):
     result = collection_service.remove_paper(current_user_id(), collection_id, paper_id)
     return action_response(
@@ -55,7 +55,7 @@ def remove_paper(collection_id: str, paper_id: str):
     )
 
 
-@bp.post("/<collection_id>/plan")
+@bp.post("/collection/<collection_id>/plan")
 def generate_plan(collection_id: str):
     plan = collection_service.generate_reading_plan(current_user_id(), collection_id)
     return action_response(
@@ -65,7 +65,7 @@ def generate_plan(collection_id: str):
     )
 
 
-@bp.post("/<collection_id>/reorder")
+@bp.post("/collection/<collection_id>/reorder")
 def reorder(collection_id: str):
     payload = request.get_json(silent=True) or {}
     ordered = payload.get("ordered_paper_ids") or request.form.getlist("ordered_paper_ids")
