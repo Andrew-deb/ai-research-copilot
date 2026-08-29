@@ -95,6 +95,28 @@ def test_paper_detail_renders(client, db):
     assert resp.status_code == 200
     assert b"A Studied Paper" in resp.data
     assert b"short summary" in resp.data
+    # related papers now load async — the panel + its fetch URL are present, no vector work on this request
+    assert b"related-panel" in resp.data
+
+
+def test_paper_related_endpoint(client, db, monkeypatch):
+    from dashboard.repositories import lakebase
+    paper = db.seed_paper(title="Origin Paper")
+    other = db.seed_paper(title="Neighbour Paper")
+    monkeypatch.setattr(
+        lakebase, "semantic_search_papers",
+        lambda vec, top_k=10: [{**other, "chunk_text": "x", "chunk_index": 0, "similarity": 0.77}],
+    )
+    resp = client.get(f"/paper/{paper['paper_id']}/related", headers=ALICE)
+    assert resp.status_code == 200
+    rel = resp.get_json()["related"]
+    assert rel and rel[0]["title"] == "Neighbour Paper"
+    assert rel[0]["paper_id"] != paper["paper_id"]
+
+
+def test_paper_related_404_for_unknown(client, db):
+    resp = client.get("/paper/00000000-0000-0000-0000-000000000000/related", headers=ALICE)
+    assert resp.status_code == 404
 
 
 # ---------------------------------------------------------------------------
