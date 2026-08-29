@@ -7,6 +7,25 @@
   if (!root) { return; }
   const paperId = root.dataset.paperId;
 
+  // ---------- Related papers (vector search — loaded after the page renders) ----------
+  const relatedPanel = document.getElementById("related-panel");
+  if (relatedPanel) {
+    window.RC.request(relatedPanel.dataset.url).then(function (data) {
+      const items = (data && data.related) || [];
+      if (!items.length) {
+        relatedPanel.innerHTML = "<p class='empty'>No similar papers found in the catalog.</p>";
+        return;
+      }
+      relatedPanel.innerHTML = "<ul class='tight-list'>" + items.map(function (p) {
+        const pct = p.similarity != null
+          ? " <span class='sim-badge'>" + Math.round(p.similarity * 100) + "%</span>" : "";
+        return "<li><a href='/paper/" + p.paper_id + "'>" + window.RC.escapeHtml(p.title) + "</a>" + pct + "</li>";
+      }).join("") + "</ul>";
+    }).catch(function () {
+      relatedPanel.innerHTML = "<p class='empty'>Couldn't load similar papers.</p>";
+    });
+  }
+
   // ---------- Reading status ----------
   root.querySelectorAll(".status-btn").forEach(function (btn) {
     btn.addEventListener("click", async function () {

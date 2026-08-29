@@ -64,18 +64,9 @@
 
     <section class="panel">
       <h2>Related papers</h2>
-      {% if related_papers %}
-        <ul class="tight-list">
-          {% for rp in related_papers %}
-            <li>
-              <a href="{{ url_for('search.paper_detail', paper_id=rp.paper_id) }}">{{ rp.title }}</a>
-              {% if rp.similarity is not none %}<span class="sim-badge">{{ (rp.similarity * 100) | round(0) | int }}%</span>{% endif %}
-            </li>
-          {% endfor %}
-        </ul>
-      {% else %}
-        <p class="empty">No similar papers found in the catalog.</p>
-      {% endif %}
+      <div id="related-panel" data-url="{{ url_for('search.paper_related', paper_id=paper.paper_id) }}">
+        <p class="hint">Finding similar papers…</p>
+      </div>
     </section>
   </div>
 
