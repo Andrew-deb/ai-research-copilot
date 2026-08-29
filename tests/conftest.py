@@ -8,7 +8,12 @@ OpenRouter client so tests run fast and offline.
 """
 
 import datetime
+import os
 import uuid
+
+# Must be set before dashboard.app is imported — its module body calls create_app(),
+# which would otherwise spawn the real SentenceTransformer warmup thread.
+os.environ["EMBEDDING_PRELOAD"] = "false"
 
 import pytest
 
@@ -215,13 +220,17 @@ def db(monkeypatch):
     monkeypatch.setattr(embedding_module, "encode_query", lambda text: [0.0] * 384)
     monkeypatch.setattr(llm_module, "chat", lambda *a, **k: "Synthesised answer [1].")
     monkeypatch.setattr(llm_module, "is_available", lambda: True)
+
+    # The identity cache is process-global — clear it so a user row from a prior
+    # test's FakeDB never leaks into this one.
+    auth_module._USER_CACHE.clear()
     return fake
 
 
 @pytest.fixture
 def app(db):
     from dashboard.app import create_app
-    application = create_app()
+    application = create_app()  # EMBEDDING_PRELOAD=false is set at conftest import
     application.config.update(TESTING=True)
     return application
 
