@@ -74,7 +74,9 @@ Open <http://localhost:8080>. With `REQUIRE_FORWARDED_AUTH` unset (local default
 
 **Progressive enhancement** — Every action works as a plain HTML form. JavaScript upgrades the same endpoints to `fetch` calls (drag-reorder, Kanban drag, RAG answers, inline notes) and the routes detect the caller and respond with JSON instead of a redirect.
 
-**Self-contained frontend** — Hand-written CSS and vanilla JS, no CDN and no build step, so the app runs inside the Databricks App sandbox with no external asset fetches.
+**Design system** — `static/css/base.css` defines one token set (`--bg`, `--surface`, `--brand`, semantic `--info/--ok/--warn/--danger`, …) for light and a `[data-theme="dark"]` override. Layout is a fixed left sidebar + sticky top bar (Supabase / MongoDB Atlas console idiom). Type: **Inter** for UI, **JetBrains Mono** for identifiers, similarity scores, counts, and sequence numbers. The theme toggle lives in the top bar; `main.js` stamps `data-theme` on `<html>` before first paint (saved choice, else `prefers-color-scheme`) and persists changes to `localStorage`.
+
+**Near-self-contained frontend** — Hand-written CSS + vanilla JS, no build step. The only external asset is Google Fonts (`fonts.googleapis.com`); a full system-font fallback stack is declared so the app degrades cleanly if that host is blocked.
 
 ## Secret Scope Names
 
