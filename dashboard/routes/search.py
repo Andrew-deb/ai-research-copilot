@@ -2,7 +2,7 @@
 
 from flask import Blueprint, jsonify, render_template, request
 
-from dashboard import llm_client
+import llm_client
 from middleware.auth import current_user_id
 from routes.helpers import form_or_json
 from services import search_service

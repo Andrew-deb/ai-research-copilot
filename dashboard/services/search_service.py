@@ -13,7 +13,7 @@ status + vector-similar papers).
 
 import logging
 
-from dashboard import embedding, llm_client
+import embedding, llm_client
 from exceptions import PaperNotFoundError, ValidationError
 from repositories import lakebase
 
