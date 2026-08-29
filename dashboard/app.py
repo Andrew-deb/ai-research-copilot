@@ -9,13 +9,17 @@ Run locally:   flask --app dashboard.app run --debug
 Deployed:      gunicorn dashboard.app:app   (see app.yaml)
 """
 
+import atexit
 import logging
+import threading
 
 from flask import Flask
 
-from dashboard.config import DEBUG, SECRET_KEY
+from dashboard import embedding
+from dashboard.config import DEBUG, EMBEDDING_PRELOAD, SECRET_KEY
 from dashboard.middleware.auth import register_auth
 from dashboard.middleware.error_handler import register_error_handlers
+from dashboard.repositories import lakebase
 from dashboard.routes import register_routes
 
 logging.basicConfig(
@@ -35,9 +39,14 @@ def create_app() -> Flask:
 
     @app.get("/healthz")
     def healthz():
-        return {"status": "ok"}
+        return {"status": "ok", "embedding_model_loaded": embedding.is_loaded()}
 
-    logger.info("Dashboard app initialised (debug=%s)", DEBUG)
+    if EMBEDDING_PRELOAD:
+        threading.Thread(target=embedding.warmup, name="embedding-warmup", daemon=True).start()
+
+    atexit.register(lakebase.close_pool)
+
+    logger.info("Dashboard app initialised (debug=%s, preload=%s)", DEBUG, EMBEDDING_PRELOAD)
     return app
 
 

@@ -16,11 +16,14 @@ context:
   context_window_limit: 32768
 
 mcp_server:
-  type: "sse" # Options: sse, stdio
-  url: "http://localhost:8000/sse"
+  type: "streamable-http" # Options: streamable-http, sse, stdio
+  # Local:      http://localhost:8080/mcp   (MCP_TRANSPORT=streamable-http)
+  # Databricks: https://<mcp-app-url>/mcp   (register this exact URL, with the /mcp suffix)
+  url: "http://localhost:8080/mcp"
   secret_scope: "database"
   timeout_seconds: 30
-  max_consecutive_tool_calls: 8
+  max_consecutive_tool_calls: 8   # hard ceiling; the system prompt targets ≤3 for simple queries
+  expected_tool_count: 13         # if the agent sees fewer, the wrong server is connected
 
 tools:
   - name: "search_papers"
