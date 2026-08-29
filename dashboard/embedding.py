@@ -31,11 +31,31 @@ def _get_model():
     if _model is None:
         with _model_lock:
             if _model is None:
+                import time
+
                 from sentence_transformers import SentenceTransformer
 
                 logger.info("Loading embedding model '%s'...", EMBEDDING_MODEL)
+                t0 = time.perf_counter()
                 _model = SentenceTransformer(EMBEDDING_MODEL, cache_folder="/tmp/.cache/huggingface")
+                logger.info("Embedding model ready in %.1fs", time.perf_counter() - t0)
     return _model
+
+
+def is_loaded() -> bool:
+    """True once the model is in memory — callers can skip embedding work otherwise."""
+    return _model is not None
+
+
+def warmup() -> None:
+    """
+    Force the model load now (e.g. from a background thread at app startup) so the
+    first user request that needs a vector doesn't pay the ~5-20s load cost.
+    """
+    try:
+        _get_model()
+    except Exception as exc:  # a failed warmup must not crash startup
+        logger.warning("Embedding model warmup failed: %s", exc)
 
 
 def encode_query(text: str) -> list[float]:

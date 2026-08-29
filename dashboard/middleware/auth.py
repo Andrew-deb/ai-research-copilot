@@ -22,6 +22,8 @@ Two modes, controlled by `REQUIRE_FORWARDED_AUTH` (config):
 """
 
 import logging
+import threading
+import time
 
 from flask import Flask, abort, g, request
 
@@ -49,6 +51,13 @@ def _forwarded_identity() -> tuple[str | None, str | None]:
     return email, name
 
 
+# Small per-process cache: the user row for an email rarely changes, so we skip
+# the users SELECT on every single request. Entries expire after _USER_CACHE_TTL.
+_USER_CACHE: dict[str, tuple[float, dict]] = {}
+_USER_CACHE_LOCK = threading.Lock()
+_USER_CACHE_TTL = 300.0
+
+
 def _resolve_user() -> dict:
     """Resolve the active request's user, honouring the auth mode."""
     email, display_name = _forwarded_identity()
@@ -59,7 +68,15 @@ def _resolve_user() -> dict:
             abort(401, description="Missing Databricks identity header.")
         email, display_name = DEMO_USER_EMAIL, DEMO_USER_NAME
 
-    return lakebase.get_or_create_user(email=email, display_name=display_name)
+    now = time.monotonic()
+    cached = _USER_CACHE.get(email)
+    if cached and now - cached[0] < _USER_CACHE_TTL:
+        return cached[1]
+
+    user = lakebase.get_or_create_user(email=email, display_name=display_name)
+    with _USER_CACHE_LOCK:
+        _USER_CACHE[email] = (now, user)
+    return user
 
 
 def register_auth(app: Flask) -> None:

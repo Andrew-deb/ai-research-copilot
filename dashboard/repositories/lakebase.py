@@ -11,11 +11,14 @@ paginated listing queries optimised for UI rendering.
 
 import json
 import logging
+import os
+import threading
 from contextlib import contextmanager
 from typing import Any, Generator
 
 import psycopg2
 import psycopg2.extras
+import psycopg2.pool
 
 from dashboard.config import DATABASE_URL, EMBEDDING_DIMENSION
 
@@ -23,23 +26,70 @@ logger = logging.getLogger(__name__)
 
 
 # =============================================================================
-# Connection plumbing
+# Connection plumbing — pooled
 # =============================================================================
+# Every page issues several queries. Opening a fresh TLS connection to Lakebase
+# per query (the previous behaviour) added a full TCP + TLS + auth handshake to
+# each one — the main source of the dashboard's sluggishness. A per-process
+# pool amortises that: connect once, reuse.
+
+_POOL: psycopg2.pool.ThreadedConnectionPool | None = None
+_POOL_LOCK = threading.Lock()
+
+_POOL_MIN = int(os.getenv("DB_POOL_MIN", "1"))
+_POOL_MAX = int(os.getenv("DB_POOL_MAX", "8"))
+
+
+def _get_pool() -> psycopg2.pool.ThreadedConnectionPool:
+    global _POOL
+    if _POOL is None:
+        with _POOL_LOCK:
+            if _POOL is None:
+                if not DATABASE_URL:
+                    raise RuntimeError("DATABASE_URL is not configured.")
+                _POOL = psycopg2.pool.ThreadedConnectionPool(
+                    _POOL_MIN, _POOL_MAX, dsn=DATABASE_URL,
+                    # Keep pooled connections alive through Lakebase / proxy idle timeouts.
+                    keepalives=1, keepalives_idle=30, keepalives_interval=10, keepalives_count=3,
+                )
+                logger.info("Lakebase connection pool ready (min=%d max=%d)", _POOL_MIN, _POOL_MAX)
+    return _POOL
+
 
 @contextmanager
 def get_connection() -> Generator[psycopg2.extensions.connection, None, None]:
-    """Context manager that yields a psycopg2 connection and closes it on exit."""
-    if not DATABASE_URL:
-        raise RuntimeError("DATABASE_URL is not configured.")
-    conn = psycopg2.connect(DATABASE_URL)
+    """
+    Yield a pooled psycopg2 connection; commit on success, roll back on error,
+    and return it to the pool (discarding it if it broke).
+    """
+    pool = _get_pool()
+    conn = pool.getconn()
+    broken = False
     try:
         yield conn
         conn.commit()
     except Exception:
-        conn.rollback()
+        broken = getattr(conn, "closed", 0) != 0
+        if not broken:
+            try:
+                conn.rollback()
+            except psycopg2.Error:
+                broken = True
         raise
     finally:
-        conn.close()
+        try:
+            pool.putconn(conn, close=broken)
+        except psycopg2.pool.PoolError:
+            pass
+
+
+def close_pool() -> None:
+    """Close every pooled connection — call on worker shutdown."""
+    global _POOL
+    with _POOL_LOCK:
+        if _POOL is not None:
+            _POOL.closeall()
+            _POOL = None
 
 
 def run_query(sql: str, params: tuple = ()) -> list[dict]:
