@@ -78,6 +78,8 @@ Open <http://localhost:8080>. With `REQUIRE_FORWARDED_AUTH` unset (local default
 
 **Near-self-contained frontend** — Hand-written CSS + vanilla JS, no build step. The only external asset is Google Fonts (`fonts.googleapis.com`); a full system-font fallback stack is declared so the app degrades cleanly if that host is blocked.
 
+**Performance** — (1) `repositories/lakebase.py` uses a per-process connection **pool** — one Lakebase handshake per worker instead of one per query. (2) The embedding model loads in a **background thread at startup** (`EMBEDDING_PRELOAD=true`), so no user request pays the ~10-20s cold load. (3) Vector-search work is kept **off the critical path**: the goals list shows counts on demand (not per-goal on load), and the paper page's "related papers" panel is fetched async (`GET /paper/<id>/related`). (4) The identity lookup in `middleware/auth.py` is cached per email (5-min TTL). (5) `app.yaml` runs gunicorn with `gthread` workers + 4 threads so a request blocked on the DB or the LLM doesn't stall the worker.
+
 ## Secret Scope Names
 
 | Scope | Key | Value |
