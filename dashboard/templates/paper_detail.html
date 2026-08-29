@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}{{ paper.title }} — Research Copilot{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{{ url_for('static', filename='css/search.css') }}">{% endblock %}
+
+{% block content %}
+<article class="paper-detail" data-paper-id="{{ paper.paper_id }}">
+  <a class="backlink" href="javascript:history.back()">← Back</a>
+  <h1 class="paper-detail-title">{{ paper.title }}</h1>
+
+  <div class="paper-meta">
+    {% if authors %}{{ authors | map(attribute='display_name') | join(', ') }} · {% endif %}
+    {{ paper.venue or 'Unknown venue' }}{% if paper.publication_year %} · {{ paper.publication_year }}{% endif %}
+    {% if paper.citation_count %} · {{ paper.citation_count }} citations{% endif %}
+    {% if paper.influence_score is not none %} · influence {{ paper.influence_score | round(1) }}{% endif %}
+  </div>
+
+  <div class="paper-links">
+    {% if paper.doi %}<a href="https://doi.org/{{ paper.doi }}" target="_blank" rel="noopener">DOI</a>{% endif %}
+    {% if paper.open_access_url %}<a href="{{ paper.open_access_url }}" target="_blank" rel="noopener">Open access PDF</a>{% endif %}
+    <span class="tag">{{ paper.source_api }}</span>
+  </div>
+
+  {% if paper.tldr %}
+    <div class="callout"><strong>TLDR.</strong> {{ paper.tldr }}</div>
+  {% endif %}
+
+  <section>
+    <h2>Abstract</h2>
+    <p class="abstract">{{ paper.abstract or 'No abstract available.' }}</p>
+  </section>
+
+  <div class="detail-columns">
+    <section class="panel">
+      <h2>Reading status</h2>
+      <div class="status-buttons" role="group">
+        {% for st in reading_statuses %}
+          <button type="button"
+                  class="btn status-btn {{ 'is-current' if reading_status == st }}"
+                  data-action="{{ url_for('progress.set_status', paper_id=paper.paper_id) }}"
+                  data-status="{{ st }}">
+            {{ st | replace('_', ' ') | title }}
+          </button>
+        {% endfor %}
+      </div>
+
+      <h2>Add to collection</h2>
+      {% if collections %}
+        <form class="inline-form" method="post" action="{{ url_for('collections.add_paper', collection_id='PLACEHOLDER') }}" id="add-to-collection">
+          <input type="hidden" name="paper_id" value="{{ paper.paper_id }}">
+          <select name="__collection" required>
+            <option value="" disabled selected>Choose a collection…</option>
+            {% for c in collections %}
+              <option value="{{ c.collection_id }}">{{ c.name }}</option>
+            {% endfor %}
+          </select>
+          <button type="submit" class="btn btn-primary">Add</button>
+        </form>
+      {% else %}
+        <p class="empty"><a href="{{ url_for('collections.list_collections') }}">Create a collection</a> to save this paper.</p>
+      {% endif %}
+    </section>
+
+    <section class="panel">
+      <h2>Related papers</h2>
+      {% if related_papers %}
+        <ul class="tight-list">
+          {% for rp in related_papers %}
+            <li>
+              <a href="{{ url_for('search.paper_detail', paper_id=rp.paper_id) }}">{{ rp.title }}</a>
+              {% if rp.similarity is not none %}<span class="sim-badge">{{ (rp.similarity * 100) | round(0) | int }}%</span>{% endif %}
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="empty">No similar papers found in the catalog.</p>
+      {% endif %}
+    </section>
+  </div>
+
+  <section class="panel">
+    <h2>Notes</h2>
+    <form id="note-form" method="post" action="{{ url_for('progress.add_note', paper_id=paper.paper_id) }}">
+      <textarea name="note_text" rows="3" required placeholder="Your annotation — embedded for cross-note semantic search by the agent."></textarea>
+      <button type="submit" class="btn btn-primary">Save note</button>
+    </form>
+    <ul class="note-list">
+      {% for note in notes %}
+        <li><p>{{ note.note_text }}</p><time>{{ note.created_at }}</time></li>
+      {% endfor %}
+    </ul>
+  </section>
+</article>
+{% endblock %}
+
+{% block extra_js %}<script src="{{ url_for('static', filename='js/paper_detail.js') }}"></script>{% endblock %}
