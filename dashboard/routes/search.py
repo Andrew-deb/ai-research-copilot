@@ -47,3 +47,17 @@ def rag_ask():
 def paper_detail(paper_id: str):
     detail = search_service.get_paper_detail(current_user_id(), paper_id)
     return render_template("paper_detail.html", **detail)
+
+
+@bp.get("/paper/<paper_id>/related")
+def paper_related(paper_id: str):
+    """JSON — vector-similar papers, fetched by the detail page after it renders."""
+    papers = search_service.get_related_papers(paper_id)
+    return jsonify({"related": [
+        {
+            "paper_id": str(p["paper_id"]),
+            "title": p["title"],
+            "similarity": p.get("similarity"),
+        }
+        for p in papers
+    ]})

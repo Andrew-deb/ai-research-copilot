@@ -26,8 +26,13 @@ def _match_query(goal: dict) -> str:
     return ". ".join(p.strip() for p in parts if p.strip())
 
 
-def list_goals(user_id: str, with_matches: bool = True) -> list[dict]:
-    """All goals for the user, each annotated with a matched-paper count."""
+def list_goals(user_id: str, with_matches: bool = False) -> list[dict]:
+    """
+    All goals for the user. `with_matches` runs a per-goal embed + vector search
+    (one model call + one pgvector query *each*) — off by default so the goals
+    page loads instantly; the per-goal "Show matching papers" control fetches
+    them on demand via get_goal_detail.
+    """
     goals = lakebase.get_learning_goals(user_id)
     if not with_matches:
         return goals
