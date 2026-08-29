@@ -2,9 +2,9 @@
 
 from flask import Blueprint, jsonify, render_template, url_for
 
-from dashboard.middleware.auth import current_user_id
-from dashboard.routes.helpers import action_response, form_or_json
-from dashboard.services import goal_service
+from middleware.auth import current_user_id
+from routes.helpers import action_response, form_or_json
+from services import goal_service
 
 bp = Blueprint("goals", __name__)
 

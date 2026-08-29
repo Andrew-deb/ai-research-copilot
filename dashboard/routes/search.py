@@ -3,9 +3,9 @@
 from flask import Blueprint, jsonify, render_template, request
 
 from dashboard import llm_client
-from dashboard.middleware.auth import current_user_id
-from dashboard.routes.helpers import form_or_json
-from dashboard.services import search_service
+from middleware.auth import current_user_id
+from routes.helpers import form_or_json
+from services import search_service
 
 bp = Blueprint("search", __name__)
 

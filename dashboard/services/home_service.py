@@ -8,7 +8,7 @@ most recent activity. One service call per page load.
 
 import logging
 
-from dashboard.repositories import lakebase
+from repositories import lakebase
 
 logger = logging.getLogger(__name__)
 

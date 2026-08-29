@@ -8,8 +8,8 @@ schema CHECK constraint and the MCP progress_service exactly.
 
 import logging
 
-from dashboard.exceptions import PaperNotFoundError, ValidationError
-from dashboard.repositories import lakebase
+from exceptions import PaperNotFoundError, ValidationError
+from repositories import lakebase
 
 logger = logging.getLogger(__name__)
 

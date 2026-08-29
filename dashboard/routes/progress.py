@@ -2,9 +2,9 @@
 
 from flask import Blueprint, render_template, request, url_for
 
-from dashboard.middleware.auth import current_user_id
-from dashboard.routes.helpers import action_response, form_or_json
-from dashboard.services import progress_service
+from middleware.auth import current_user_id
+from routes.helpers import action_response, form_or_json
+from services import progress_service
 
 bp = Blueprint("progress", __name__)
 
