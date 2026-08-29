@@ -42,6 +42,14 @@ OPENROUTER_MODEL: str = os.getenv("OPENROUTER_MODEL", "openai/gpt-oss-120b:free"
 SECRET_KEY: str = os.getenv("FLASK_SECRET_KEY", "dev-secret-change-in-production")
 DEBUG: bool = os.getenv("FLASK_DEBUG", "false").lower() == "true"
 
+# --- Auth ---
+# When True, a request without the Databricks-injected X-Forwarded-Email header
+# is rejected with 401. Leave False for local dev (falls back to the demo user);
+# set REQUIRE_FORWARDED_AUTH=true in the Databricks App environment.
+REQUIRE_FORWARDED_AUTH: bool = os.getenv("REQUIRE_FORWARDED_AUTH", "false").lower() == "true"
+DEMO_USER_EMAIL: str = os.getenv("DEMO_USER_EMAIL", "demo@research-copilot.dev")
+DEMO_USER_NAME: str = os.getenv("DEMO_USER_NAME", "Demo Researcher")
+
 if not DATABASE_URL:
     logger.warning("DATABASE_URL not set — database operations will fail.")
 if not OPENROUTER_API_KEY:
