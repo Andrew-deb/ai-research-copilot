@@ -10,8 +10,8 @@ owns its own copy of the logic (no runtime dependency between the two apps).
 
 import logging
 
-from dashboard.exceptions import CollectionNotFoundError, PaperNotFoundError, ValidationError
-from dashboard.repositories import lakebase
+from exceptions import CollectionNotFoundError, PaperNotFoundError, ValidationError
+from repositories import lakebase
 
 logger = logging.getLogger(__name__)
 

@@ -15,11 +15,9 @@ import threading
 
 from flask import Flask
 
-from dashboard import embedding
-from dashboard.config import DEBUG, EMBEDDING_PRELOAD, SECRET_KEY
+from dashboard.config import DEBUG, SECRET_KEY
 from dashboard.middleware.auth import register_auth
 from dashboard.middleware.error_handler import register_error_handlers
-from dashboard.repositories import lakebase
 from dashboard.routes import register_routes
 
 logging.basicConfig(

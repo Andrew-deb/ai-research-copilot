@@ -13,8 +13,8 @@ import logging
 
 import requests
 
-from dashboard.config import OPENROUTER_API_KEY, OPENROUTER_BASE_URL, OPENROUTER_MODEL
-from dashboard.exceptions import ExternalAPIError
+from config import OPENROUTER_API_KEY, OPENROUTER_BASE_URL, OPENROUTER_MODEL
+from exceptions import ExternalAPIError
 
 logger = logging.getLogger(__name__)
 

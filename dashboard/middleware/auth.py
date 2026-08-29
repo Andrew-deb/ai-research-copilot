@@ -27,12 +27,12 @@ import time
 
 from flask import Flask, abort, g, request
 
-from dashboard.config import (
+from config import (
     DEMO_USER_EMAIL,
     DEMO_USER_NAME,
     REQUIRE_FORWARDED_AUTH,
 )
-from dashboard.repositories import lakebase
+from repositories import lakebase
 
 logger = logging.getLogger(__name__)
 

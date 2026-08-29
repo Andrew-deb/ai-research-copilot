@@ -12,7 +12,7 @@ import logging
 from flask import Flask, flash, jsonify, redirect, render_template, request, url_for
 from werkzeug.exceptions import HTTPException
 
-from dashboard.exceptions import (
+from exceptions import (
     CollectionNotFoundError,
     ExternalAPIError,
     GoalNotFoundError,

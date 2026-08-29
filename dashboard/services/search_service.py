@@ -13,9 +13,9 @@ status + vector-similar papers).
 
 import logging
 
-from dashboard import embedding, llm_client
-from dashboard.exceptions import PaperNotFoundError, ValidationError
-from dashboard.repositories import lakebase
+import embedding, llm_client
+from exceptions import PaperNotFoundError, ValidationError
+from repositories import lakebase
 
 logger = logging.getLogger(__name__)
 

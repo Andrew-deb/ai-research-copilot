@@ -20,7 +20,7 @@ import psycopg2
 import psycopg2.extras
 import psycopg2.pool
 
-from dashboard.config import DATABASE_URL, EMBEDDING_DIMENSION
+from config import DATABASE_URL, EMBEDDING_DIMENSION
 
 logger = logging.getLogger(__name__)
 

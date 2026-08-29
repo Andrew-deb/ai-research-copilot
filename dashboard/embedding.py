@@ -17,7 +17,7 @@ call `encode_query()` never pull the model.
 import logging
 import threading
 
-from dashboard.config import EMBEDDING_DIMENSION, EMBEDDING_MODEL
+from config import EMBEDDING_DIMENSION, EMBEDDING_MODEL
 
 logger = logging.getLogger(__name__)
 

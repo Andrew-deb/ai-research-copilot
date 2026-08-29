@@ -2,8 +2,8 @@
 
 from flask import Blueprint, render_template
 
-from dashboard.middleware.auth import current_user_id
-from dashboard.services import home_service
+from middleware.auth import current_user_id
+from services import home_service
 
 bp = Blueprint("home", __name__)
 

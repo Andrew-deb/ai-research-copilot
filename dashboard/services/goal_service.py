@@ -8,9 +8,9 @@ matched against the paper catalog with pgvector, so the goals page can show
 
 import logging
 
-from dashboard.exceptions import GoalNotFoundError, ValidationError
-from dashboard.repositories import lakebase
-from dashboard.services import search_service
+from exceptions import GoalNotFoundError, ValidationError
+from repositories import lakebase
+from services import search_service
 
 logger = logging.getLogger(__name__)
 
