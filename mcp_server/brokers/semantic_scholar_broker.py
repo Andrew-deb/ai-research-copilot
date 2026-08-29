@@ -12,7 +12,7 @@ import time
 
 import requests
 
-from mcp_server.config import S2_API_KEY, S2_BASE_URL, S2_RATE_LIMIT_DELAY
+from config import S2_API_KEY, S2_BASE_URL, S2_RATE_LIMIT_DELAY
 
 logger = logging.getLogger(__name__)
 
