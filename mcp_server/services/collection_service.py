@@ -8,8 +8,8 @@ and retrieving collection contents for users.
 import logging
 from typing import List, Optional
 
-from mcp_server.exceptions import CollectionNotFoundError, PaperNotFoundError, ValidationError
-from mcp_server.repositories import lakebase
+from exceptions import CollectionNotFoundError, PaperNotFoundError, ValidationError
+from repositories import lakebase
 
 logger = logging.getLogger(__name__)
 
