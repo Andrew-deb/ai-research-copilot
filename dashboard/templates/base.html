@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Research Copilot{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
+  {% block extra_css %}{% endblock %}
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="{{ url_for('home.index') }}">
+      <span class="brand-mark">📚</span> Research&nbsp;Copilot
+    </a>
+    <nav class="mainnav">
+      {% set ep = request.endpoint or '' %}
+      <a href="{{ url_for('home.index') }}" class="{{ 'active' if ep == 'home.index' }}">Dashboard</a>
+      <a href="{{ url_for('goals.list_goals') }}" class="{{ 'active' if ep.startswith('goals.') }}">Goals</a>
+      <a href="{{ url_for('search.search_page') }}" class="{{ 'active' if ep.startswith('search.') }}">Search</a>
+      <a href="{{ url_for('collections.list_collections') }}" class="{{ 'active' if ep.startswith('collections.') }}">Collections</a>
+      <a href="{{ url_for('progress.board') }}" class="{{ 'active' if ep == 'progress.board' }}">Progress</a>
+    </nav>
+    {% if current_user %}
+      <span class="whoami" title="{{ current_user.email }}">{{ current_user.display_name or current_user.email }}</span>
+    {% endif %}
+  </header>
+
+  <div id="flash-tray" aria-live="polite">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <div class="flash flash-{{ category }}">
+          <span>{{ message }}</span>
+          <button type="button" class="flash-close" aria-label="Dismiss">&times;</button>
+        </div>
+      {% endfor %}
+    {% endwith %}
+  </div>
+
+  <main class="page">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="pagefoot">
+    AI Research &amp; Learning Copilot — Databricks Lakebase · pgvector · MCP · Agent Bricks
+  </footer>
+
+  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+  {% block extra_js %}{% endblock %}
+</body>
+</html>
