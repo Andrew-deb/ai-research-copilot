@@ -38,3 +38,6 @@ build/
 
 # --- Pytest ---
 .ini
+pytest.ini
+
+# --- Others ---
