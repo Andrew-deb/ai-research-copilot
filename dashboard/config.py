@@ -32,6 +32,11 @@ DATABASE_URL: str | None = _get_secret("database", "lakebase-url", "DATABASE_URL
 # --- Embedding ---
 EMBEDDING_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
 EMBEDDING_DIMENSION: int = 384
+# Load the model in a background thread at startup instead of on the first
+# request that needs it. Default on when not in debug.
+EMBEDDING_PRELOAD: bool = os.getenv(
+    "EMBEDDING_PRELOAD", "false" if os.getenv("FLASK_DEBUG", "false").lower() == "true" else "true"
+).lower() == "true"
 
 # --- OpenRouter ---
 OPENROUTER_API_KEY: str | None = _get_secret("openrouter", "api-key", "OPENROUTER_API_KEY")
