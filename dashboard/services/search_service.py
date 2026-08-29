@@ -139,29 +139,39 @@ def rag_answer(query: str, top_k: int = 6) -> dict:
 # =============================================================================
 
 def get_paper_detail(user_id: str, paper_id: str) -> dict:
-    """Metadata + authors + this user's notes + reading status + similar papers."""
+    """
+    The fast core of the paper page — metadata, authors, this user's notes,
+    reading status, collections. All plain indexed lookups, no embedding.
+    "Related papers" is a vector search and is loaded separately (see
+    get_related_papers) so the page renders without waiting on the model.
+    """
     paper = lakebase.get_paper(paper_id)
     if not paper:
         raise PaperNotFoundError(f"Paper '{paper_id}' not found.")
 
     progress = lakebase.get_progress_for_paper(user_id, paper_id)
 
-    related: list[dict] = []
-    try:
-        related = [
-            p for p in semantic_paper_matches(paper["title"], top_k=6)
-            if str(p["paper_id"]) != str(paper_id)
-        ][:5]
-    except Exception as exc:  # similarity is a nice-to-have, never blocks the page
-        logger.debug("Related-papers lookup failed for %s: %s", paper_id, exc)
-
     return {
         "paper": paper,
         "authors": lakebase.get_authors_for_paper(paper_id),
         "notes": lakebase.get_notes_for_paper(user_id, paper_id),
         "reading_status": progress["status"] if progress else "not_started",
-        "related_papers": related,
         "collections": lakebase.get_collections(user_id),
         "reading_statuses": ["not_started", "reading", "completed", "skipped"],
         "rag_available": llm_client.is_available(),
     }
+
+
+def get_related_papers(paper_id: str, limit: int = 5) -> list[dict]:
+    """Vector-similar papers for the detail page's 'Related' panel (fetched async)."""
+    paper = lakebase.get_paper(paper_id)
+    if not paper:
+        raise PaperNotFoundError(f"Paper '{paper_id}' not found.")
+    try:
+        return [
+            p for p in semantic_paper_matches(paper["title"], top_k=limit + 1)
+            if str(p["paper_id"]) != str(paper_id)
+        ][:limit]
+    except Exception as exc:  # similarity is a nice-to-have, never an error
+        logger.debug("Related-papers lookup failed for %s: %s", paper_id, exc)
+        return []
