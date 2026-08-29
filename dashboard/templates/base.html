@@ -4,48 +4,123 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}Research Copilot{% endblock %}</title>
+
+  {# No-flash theme: resolve saved choice (or system preference) before first paint. #}
+  <script>
+    (function () {
+      var t = "light";
+      try {
+        var saved = localStorage.getItem('rc-theme');
+        if (saved === 'dark' || saved === 'light') {
+          t = saved;
+        } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+          t = 'dark';
+        }
+      } catch (e) {}
+      document.documentElement.setAttribute('data-theme', t);
+    })();
+  </script>
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
   {% block extra_css %}{% endblock %}
 </head>
 <body>
-  <header class="topbar">
-    <a class="brand" href="{{ url_for('home.index') }}">
-      <span class="brand-mark">📚</span> Research&nbsp;Copilot
+
+{%- macro icon(name) -%}
+  {%- set paths = {
+    'dashboard': '<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>',
+    'target': '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/>',
+    'search': '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.8-3.8"/>',
+    'folder': '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
+    'progress': '<rect width="7" height="18" x="3" y="3" rx="1"/><rect width="7" height="11" x="14" y="3" rx="1"/>',
+    'sun': '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M6.3 17.7l-1.4 1.4M19.1 4.9l-1.4 1.4"/>',
+    'moon': '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
+    'menu': '<path d="M4 12h16M4 6h16M4 18h16"/>'
+  } -%}
+  <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+       stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{ paths[name] | safe }}</svg>
+{%- endmacro -%}
+
+{% set ep = request.endpoint or '' %}
+
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar">
+    <a class="sidebar-brand" href="{{ url_for('home.index') }}">
+      <span class="brand-leaf">🌿</span>
+      <span class="brand-name">Research Copilot</span>
     </a>
-    <nav class="mainnav">
-      {% set ep = request.endpoint or '' %}
-      <a href="{{ url_for('home.index') }}" class="{{ 'active' if ep == 'home.index' }}">Dashboard</a>
-      <a href="{{ url_for('goals.list_goals') }}" class="{{ 'active' if ep.startswith('goals.') }}">Goals</a>
-      <a href="{{ url_for('search.search_page') }}" class="{{ 'active' if ep.startswith('search.') }}">Search</a>
-      <a href="{{ url_for('collections.list_collections') }}" class="{{ 'active' if ep.startswith('collections.') }}">Collections</a>
-      <a href="{{ url_for('progress.board') }}" class="{{ 'active' if ep == 'progress.board' }}">Progress</a>
+
+    <nav class="sidebar-nav">
+      <a href="{{ url_for('home.index') }}" class="nav-item {{ 'active' if ep == 'home.index' }}">
+        {{ icon('dashboard') }}<span>Dashboard</span>
+      </a>
+      <a href="{{ url_for('goals.list_goals') }}" class="nav-item {{ 'active' if ep.startswith('goals.') }}">
+        {{ icon('target') }}<span>Goals</span>
+      </a>
+      <a href="{{ url_for('search.search_page') }}" class="nav-item {{ 'active' if ep.startswith('search.') }}">
+        {{ icon('search') }}<span>Search</span>
+      </a>
+      <a href="{{ url_for('collections.list_collections') }}" class="nav-item {{ 'active' if ep.startswith('collections.') }}">
+        {{ icon('folder') }}<span>Collections</span>
+      </a>
+      <a href="{{ url_for('progress.board') }}" class="nav-item {{ 'active' if ep == 'progress.board' }}">
+        {{ icon('progress') }}<span>Progress</span>
+      </a>
     </nav>
-    {% if current_user %}
-      <span class="whoami" title="{{ current_user.email }}">{{ current_user.display_name or current_user.email }}</span>
-    {% endif %}
-  </header>
 
-  <div id="flash-tray" aria-live="polite">
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% for category, message in messages %}
-        <div class="flash flash-{{ category }}">
-          <span>{{ message }}</span>
-          <button type="button" class="flash-close" aria-label="Dismiss">&times;</button>
+    <div class="sidebar-footer">
+      {% if current_user %}
+        <div class="user-chip" title="{{ current_user.email }}">
+          <span class="user-avatar">{{ (current_user.display_name or current_user.email)[0] | upper }}</span>
+          <span class="user-name">{{ current_user.display_name or current_user.email }}</span>
         </div>
-      {% endfor %}
-    {% endwith %}
+      {% endif %}
+    </div>
+  </aside>
+
+  <div class="sidebar-scrim" id="sidebar-scrim" hidden></div>
+
+  <div class="main-col">
+    <header class="topbar">
+      <button type="button" class="icon-btn sidebar-toggle" id="sidebar-toggle" aria-label="Toggle navigation">
+        {{ icon('menu') }}
+      </button>
+      <div class="topbar-title">{% block topbar_title %}{% endblock %}</div>
+      <div class="topbar-actions">
+        <button type="button" class="icon-btn theme-toggle" id="theme-toggle"
+                aria-label="Toggle colour theme" title="Toggle theme">
+          <span class="theme-icon theme-icon-light">{{ icon('sun') }}</span>
+          <span class="theme-icon theme-icon-dark">{{ icon('moon') }}</span>
+        </button>
+      </div>
+    </header>
+
+    <div id="flash-tray" aria-live="polite">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for category, message in messages %}
+          <div class="flash flash-{{ category }}">
+            <span>{{ message }}</span>
+            <button type="button" class="flash-close" aria-label="Dismiss">&times;</button>
+          </div>
+        {% endfor %}
+      {% endwith %}
+    </div>
+
+    <main class="content">
+      {% block content %}{% endblock %}
+    </main>
+
+    <footer class="app-footer">
+      AI Research &amp; Learning Copilot — Databricks Lakebase · pgvector · MCP · Agent Bricks
+    </footer>
   </div>
+</div>
 
-  <main class="page">
-    {% block content %}{% endblock %}
-  </main>
-
-  <footer class="pagefoot">
-    AI Research &amp; Learning Copilot — Databricks Lakebase · pgvector · MCP · Agent Bricks
-  </footer>
-
-  <script src="{{ url_for('static', filename='js/main.js') }}"></script>
-  {% block extra_js %}{% endblock %}
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+{% block extra_js %}{% endblock %}
 </body>
 </html>
