@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Research Copilot{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">{% endblock %}
+
+{% block content %}
+<h1 class="page-title">Your research at a glance</h1>
+
+<section class="stat-grid">
+  <a class="stat-card" href="{{ url_for('goals.list_goals') }}">
+    <span class="stat-value">{{ stats.active_goals }}</span>
+    <span class="stat-label">Active learning goals</span>
+  </a>
+  <a class="stat-card" href="{{ url_for('collections.list_collections') }}">
+    <span class="stat-value">{{ stats.papers_in_collections }}</span>
+    <span class="stat-label">Papers in collections</span>
+  </a>
+  <a class="stat-card" href="{{ url_for('progress.board') }}">
+    <span class="stat-value">{{ stats.papers_completed }}</span>
+    <span class="stat-label">Papers completed</span>
+  </a>
+  <div class="stat-card">
+    <span class="stat-value">{{ stats.notes_written }}</span>
+    <span class="stat-label">Notes written</span>
+  </div>
+</section>
+
+<div class="dash-columns">
+  <section class="panel">
+    <h2>Reading status</h2>
+    {% set total = reading_breakdown | sum(attribute='count') %}
+    {% if total %}
+      <ul class="breakdown">
+        {% for row in reading_breakdown %}
+          <li>
+            <span class="breakdown-label">{{ row.status | replace('_', ' ') | title }}</span>
+            <span class="breakdown-bar">
+              <span class="breakdown-fill status-{{ row.status }}"
+                    style="width: {{ (row.count / total * 100) | round(1) }}%"></span>
+            </span>
+            <span class="breakdown-count">{{ row.count }}</span>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="empty">No reading activity yet. Find papers in <a href="{{ url_for('search.search_page') }}">Search</a>.</p>
+    {% endif %}
+  </section>
+
+  <section class="panel">
+    <h2>Recent goals</h2>
+    {% if recent_goals %}
+      <ul class="tight-list">
+        {% for goal in recent_goals %}
+          <li>
+            <a href="{{ url_for('goals.list_goals') }}">{{ goal.title }}</a>
+            <span class="pill pill-{{ goal.status }}">{{ goal.status }}</span>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="empty">No goals yet. <a href="{{ url_for('goals.list_goals') }}">Create one</a>.</p>
+    {% endif %}
+  </section>
+</div>
+
+<section class="panel">
+  <h2>Recently discovered papers</h2>
+  {% if recent_papers %}
+    <ul class="paper-list">
+      {% for paper in recent_papers %}
+        <li class="paper-list-item">
+          <a class="paper-title" href="{{ url_for('search.paper_detail', paper_id=paper.paper_id) }}">{{ paper.title }}</a>
+          <div class="paper-meta">
+            {{ paper.venue or 'Unknown venue' }}{% if paper.publication_year %} · {{ paper.publication_year }}{% endif %}
+            {% if paper.citation_count %} · {{ paper.citation_count }} citations{% endif %}
+          </div>
+          {% if paper.tldr %}<p class="paper-tldr">{{ paper.tldr }}</p>{% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="empty">The catalog is empty. Run the ingestion notebook or search to add papers.</p>
+  {% endif %}
+</section>
+{% endblock %}
