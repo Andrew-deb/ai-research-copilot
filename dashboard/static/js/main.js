@@ -10,6 +10,33 @@
     }
   });
 
+  // ---------- Theme toggle ----------
+  const themeToggle = document.getElementById("theme-toggle");
+  if (themeToggle) {
+    themeToggle.addEventListener("click", function () {
+      const next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+      document.documentElement.setAttribute("data-theme", next);
+      try { localStorage.setItem("rc-theme", next); } catch (e) { /* private mode */ }
+    });
+  }
+
+  // ---------- Sidebar (mobile) ----------
+  const sidebar = document.getElementById("sidebar");
+  const sidebarToggle = document.getElementById("sidebar-toggle");
+  const scrim = document.getElementById("sidebar-scrim");
+  function closeSidebar() {
+    if (sidebar) { sidebar.classList.remove("open"); }
+    if (scrim) { scrim.hidden = true; }
+  }
+  if (sidebarToggle && sidebar) {
+    sidebarToggle.addEventListener("click", function () {
+      const open = sidebar.classList.toggle("open");
+      if (scrim) { scrim.hidden = !open; }
+    });
+  }
+  if (scrim) { scrim.addEventListener("click", closeSidebar); }
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape") { closeSidebar(); } });
+
   // ---------- Fetch helpers ----------
   async function request(url, options) {
     const res = await fetch(url, Object.assign({
