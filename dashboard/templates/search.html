@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Search — Research Copilot{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{{ url_for('static', filename='css/search.css') }}">{% endblock %}
+
+{% block content %}
+<h1 class="page-title">Search the literature</h1>
+
+<form class="search-bar" method="get" action="{{ url_for('search.search_page') }}">
+  <input type="search" name="q" value="{{ query }}" placeholder="transformer attention, retrieval-augmented generation, …" autofocus>
+  <div class="search-modes">
+    <label><input type="radio" name="mode" value="keyword" {{ 'checked' if mode != 'semantic' }}> Keyword</label>
+    <label><input type="radio" name="mode" value="semantic" {{ 'checked' if mode == 'semantic' }}> Semantic</label>
+  </div>
+  <button type="submit" class="btn btn-primary">Search</button>
+</form>
+
+{% if rag_available %}
+<section class="panel rag-box">
+  <h2>Ask a research question</h2>
+  <p class="hint">Retrieval-augmented: vector search over abstracts, then a cited synthesis.</p>
+  <form id="rag-form">
+    <textarea name="question" rows="2" placeholder="What are the main approaches to reducing attention's quadratic cost?"></textarea>
+    <button type="submit" class="btn btn-primary">Ask</button>
+  </form>
+  <div id="rag-answer" hidden>
+    <div class="rag-answer-body"></div>
+    <ol class="rag-sources"></ol>
+  </div>
+</section>
+{% endif %}
+
+{% if results is not none %}
+  <section class="panel">
+    <h2>
+      {{ results.results | length }} result{{ '' if results.results|length == 1 else 's' }}
+      <span class="hint">· {{ results.mode }} search for “{{ results.query }}”</span>
+    </h2>
+    {% if results.results %}
+      <ul class="paper-list">
+        {% for paper in results.results %}
+          <li class="paper-list-item">
+            <a class="paper-title" href="{{ url_for('search.paper_detail', paper_id=paper.paper_id) }}">{{ paper.title }}</a>
+            {% if paper.similarity is defined and paper.similarity is not none %}
+              <span class="sim-badge" title="cosine similarity">{{ (paper.similarity * 100) | round(0) | int }}%</span>
+            {% endif %}
+            <div class="paper-meta">
+              {{ paper.venue or 'Unknown venue' }}{% if paper.publication_year %} · {{ paper.publication_year }}{% endif %}
+              {% if paper.citation_count %} · {{ paper.citation_count }} citations{% endif %}
+              {% if paper.source_api %} · {{ paper.source_api }}{% endif %}
+            </div>
+            {% if paper.snippet %}<p class="paper-tldr">…{{ paper.snippet }}…</p>
+            {% elif paper.tldr %}<p class="paper-tldr">{{ paper.tldr }}</p>{% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+
+      {% if results.has_prev or results.has_next %}
+        <nav class="pager">
+          {% if results.has_prev %}
+            <a class="btn btn-ghost" href="{{ url_for('search.search_page', q=results.query, mode=results.mode, page=results.page - 1) }}">← Previous</a>
+          {% endif %}
+          <span class="pager-page">Page {{ results.page }}</span>
+          {% if results.has_next %}
+            <a class="btn btn-ghost" href="{{ url_for('search.search_page', q=results.query, mode=results.mode, page=results.page + 1) }}">Next →</a>
+          {% endif %}
+        </nav>
+      {% endif %}
+    {% else %}
+      <p class="empty">Nothing matched. Try the other search mode, or a broader query.</p>
+    {% endif %}
+  </section>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}<script src="{{ url_for('static', filename='js/search.js') }}"></script>{% endblock %}

@@ -161,5 +161,7 @@ def get_paper_detail(user_id: str, paper_id: str) -> dict:
         "notes": lakebase.get_notes_for_paper(user_id, paper_id),
         "reading_status": progress["status"] if progress else "not_started",
         "related_papers": related,
+        "collections": lakebase.get_collections(user_id),
+        "reading_statuses": ["not_started", "reading", "completed", "skipped"],
         "rag_available": llm_client.is_available(),
     }
