@@ -1,10 +1,12 @@
 command:
   - "python"
   - "-m"
-  - "mcp_server.research_mcp_server"
+  - "research_mcp_server"
 
 env:
   - name: "PYTHONUNBUFFERED"
     value: "1"
+  - name: "PYTHONPATH"
+    value: "/app/python/source_code"
   - name: "MCP_TRANSPORT"
     value: "streamable-http"
