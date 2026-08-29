@@ -30,11 +30,26 @@ mcp_server/
 ## Setup
 
 ```bash
-# Install dependencies
-pip install -r mcp_server/requirements.txt
+# From the repo root (ai-research-copilot/), with .env holding DATABASE_URL + API keys
+pip install -r requirements.txt          # needs mcp<2 (FastMCP 1.x) — pinned there
 
-# Run locally (requires .env with DATABASE_URL and API keys)
-python mcp_server/research_mcp_server.py
+# HTTP transport (what Databricks Apps runs) — MCP endpoint at POST /mcp, health at GET /healthz
+MCP_TRANSPORT=streamable-http PORT=8080 python -m mcp_server.research_mcp_server
+
+# stdio transport (Claude Desktop, MCP Inspector)
+MCP_TRANSPORT=stdio python -m mcp_server.research_mcp_server
+```
+
+Run it as a **module** — the code uses `from mcp_server.… import …` package imports.
+`MCP_TRANSPORT` ∈ `streamable-http` (default) · `sse` · `stdio`. For the HTTP transports
+the server binds `MCP_HOST` (default `0.0.0.0`) : `DATABRICKS_APP_PORT` / `PORT` / `8080`.
+
+Quick check that all 13 tools are live:
+
+```bash
+curl -s -X POST localhost:8080/mcp \
+  -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
 ```
 
 ## Key Design Decisions

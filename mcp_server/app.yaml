@@ -1,7 +1,10 @@
 command:
   - "python"
-  - "research_mcp_server.py"
+  - "-m"
+  - "mcp_server.research_mcp_server"
 
 env:
   - name: "PYTHONUNBUFFERED"
     value: "1"
+  - name: "MCP_TRANSPORT"
+    value: "streamable-http"
