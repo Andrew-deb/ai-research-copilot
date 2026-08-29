@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}Reading Progress — Research Copilot{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{{ url_for('static', filename='css/progress.css') }}">{% endblock %}
+
+{% block content %}
+<h1 class="page-title">Reading progress</h1>
+<p class="page-lead">Drag a paper between columns to update its status. {{ board.total }} paper{{ '' if board.total == 1 else 's' }} tracked.</p>
+
+<div class="kanban">
+  {% for status in ['not_started', 'reading', 'completed', 'skipped'] %}
+    <section class="kanban-col" data-status="{{ status }}">
+      <h2 class="kanban-head status-{{ status }}">
+        {{ status | replace('_', ' ') | title }}
+        <span class="kanban-count">{{ board.stats[status] }}</span>
+      </h2>
+      <ul class="kanban-list">
+        {% for paper in board.columns[status] %}
+          <li class="kanban-card" data-paper-id="{{ paper.paper_id }}" draggable="true">
+            <a class="paper-title" href="{{ url_for('search.paper_detail', paper_id=paper.paper_id) }}">{{ paper.title }}</a>
+            <div class="paper-meta">
+              {{ paper.venue or 'Unknown venue' }}{% if paper.publication_year %} · {{ paper.publication_year }}{% endif %}
+            </div>
+            {% if paper.tldr %}<p class="paper-tldr">{{ paper.tldr }}</p>{% endif %}
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endfor %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  window.PROGRESS_STATUS_URL = "{{ url_for('progress.set_status', paper_id='PID') }}";
+</script>
+<script src="{{ url_for('static', filename='js/progress.js') }}"></script>
+{% endblock %}

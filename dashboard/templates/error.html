@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}{{ code }} — Research Copilot{% endblock %}
+
+{% block content %}
+<div class="error-page">
+  <p class="error-code">{{ code }}</p>
+  <p class="error-message">{{ message }}</p>
+  <a class="btn btn-primary" href="{{ url_for('home.index') }}">Back to dashboard</a>
+</div>
+{% endblock %}
