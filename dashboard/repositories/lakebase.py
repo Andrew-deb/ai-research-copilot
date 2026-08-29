@@ -322,6 +322,15 @@ def get_progress_stats(user_id: str) -> dict:
     return {row["status"]: row["count"] for row in rows}
 
 
+def get_progress_for_paper(user_id: str, paper_id: str) -> dict | None:
+    """Single progress row for the paper detail page (None → not started)."""
+    rows = run_query(
+        "SELECT * FROM reading_progress WHERE user_id = %s AND paper_id = %s;",
+        (user_id, paper_id),
+    )
+    return rows[0] if rows else None
+
+
 # =============================================================================
 # Notes
 # =============================================================================
