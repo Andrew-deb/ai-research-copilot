@@ -8,8 +8,8 @@ and free-form researcher notes with semantic search capabilities.
 import logging
 from typing import List, Optional
 
-from mcp_server.exceptions import NoteNotFoundError, PaperNotFoundError, ValidationError
-from mcp_server.repositories import lakebase
+from exceptions import NoteNotFoundError, PaperNotFoundError, ValidationError
+from repositories import lakebase
 
 logger = logging.getLogger(__name__)
 
