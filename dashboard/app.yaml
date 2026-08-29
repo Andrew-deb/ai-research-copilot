@@ -5,11 +5,27 @@ command:
   - "0.0.0.0:8080"
   - "--workers"
   - "2"
+  - "--threads"
+  - "4"
+  - "--worker-class"
+  - "gthread"
   - "--timeout"
-  - "180"
+  - "120"
+  - "--graceful-timeout"
+  - "30"
+  - "--worker-tmp-dir"
+  - "/dev/shm"
 
 env:
   - name: "PYTHONUNBUFFERED"
     value: "1"
   - name: "HF_HOME"
     value: "/tmp/.cache/huggingface"
+  # Load the embedding model at startup (per worker) instead of on first use.
+  - name: "EMBEDDING_PRELOAD"
+    value: "true"
+  # Pooled Lakebase connections per worker (2 workers x 8 = 16 max).
+  - name: "DB_POOL_MAX"
+    value: "8"
+  - name: "REQUIRE_FORWARDED_AUTH"
+    value: "true"
