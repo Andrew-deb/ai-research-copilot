@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Learning Goals — Research Copilot{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">{% endblock %}
+
+{% block content %}
+<h1 class="page-title">Learning goals</h1>
+<p class="page-lead">Describe what you want to learn. Each goal is embedded and matched against the paper catalog with vector search.</p>
+
+<section class="panel">
+  <h2>New goal</h2>
+  <form class="stack-form" method="post" action="{{ url_for('goals.create_goal') }}">
+    <label>Title
+      <input type="text" name="title" required maxlength="300" placeholder="e.g. Understand diffusion models">
+    </label>
+    <label>Description <span class="hint">(optional — improves matching)</span>
+      <textarea name="description" rows="3" placeholder="What do you already know? What are you trying to be able to do?"></textarea>
+    </label>
+    <button type="submit" class="btn btn-primary">Create goal</button>
+  </form>
+</section>
+
+<section class="panel">
+  <h2>Your goals</h2>
+  {% if goals %}
+    <ul class="goal-list">
+      {% for goal in goals %}
+        <li class="goal-item" data-goal-id="{{ goal.goal_id }}">
+          <div class="goal-head">
+            <div>
+              <h3>{{ goal.title }}</h3>
+              {% if goal.description %}<p class="goal-desc">{{ goal.description }}</p>{% endif %}
+            </div>
+            <span class="pill pill-{{ goal.status }}">{{ goal.status }}</span>
+          </div>
+          <div class="goal-actions">
+            <button type="button" class="btn btn-ghost js-toggle-matches"
+                    data-url="{{ url_for('goals.goal_matches', goal_id=goal.goal_id) }}">
+              {% if goal.matched_paper_count is not none %}
+                {{ goal.matched_paper_count }} matching paper{{ '' if goal.matched_paper_count == 1 else 's' }} ▾
+              {% else %}
+                Show matching papers ▾
+              {% endif %}
+            </button>
+            <form method="post" action="{{ url_for('goals.update_status', goal_id=goal.goal_id) }}" class="inline-form">
+              <select name="status" onchange="this.form.requestSubmit()">
+                {% for opt in ['active', 'completed', 'archived'] %}
+                  <option value="{{ opt }}" {{ 'selected' if goal.status == opt }}>{{ opt }}</option>
+                {% endfor %}
+              </select>
+            </form>
+          </div>
+          <div class="goal-matches" hidden></div>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="empty">No goals yet — create your first one above.</p>
+  {% endif %}
+</section>
+{% endblock %}
