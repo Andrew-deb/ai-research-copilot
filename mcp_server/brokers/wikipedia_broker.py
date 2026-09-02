@@ -45,7 +45,7 @@ def _standardize_summary(summary: dict) -> dict:
     """Map a Wikipedia REST summary object to our topic_context schema."""
     desktop = (summary.get("content_urls") or {}).get("desktop") or {}
     return {
-        "topic_name": summary.get("title", ""),
+        "topic_name": summary.get("title") or "",
         "wikipedia_summary": summary.get("extract"),
         "wiki_url": desktop.get("page"),
         "_description": summary.get("description"),
