@@ -100,7 +100,7 @@ def test_paper_detail_renders(client, db):
 
 
 def test_paper_related_endpoint(client, db, monkeypatch):
-    from dashboard.repositories import lakebase
+    from repositories import lakebase
     paper = db.seed_paper(title="Origin Paper")
     other = db.seed_paper(title="Neighbour Paper")
     monkeypatch.setattr(
@@ -197,7 +197,7 @@ def test_rag_ask_with_no_matches(client, db):
 
 
 def test_rag_ask_with_matches(client, db, monkeypatch):
-    from dashboard.repositories import lakebase
+    from repositories import lakebase
     paper = db.seed_paper(title="Attention Paper")
 
     def fake_vec_search(query_embedding, top_k=10):

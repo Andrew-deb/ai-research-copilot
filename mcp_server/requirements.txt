@@ -1,6 +1,13 @@
-mcp<2
+# Databricks App #1 — MCP server.
+# Deployed with mcp_server/ as the app source root, so this file (not the
+# project-root requirements.txt) is what Databricks installs.
+#
+# Deliberately NOT here: sentence-transformers. The MCP server never embeds
+# anything — it only passes vectors to pgvector. Including it pulled torch and
+# the full nvidia/CUDA stack (~3 GB, ~2.5 min of install time) for nothing.
+
+mcp>=1.0.0,<2.0.0
 psycopg2-binary>=2.9.9
 requests>=2.31.0
 python-dotenv>=1.0.0
 databricks-sdk>=0.118.0
-sentence-transformers>=2.2.2

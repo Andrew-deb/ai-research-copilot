@@ -11,16 +11,16 @@ import datetime
 import os
 import uuid
 
-# Must be set before dashboard.app is imported — its module body calls create_app(),
+# Must be set before app.py is imported — its module body calls create_app(),
 # which would otherwise spawn the real SentenceTransformer warmup thread.
 os.environ["EMBEDDING_PRELOAD"] = "false"
 
 import pytest
 
-from dashboard import embedding as embedding_module
-from dashboard import llm_client as llm_module
-from dashboard.middleware import auth as auth_module
-from dashboard.repositories import lakebase as lakebase_module
+import embedding as embedding_module
+import llm_client as llm_module
+from middleware import auth as auth_module
+from repositories import lakebase as lakebase_module
 
 DEMO_EMAIL = "demo@research-copilot.dev"
 
@@ -229,7 +229,7 @@ def db(monkeypatch):
 
 @pytest.fixture
 def app(db):
-    from dashboard.app import create_app
+    from app import create_app
     application = create_app()  # EMBEDDING_PRELOAD=false is set at conftest import
     application.config.update(TESTING=True)
     return application

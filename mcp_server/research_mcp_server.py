@@ -14,19 +14,22 @@ import os
 import sys
 from typing import List, Optional
 
-# Allow both `python -m mcp_server.research_mcp_server` (repo root on path) and a
-# bare `python research_mcp_server.py` (script dir on path) — a Databricks App may
-# do either depending on how the source is synced.
-if __package__ in (None, ""):
-    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# This directory is the import root. In the repo it is `mcp_server/`; a Databricks
+# App deploy flattens its *contents* to /app/python/source_code/, so there is no
+# `mcp_server` package at runtime. Every internal import below is therefore flat
+# (`from config import ...`). Putting our own directory on sys.path makes those
+# resolve identically in both layouts, however the process was started.
+_HERE = os.path.dirname(os.path.abspath(__file__))
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
 
 from mcp.server.fastmcp import FastMCP
 from starlette.responses import JSONResponse
 
-from mcp_server.config import MCP_SERVER_NAME, MCP_SERVER_VERSION
-from mcp_server.middleware.request_context import get_current_user_id
-from mcp_server.middleware.trace_middleware import trace_tool
-from mcp_server.services import collection_service, discovery_service, planning_service, progress_service
+from config import MCP_SERVER_NAME, MCP_SERVER_VERSION
+from middleware.request_context import get_current_user_id
+from middleware.trace_middleware import trace_tool
+from services import collection_service, discovery_service, planning_service, progress_service
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 logger = logging.getLogger("mcp_server")

@@ -7,7 +7,7 @@ tool execution pipelines without threading issues or pollution of tool signature
 
 from contextvars import ContextVar
 from typing import Optional
-from mcp_server.repositories import lakebase
+from repositories import lakebase
 
 _current_user_email: ContextVar[Optional[str]] = ContextVar("current_user_email", default=None)
 _current_user_id: ContextVar[Optional[str]] = ContextVar("current_user_id", default=None)

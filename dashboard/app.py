@@ -5,20 +5,34 @@ Databricks App #2. Wires the four layers together and nothing else:
   config  →  repositories/lakebase.py  →  services/  →  routes/ (blueprints)
 with middleware/ providing identity resolution and error handling.
 
-Run locally:   flask --app dashboard.app run --debug
-Deployed:      gunicorn dashboard.app:app   (see app.yaml)
+Run locally:   python -m app        (or: flask --app app run --debug)
+Deployed:      gunicorn app:app     (see app.yaml)
+
+Imports are flat (`from config import ...`) because a Databricks App deploy
+flattens dashboard/'s *contents* to /app/python/source_code/ — there is no
+`dashboard` package at runtime.
 """
 
 import atexit
 import logging
+import os
+import sys
 import threading
+
+# This directory is the import root in both layouts (repo `dashboard/` and the
+# flattened Databricks source root), so flat imports below always resolve.
+_HERE = os.path.dirname(os.path.abspath(__file__))
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
 
 from flask import Flask
 
-from dashboard.config import DEBUG, SECRET_KEY
-from dashboard.middleware.auth import register_auth
-from dashboard.middleware.error_handler import register_error_handlers
-from dashboard.routes import register_routes
+import embedding
+from config import DEBUG, EMBEDDING_PRELOAD, SECRET_KEY
+from middleware.auth import register_auth
+from middleware.error_handler import register_error_handlers
+from repositories import lakebase
+from routes import register_routes
 
 logging.basicConfig(
     level=logging.INFO,

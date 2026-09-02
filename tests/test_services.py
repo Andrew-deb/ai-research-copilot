@@ -4,8 +4,8 @@ tests/test_services.py — service-layer logic without the HTTP layer.
 
 import pytest
 
-from dashboard.exceptions import ValidationError
-from dashboard.services import collection_service, search_service
+from exceptions import ValidationError
+from services import collection_service, search_service
 
 
 def test_reading_plan_sequences_by_year_then_impact(db):
@@ -40,7 +40,7 @@ def test_reading_plan_empty_collection_raises(db):
 
 
 def test_semantic_matches_fold_chunks_to_one_row_per_paper(db, monkeypatch):
-    from dashboard.repositories import lakebase
+    from repositories import lakebase
     paper = db.seed_paper(title="Multi-chunk Paper")
 
     def chunky(query_embedding, top_k=10):
@@ -58,7 +58,7 @@ def test_semantic_matches_fold_chunks_to_one_row_per_paper(db, monkeypatch):
 
 
 def test_semantic_matches_respect_min_similarity(db, monkeypatch):
-    from dashboard.repositories import lakebase
+    from repositories import lakebase
     paper = db.seed_paper()
 
     monkeypatch.setattr(

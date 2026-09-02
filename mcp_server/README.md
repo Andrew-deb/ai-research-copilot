@@ -31,16 +31,20 @@ mcp_server/
 
 ```bash
 # From the repo root (ai-research-copilot/), with .env holding DATABASE_URL + API keys
-pip install -r requirements.txt          # needs mcp<2 (FastMCP 1.x) — pinned there
+pip install -r mcp_server/requirements.txt   # needs mcp<2 (FastMCP 1.x) — pinned there
 
 # HTTP transport (what Databricks Apps runs) — MCP endpoint at POST /mcp, health at GET /healthz
-MCP_TRANSPORT=streamable-http PORT=8080 python -m mcp_server.research_mcp_server
+MCP_TRANSPORT=streamable-http PORT=8080 python mcp_server/research_mcp_server.py
 
 # stdio transport (Claude Desktop, MCP Inspector)
-MCP_TRANSPORT=stdio python -m mcp_server.research_mcp_server
+MCP_TRANSPORT=stdio python mcp_server/research_mcp_server.py
 ```
 
-Run it as a **module** — the code uses `from mcp_server.… import …` package imports.
+**Imports here are flat** (`from config import …`, not `from mcp_server.config import …`).
+A Databricks App deploy flattens this folder's *contents* to `/app/python/source_code/`,
+so no `mcp_server` package exists at runtime. The entrypoint puts its own directory on
+`sys.path`, so the same code runs from the repo and from the flattened app root
+(`python -m research_mcp_server`). `tests/test_mcp_server.py` enforces both.
 `MCP_TRANSPORT` ∈ `streamable-http` (default) · `sse` · `stdio`. For the HTTP transports
 the server binds `MCP_HOST` (default `0.0.0.0`) : `DATABRICKS_APP_PORT` / `PORT` / `8080`.
 
