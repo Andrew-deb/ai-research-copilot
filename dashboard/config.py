@@ -30,8 +30,23 @@ def _get_secret(scope: str, key: str, env_fallback: str) -> str | None:
 DATABASE_URL: str | None = _get_secret("database", "lakebase-url", "DATABASE_URL")
 
 # --- Embedding ---
+# The model is fixed by the data: the Spark pipeline wrote 384-dim unit-normalised
+# vectors with all-MiniLM-L6-v2, so query vectors must come from the same model or
+# cosine distance in pgvector stops meaning anything.
 EMBEDDING_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
 EMBEDDING_DIMENSION: int = 384
+
+# How to produce query vectors:
+#   "local"  - sentence-transformers in-process (needs torch, ~500 MB RAM)
+#   "hf_api" - Hugging Face Inference API (no torch; fits small containers)
+#   "auto"   - hf_api when HF_API_TOKEN is set, else local
+EMBEDDING_BACKEND: str = os.getenv("EMBEDDING_BACKEND", "auto").strip().lower()
+HF_API_TOKEN: str | None = _get_secret("huggingface", "api-token", "HF_API_TOKEN")
+HF_EMBEDDING_URL: str = os.getenv(
+    "HF_EMBEDDING_URL",
+    f"https://router.huggingface.co/hf-inference/models/{EMBEDDING_MODEL}/pipeline/feature-extraction",
+)
+HF_TIMEOUT_SECONDS: int = int(os.getenv("HF_TIMEOUT_SECONDS", "30"))
 # Load the model in a background thread at startup instead of on the first
 # request that needs it. Default on when not in debug.
 EMBEDDING_PRELOAD: bool = os.getenv(
