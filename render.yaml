@@ -1,0 +1,58 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+#
+# Deploys the Flask dashboard as a long-lived web service. Render runs a normal
+# container, so gunicorn, the Lakebase connection pool and the request-scoped
+# identity middleware all work unchanged from the Databricks App deployment.
+#
+# Set the `sync: false` values in the Render dashboard (they are secrets):
+#   DATABASE_URL       postgresql://<role>:<pw>@<host>/databricks_postgres?sslmode=require
+#   OPENROUTER_API_KEY sk-or-v1-...        (omit to hide the RAG box)
+#   HF_API_TOKEN       hf_...              (read token; https://huggingface.co/settings/tokens)
+
+services:
+  - type: web
+    name: research-copilot-dashboard
+    runtime: python
+    plan: free
+    rootDir: dashboard          # dashboard/ is the import root — imports are flat
+    region: oregon
+    healthCheckPath: /healthz
+    buildCommand: pip install -r requirements.txt
+    # One worker: the free instance is 512 MB / 0.1 CPU. Threads (not processes)
+    # give concurrency, and every slow call here is I/O — Postgres, OpenRouter, HF.
+    startCommand: >-
+      gunicorn app:app
+      --bind 0.0.0.0:$PORT
+      --workers 1
+      --threads 4
+      --worker-class gthread
+      --timeout 120
+      --graceful-timeout 30
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      - key: DATABASE_URL
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: HF_API_TOKEN
+        sync: false
+      - key: FLASK_SECRET_KEY
+        generateValue: true
+      # No torch in this image — embed via the hosted model instead.
+      - key: EMBEDDING_BACKEND
+        value: hf_api
+      # Wake the hosted model in a background thread at boot so the first
+      # semantic search isn't the one that pays for it.
+      - key: EMBEDDING_PRELOAD
+        value: "true"
+      # Render has no auth proxy, so there is no X-Forwarded-Email. The app
+      # falls back to the shared demo user, which is what a public demo wants.
+      # NOTE: every visitor shares one account and can edit the same data.
+      - key: REQUIRE_FORWARDED_AUTH
+        value: "false"
+      # One worker, and Lakebase free tiers are stingy with connections.
+      - key: DB_POOL_MAX
+        value: "3"
+      - key: PYTHONUNBUFFERED
+        value: "1"
