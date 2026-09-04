@@ -19,8 +19,11 @@ command:
 env:
   - name: "PYTHONUNBUFFERED"
     value: "1"
-  - name: "HF_HOME"
-    value: "/tmp/.cache/huggingface"
+  # dashboard/requirements.txt has no torch, so use the hosted model here too —
+  # one embedding path on every host. Needs the `huggingface` secret scope
+  # (key `api-token`) or an HF_API_TOKEN env var.
+  - name: "EMBEDDING_BACKEND"
+    value: "hf_api"
   # Load the embedding model at startup (per worker) instead of on first use.
   - name: "EMBEDDING_PRELOAD"
     value: "true"
