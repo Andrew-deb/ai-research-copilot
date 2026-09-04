@@ -1,7 +1,17 @@
+# Databricks App #2 / Render web service — dashboard.
+# Installed from this folder's root (it is the deploy source root).
+#
+# sentence-transformers is deliberately NOT here: it pulls torch (~2 GB image,
+# ~500 MB RAM per worker), which does not fit a small container. Query vectors
+# come from the Hugging Face Inference API instead (EMBEDDING_BACKEND=hf_api),
+# using the *same* all-MiniLM-L6-v2 model so they stay in the same vector space.
+#
+# For the in-process backend locally:  pip install sentence-transformers
+# then run with EMBEDDING_BACKEND=local.
+
 flask>=3.0.0
 gunicorn>=21.2.0
 psycopg2-binary>=2.9.9
 requests>=2.31.0
 python-dotenv>=1.0.0
 databricks-sdk>=0.118.0
-sentence-transformers>=2.2.2
