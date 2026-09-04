@@ -16,7 +16,7 @@ This directory contains the core configuration and prompt engineering assets for
 ### 1. The 5 Structural Pillars of the System Prompt
 * **Persona:** Establishes academic rigor combined with pedagogical empathy to adapt responses to the user's expertise level.
 * **Explicit Dispatch Rules:** Eliminates tool ambiguity by defining exact conditions for when to use `search_papers`, `get_similar_papers`, `compare_papers`, and `explain_topic`.
-* **Execution Protocols (Chain-of-Thought):** Scaffolds complex multi-turn workflows into predictable steps (Prerequisite Check $\rightarrow$ Discovery $\rightarrow$ Collection $\rightarrow$ Sequenced Plan).
+* **Execution Protocols (Chain-of-Thought):** Scaffolds complex multi-turn workflows into predictable steps (Prerequisite Check -> Discovery -> Collection -> Sequenced Plan).
 * **Anti-Hallucination Bounds:** Prohibits fabricating DOIs or paper IDs, demanding reliance solely on tool-returned metadata.
 * **Deterministic Response Contracts:** Provides structured Markdown templates for curricula and paper comparison matrices.
 

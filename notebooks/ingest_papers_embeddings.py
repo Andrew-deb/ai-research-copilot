@@ -1,4 +1,8 @@
 # Databricks notebook source
+# /// script
+# [tool.databricks.environment]
+# environment_version = "5"
+# ///
 # MAGIC %md
 # MAGIC # Ingest Research Papers -> Vector Embeddings (Lakebase)
 # MAGIC
@@ -17,7 +21,7 @@
 
 # DBTITLE 1,Install required packages
 # MAGIC %pip uninstall -y psycopg2 psycopg2-binary
-# MAGIC %pip install -q 'databricks-sdk>=0.118.0' sentence-transformers psycopg2-binary requests pandas python-dotenv
+# MAGIC %pip install -q 'databricks-sdk>=0.118.0' sentence-transformers requests pandas python-dotenv
 
 # COMMAND ----------
 
