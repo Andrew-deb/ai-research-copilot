@@ -66,8 +66,11 @@ def semantic_paper_matches(query: str, top_k: int = 10, min_similarity: float = 
         raise ValidationError("Search query cannot be empty.")
 
     query_vector = embedding.encode_query(query)
-    # Over-fetch chunks because several may belong to the same paper.
-    chunk_rows = lakebase.semantic_search_papers(query_vector, top_k=top_k * 3)
+    # Over-fetch chunks because several may belong to the same paper. The
+    # multiplier is 5 rather than 3 because Phase 2 section ingestion raises
+    # chunks-per-paper, so a few verbose papers could otherwise fill the window
+    # before a better paper's single strong chunk appears.
+    chunk_rows = lakebase.semantic_search_papers(query_vector, top_k=top_k * 5)
 
     best_by_paper: dict[str, dict] = {}
     for row in chunk_rows:
