@@ -4,7 +4,8 @@
 # sentence-transformers is deliberately NOT here: it pulls torch (~2 GB image,
 # ~500 MB RAM per worker), which does not fit a small container. Query vectors
 # come from the Hugging Face Inference API instead (EMBEDDING_BACKEND=hf_api),
-# using the *same* all-MiniLM-L6-v2 model so they stay in the same vector space.
+# using the *same* nomic-ai/modernbert-embed-base model so they stay in the same
+# vector space.
 #
 # For the in-process backend locally:  pip install sentence-transformers
 # then run with EMBEDDING_BACKEND=local.
