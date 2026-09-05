@@ -55,10 +55,20 @@ MCP_SERVER_NAME: str = "ai-research-copilot"
 MCP_SERVER_VERSION: str = "1.0.0"
 
 # --- Embedding ---
-EMBEDDING_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
-EMBEDDING_DIMENSION: int = 384
-CHUNK_SIZE: int = 800
-CHUNK_OVERLAP: int = 100
+# Fixed by the data: the pipeline writes 768-dim unit-normalised vectors with this
+# model, so any query vector must come from the same model or cosine distance in
+# pgvector stops meaning anything.
+EMBEDDING_MODEL: str = "nomic-ai/modernbert-embed-base"
+EMBEDDING_DIMENSION: int = 768
+
+# ModernBERT-embed is asymmetric: queries and documents carry different task
+# prefixes. Omitting them does not error - it silently degrades relevance.
+EMBEDDING_QUERY_PREFIX: str = "search_query: "
+EMBEDDING_DOCUMENT_PREFIX: str = "search_document: "
+
+# The model reads 8192 tokens (~32k chars), so an entire abstract fits in one chunk.
+CHUNK_SIZE: int = 4000
+CHUNK_OVERLAP: int = 400
 
 # --- Startup warnings ---
 if not DATABASE_URL:
