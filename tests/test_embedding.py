@@ -2,9 +2,14 @@
 tests/test_embedding.py — query-embedding backends.
 
 The invariant these guard: a query vector must land in the same space as the
-vectors the Spark pipeline stored (all-MiniLM-L6-v2, 384-dim, unit length).
-Both backends must satisfy that identically, or swapping hosts silently
-degrades every semantic-search ranking.
+vectors the Spark pipeline stored (nomic-ai/modernbert-embed-base, 768-dim,
+unit length, `search_document: `-prefixed). Both backends must satisfy that
+identically, or swapping hosts silently degrades every semantic-search ranking.
+
+The prefix is the quiet one. ModernBERT-embed is asymmetric, so a query sent
+without `search_query: ` still returns a perfectly valid 768-dim unit vector -
+it just sits in the wrong neighbourhood. Nothing raises; ranking simply gets
+worse. Hence the explicit prefix tests below.
 
 No network: the HTTP call is stubbed.
 """
@@ -14,9 +19,12 @@ import math
 import pytest
 
 import embedding
+from config import EMBEDDING_DIMENSION, EMBEDDING_QUERY_PREFIX
 from exceptions import EmbeddingError
 
-DIM = 384
+# Read the dimension from config rather than restating it: these tests must fail
+# when the model changes and the code does not, not quietly test the old number.
+DIM = EMBEDDING_DIMENSION
 
 
 def _unit(vector):
@@ -76,7 +84,7 @@ def test_flat_sentence_vector():
 
 
 def test_token_embeddings_are_mean_pooled():
-    # [tokens][dims] -> column-wise mean, matching all-MiniLM's pooling layer
+    # [tokens][dims] -> column-wise mean, matching the model's pooling layer
     assert embedding._flatten_token_embeddings([[1.0, 3.0], [3.0, 5.0]]) == [2.0, 4.0]
 
 
@@ -120,7 +128,8 @@ def test_hf_api_returns_unit_vector(monkeypatch):
     vector = embedding.encode_query("  transformer attention  ")
     assert len(vector) == DIM
     assert _unit(vector) == pytest.approx(1.0)
-    assert captured["json"] == {"inputs": "transformer attention"}   # trimmed
+    # Trimmed, and prefixed for the asymmetric model.
+    assert captured["json"] == {"inputs": "search_query: transformer attention"}
     assert captured["headers"]["Authorization"] == "Bearer hf_test"
     assert captured["headers"]["x-wait-for-model"] == "true"         # survive cold starts
 
@@ -166,3 +175,57 @@ def test_warmup_never_raises(monkeypatch):
     monkeypatch.setattr(embedding.requests, "post",
                         lambda *a, **k: (_ for _ in ()).throw(RuntimeError("down")))
     embedding.warmup()   # must not raise
+
+
+# ---------------------------------------------------------------------------
+# The asymmetric-prefix trap
+# ---------------------------------------------------------------------------
+
+def _capturing_backend(monkeypatch, seen: list):
+    monkeypatch.setattr(embedding, "EMBEDDING_BACKEND", "hf_api")
+    monkeypatch.setattr(embedding, "HF_API_TOKEN", "hf_test")
+
+    def fake_post(url, headers=None, json=None, timeout=None):
+        seen.append(json["inputs"])
+        # Make the vector depend on the text, so identical inputs are the only
+        # way two calls can produce identical vectors.
+        seed = sum(ord(c) for c in json["inputs"])
+        return _Resp([float((seed + i) % 7) + 1.0 for i in range(DIM)])
+
+    monkeypatch.setattr(embedding.requests, "post", fake_post)
+
+
+def test_query_is_prefixed_before_it_reaches_the_backend(monkeypatch):
+    """
+    The prefix is applied in encode_query, not at the call sites, so every
+    caller gets it whether or not they know it exists.
+    """
+    seen: list = []
+    _capturing_backend(monkeypatch, seen)
+    embedding.encode_query("graph neural networks")
+    assert seen == [EMBEDDING_QUERY_PREFIX + "graph neural networks"]
+
+
+def test_prefixed_and_unprefixed_queries_differ(monkeypatch):
+    """
+    §1.6's trap: embed the same sentence with and without `search_query: ` and
+    confirm the vectors differ. Identical vectors would mean the prefix never
+    reached the model - the exact failure that degrades ranking without erroring.
+    """
+    seen: list = []
+    _capturing_backend(monkeypatch, seen)
+
+    with_prefix = embedding.encode_query("graph neural networks")
+    without_prefix = embedding._validate(embedding._encode_hf_api("graph neural networks"))
+
+    assert seen == [EMBEDDING_QUERY_PREFIX + "graph neural networks",
+                    "graph neural networks"]
+    assert with_prefix != without_prefix
+
+
+def test_warmup_prefixes_its_probe(monkeypatch):
+    """Warmup must exercise the same path a real query takes, prefix included."""
+    seen: list = []
+    _capturing_backend(monkeypatch, seen)
+    embedding.warmup()
+    assert seen and seen[0].startswith(EMBEDDING_QUERY_PREFIX)
