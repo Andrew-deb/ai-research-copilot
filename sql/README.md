@@ -27,7 +27,7 @@ python setup_db.py
 
 **Partial index on DOI** — `WHERE doi IS NOT NULL` keeps the index small since many preprints and theses have no DOI.
 
-**`VECTOR(384)` dimension** — Fixed to match `all-MiniLM-L6-v2` output size. Postgres rejects any insert with a mismatched dimension, so a model change requires recreating these tables.
+**`VECTOR(768)` dimension** — Fixed to match `nomic-ai/modernbert-embed-base` output size. Postgres rejects any insert with a mismatched dimension, so a model change requires recreating these tables — see `04_migrate_embeddings_768.sql` for the 384→768 migration. 768 is well under pgvector's 2000-dimension index ceiling, so HNSW still applies.
 
 **HNSW over IVFFlat** — HNSW gives O(log N) query time at the cost of a slower build. For our pattern (infrequent batch inserts via Spark, frequent real-time queries), this trade-off is optimal. Uses `vector_cosine_ops` because semantic similarity uses cosine distance.
 

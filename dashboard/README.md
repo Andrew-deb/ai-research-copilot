@@ -84,8 +84,9 @@ Open <http://localhost:8080>. With `REQUIRE_FORWARDED_AUTH` unset (local default
 ## Query embedding: two interchangeable backends
 
 Every stored vector was written by the Spark pipeline with
-`sentence-transformers/all-MiniLM-L6-v2` and `normalize_embeddings=True`. A query
-vector **must come from that same model**, or cosine distance in pgvector quietly
+`nomic-ai/modernbert-embed-base`, the `search_document: ` prefix and
+`normalize_embeddings=True`. A query vector **must come from that same model**,
+with the matching `search_query: ` prefix, or cosine distance in pgvector quietly
 stops meaning anything — results still return, just ranked badly. `embedding.py`
 keeps that guarantee while letting the web tier run somewhere small:
 
@@ -95,10 +96,15 @@ keeps that guarantee while letting the web tier run somewhere small:
 | `hf_api` | Hugging Face Inference API, same model | ~50 MB / ~100 MB | Render, Fly, any 512 MB container |
 | `auto` *(default)* | `hf_api` when `HF_API_TOKEN` is set, else `local` | — | — |
 
-Both paths run through the same `_validate()`: the vector is checked for 384
-dimensions and **L2-normalised here**, rather than trusting the backend to do it.
-That is what makes them interchangeable — swapping hosts cannot silently change
-the vector space.
+Both paths run through the same `encode_query()`, which applies the
+`search_query: ` prefix before either backend sees the text, and the same
+`_validate()`, which checks the vector for 768 dimensions and **L2-normalises
+here** rather than trusting the backend to do it. That is what makes them
+interchangeable — swapping hosts cannot silently change the vector space.
+
+The prefix is the failure worth naming: ModernBERT-embed is asymmetric, so an
+unprefixed query still returns a valid 768-dim unit vector. Nothing errors; the
+results are just worse. `tests/test_embedding.py` pins it for that reason.
 
 Verify the two agree (once `HF_API_TOKEN` is set) — cosine should be ~1.0:
 

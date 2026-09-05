@@ -24,7 +24,7 @@ This package isolates all database interactions and SQL queries for the MCP serv
 * **Preserving Multi-Source Enrichment:** To prevent OpenAlex bulk ingests from overwriting Semantic Scholar enrichment fields with NULLs, we use `COALESCE(EXCLUDED.field, table.field)`. This guarantees re-running ingestion or enrichment jobs is safe, repeatable, and non-destructive.
 
 ### 4. Direct Cosine Similarity via pgvector
-* Queries leverage the `<=>` cosine distance operator against `VECTOR(384)` columns.
+* Queries leverage the `<=>` cosine distance operator against `VECTOR(768)` columns.
 * Cosine distance (range `0.0` to `2.0`, where `0.0` is identical) is dynamically translated to cosine similarity (`1.0 - distance`) so ranking scores are intuitive (higher = closer match).
 * Queries are explicitly indexed with Hierarchical Navigable Small World (HNSW) graphs, maintaining sub-second `O(log N)` search latency.
 

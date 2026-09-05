@@ -21,7 +21,7 @@ All validation rules, retrieval orchestration, and domain flows for the Flask da
 * They raise typed exceptions from `dashboard/exceptions.py` (`ValidationError`, `PaperNotFoundError`, …). Routes never wrap calls in `try/except` — `middleware/error_handler.py` converts exceptions to responses.
 
 ### 2. Query Embedding Matches the Pipeline Exactly
-* `search_service` embeds the *query* through `dashboard/embedding.py`, which loads the identical model (`all-MiniLM-L6-v2`) with the identical `normalize_embeddings=True` the Spark pipeline used for the stored vectors. A mismatch here silently degrades every cosine ranking.
+* `search_service` embeds the *query* through `dashboard/embedding.py`, which uses the identical model (`nomic-ai/modernbert-embed-base`) with the identical `normalize_embeddings=True` the Spark pipeline used for the stored vectors, plus the `search_query: ` prefix that model expects on the query side. A mismatch in either — model or prefix — silently degrades every cosine ranking.
 * Vector search returns one row per *chunk*; `semantic_paper_matches` folds those back to one row per *paper*, keeping the highest-similarity chunk as the display snippet.
 
 ### 3. Retrieval-Augmented Generation, Not Free Generation
