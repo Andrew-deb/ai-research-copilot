@@ -1,15 +1,16 @@
 """
 dashboard/embedding.py — Query embedding client for semantic search.
 
-SRP: turns free-text into a 384-dim vector. Nothing else — no SQL, no Flask.
+SRP: turns free-text into a 768-dim query vector. Nothing else — no SQL, no Flask.
 
 Why this module exists at all
 -----------------------------
-The Spark pipeline (notebooks/ingest_papers_embeddings.py) wrote every stored
-vector with `sentence-transformers/all-MiniLM-L6-v2` and
-`normalize_embeddings=True`. A query vector must come from the *same model* with
-the *same normalisation*, or cosine distance in pgvector silently stops meaning
-anything — results still come back, just badly ranked. Everything here exists to
+The Spark pipeline (notebooks/ingest_papers_embeddings.py) writes every stored
+vector with `nomic-ai/modernbert-embed-base`, the `search_document: ` prefix and
+`normalize_embeddings=True`. A query vector must come from the *same model*, with
+the matching `search_query: ` prefix and the *same normalisation*, or cosine
+distance in pgvector silently stops meaning anything — results still come back,
+just badly ranked. Everything here exists to
 keep that guarantee while letting the web tier run somewhere small.
 
 Two backends, one guarantee
@@ -37,6 +38,7 @@ from config import (
     EMBEDDING_BACKEND,
     EMBEDDING_DIMENSION,
     EMBEDDING_MODEL,
+    EMBEDDING_QUERY_PREFIX,
     HF_API_TOKEN,
     HF_EMBEDDING_URL,
     HF_TIMEOUT_SECONDS,
@@ -130,19 +132,19 @@ def _flatten_token_embeddings(payload) -> list[float]:
     """
     Reduce whatever shape the endpoint returned to a single sentence vector.
 
-    feature-extraction returns a flat [384] for sentence-transformers models, but
-    can return per-token embeddings ([tokens][384], or [1][tokens][384]) depending
+    feature-extraction returns a flat [768] for sentence-transformers models, but
+    can return per-token embeddings ([tokens][768], or [1][tokens][768]) depending
     on the model revision and endpoint. Mean-pool those, which is what
-    all-MiniLM-L6-v2's own pooling layer does.
+    modernbert-embed-base's own pooling layer does.
     """
     if not isinstance(payload, list) or not payload:
         raise EmbeddingError(f"Unexpected embedding response shape: {type(payload).__name__}")
 
-    if isinstance(payload[0], (int, float)):          # [384]
+    if isinstance(payload[0], (int, float)):          # [768]
         return [float(x) for x in payload]
 
     if isinstance(payload[0], list) and payload[0] and isinstance(payload[0][0], list):
-        payload = payload[0]                           # [1][tokens][384] -> [tokens][384]
+        payload = payload[0]                           # [1][tokens][768] -> [tokens][768]
 
     if not (isinstance(payload[0], list) and payload[0] and isinstance(payload[0][0], (int, float))):
         raise EmbeddingError("Unexpected embedding response nesting.")
@@ -210,7 +212,7 @@ def warmup() -> None:
     backend = active_backend()
     try:
         if backend == "hf_api":
-            _encode_hf_api("warmup")
+            _encode_hf_api(EMBEDDING_QUERY_PREFIX + "warmup")
             logger.info("Embedding backend ready (hf_api, %s)", EMBEDDING_MODEL)
         else:
             _get_model()
@@ -220,13 +222,18 @@ def warmup() -> None:
 
 def encode_query(text: str) -> list[float]:
     """
-    Embed one query string into a unit-normalised 384-dim vector, in the same
-    space as the vectors the Spark pipeline stored.
+    Embed one query string into a unit-normalised 768-dim vector, in the same
+    space as the vectors the pipeline stored.
+
+    The model is asymmetric: it expects a query to be marked with
+    `search_query: ` and a document with `search_document: `. The prefix is added
+    here, for both backends, and is never stored - `paper_embeddings.chunk_text`
+    holds clean text because it is rendered directly as the UI result snippet.
     """
     if not text or not text.strip():
         raise EmbeddingError("Cannot embed an empty query.")
 
-    cleaned = text.strip()
+    prefixed = EMBEDDING_QUERY_PREFIX + text.strip()
     backend = active_backend()
-    raw = _encode_hf_api(cleaned) if backend == "hf_api" else _encode_local(cleaned)
+    raw = _encode_hf_api(prefixed) if backend == "hf_api" else _encode_local(prefixed)
     return _validate(raw)
