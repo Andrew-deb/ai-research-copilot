@@ -2,7 +2,7 @@
 -- 02_create_embedding_tables.sql — pgvector tables for semantic search
 -- =============================================================================
 -- Requires: 01_create_tables.sql must have run first (FK to papers, notes).
--- VECTOR(384) dimension is fixed to all-MiniLM-L6-v2 output size.
+-- VECTOR(768) dimension is fixed to nomic-ai/modernbert-embed-base output size.
 -- Changing the embedding model requires rebuilding these tables and the index.
 -- =============================================================================
 
@@ -11,8 +11,8 @@ CREATE EXTENSION IF NOT EXISTS vector;
 
 -- ---------------------------------------------------------------------------
 -- paper_embeddings — Chunked + embedded paper abstracts.
--- Abstracts are split into overlapping 800-char chunks before embedding to
--- stay within the model's token limit and improve retrieval granularity.
+-- Text is split into overlapping 4000-char chunks before embedding. The model
+-- reads 8192 tokens (~32k chars), so a whole abstract fits in a single chunk.
 -- chunk_index preserves the original order within a paper.
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS paper_embeddings (
@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS paper_embeddings (
     paper_id    UUID NOT NULL REFERENCES papers(paper_id) ON DELETE CASCADE,
     chunk_index INTEGER NOT NULL DEFAULT 0,
     chunk_text  TEXT NOT NULL,
-    embedding   VECTOR(384) NOT NULL,
+    embedding   VECTOR(768) NOT NULL,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS note_embeddings (
     id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     note_id    UUID NOT NULL REFERENCES notes(note_id) ON DELETE CASCADE,
     chunk_text TEXT NOT NULL,
-    embedding  VECTOR(384) NOT NULL,
+    embedding  VECTOR(768) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
