@@ -12,7 +12,7 @@
 # MAGIC 1. **Discovers research papers** from the OpenAlex API across seed topics (or user-defined topics via widgets), reconstructs inverted-index abstracts, and optionally enriches papers with Semantic Scholar AI TLDRs and influential citation metrics.
 # MAGIC 2. **Upserts papers** into the `papers` table in Lakebase with multi-source deduplication (`ON CONFLICT (openalex_id) DO UPDATE`).
 # MAGIC 3. **Extracts and chunks** abstracts (and user notes) using a sliding character window (`chunk_size=800`, `chunk_overlap=100`) with title prepending for optimal semantic context.
-# MAGIC 4. **Computes 384-dimensional dense vectors** using `sentence-transformers/all-MiniLM-L6-v2` in memory-efficient batches.
+# MAGIC 4. **Computes 768-dimensional dense vectors** using `nomic-ai/modernbert-embed-base` in memory-efficient batches, each chunk prefixed `search_document: `.
 # MAGIC 5. **Upserts embeddings** into `paper_embeddings` and `note_embeddings` using the `pgvector` Postgres extension and HNSW indexes for sub-second cosine similarity search.
 # MAGIC
 # MAGIC It re-uses the Databricks secret scopes (`database`, `openalex`, `semantic-scholar`) configured during Phase 1.
@@ -52,11 +52,11 @@ try:
     dbutils.widgets.text("papers_table_name", "papers", "Destination table (raw papers)")
     dbutils.widgets.text("embeddings_table_name", "paper_embeddings", "Destination table (paper vectors)")
     dbutils.widgets.text("note_embeddings_table_name", "note_embeddings", "Destination table (note vectors)")
-    dbutils.widgets.text("embedding_model", "sentence-transformers/all-MiniLM-L6-v2", "Embedding model")
+    dbutils.widgets.text("embedding_model", "nomic-ai/modernbert-embed-base", "Embedding model")
     dbutils.widgets.text("topics", "transformer neural network, retrieval augmented generation, reinforcement learning from human feedback, vector database indexing, large language model agents", "Seed search topics (comma-separated)")
     dbutils.widgets.text("papers_per_topic", "15", "Max papers to fetch per topic")
-    dbutils.widgets.text("chunk_size", "800", "Text chunk size (chars)")
-    dbutils.widgets.text("chunk_overlap", "100", "Text chunk overlap (chars)")
+    dbutils.widgets.text("chunk_size", "4000", "Text chunk size (chars)")
+    dbutils.widgets.text("chunk_overlap", "400", "Text chunk overlap (chars)")
     dbutils.widgets.text("batch_size", "32", "Embedding batch size")
     dbutils.widgets.dropdown("fetch_new_papers", "true", ["true", "false"], "Fetch new papers from OpenAlex?")
 
@@ -74,7 +74,7 @@ except NameError:
     PAPERS_TABLE_NAME = "papers"
     EMBEDDINGS_TABLE_NAME = "paper_embeddings"
     NOTE_EMBEDDINGS_TABLE_NAME = "note_embeddings"
-    EMBEDDING_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
+    EMBEDDING_MODEL_NAME = "nomic-ai/modernbert-embed-base"
     TOPICS = [
         "transformer neural network",
         "retrieval augmented generation",
@@ -83,8 +83,8 @@ except NameError:
         "large language model agents",
     ]
     PAPERS_PER_TOPIC = 15
-    CHUNK_SIZE = 800
-    CHUNK_OVERLAP = 100
+    CHUNK_SIZE = 4000
+    CHUNK_OVERLAP = 400
     BATCH_SIZE = 32
     FETCH_NEW_PAPERS = True
 
@@ -92,7 +92,7 @@ except NameError:
 match EMBEDDING_MODEL_NAME:
     case "sentence-transformers/all-MiniLM-L6-v2" | "sentence-transformers/all-MiniLM-L12-v2" | "BAAI/bge-small-en-v1.5":
         EMBEDDING_DIM = 384
-    case "sentence-transformers/all-mpnet-base-v2" | "BAAI/bge-base-en-v1.5":
+    case "nomic-ai/modernbert-embed-base" | "sentence-transformers/all-mpnet-base-v2" | "BAAI/bge-base-en-v1.5":
         EMBEDDING_DIM = 768
     case "BAAI/bge-large-en-v1.5":
         EMBEDDING_DIM = 1024
@@ -101,9 +101,25 @@ match EMBEDDING_MODEL_NAME:
     case _:
         raise ValueError(f"Unknown embedding model {EMBEDDING_MODEL_NAME!r}. Add its output dimension to match/case.")
 
+# Asymmetric-retrieval prefixes. modernbert-embed-base (and the bge/e5 families)
+# expect documents and queries to be marked differently. Omitting the prefix does
+# not error - it silently degrades ranking against the dashboard's query vectors,
+# which use "search_query: ".
+#
+# CRITICAL: the prefix is applied at ENCODE time only. chunk_text is stored clean,
+# because the dashboard renders it directly as the search-result snippet.
+match EMBEDDING_MODEL_NAME:
+    case "nomic-ai/modernbert-embed-base":
+        DOCUMENT_PREFIX = "search_document: "
+    case s if s.startswith("BAAI/bge-"):
+        DOCUMENT_PREFIX = ""          # bge prefixes the query only
+    case _:
+        DOCUMENT_PREFIX = ""          # symmetric models (all-MiniLM, mpnet)
+
 print(f"✅ Configuration Loaded:")
 print(f"  • Model: {EMBEDDING_MODEL_NAME} ({EMBEDDING_DIM}-dim)")
 print(f"  • Chunking: size={CHUNK_SIZE}, overlap={CHUNK_OVERLAP}")
+print(f"  • Document prefix: {DOCUMENT_PREFIX!r}")
 print(f"  • Topics: {len(TOPICS)} seed queries")
 print(f"  • Fetch new papers: {FETCH_NEW_PAPERS}")
 
@@ -466,7 +482,11 @@ print(f"✅ Generated {len(note_chunks_df)} chunks from {len(unembedded_notes_df
 # MAGIC %md
 # MAGIC ## 7. Batch Vector Encoding with `sentence-transformers`
 # MAGIC
-# MAGIC Computes 384-dimensional dense vectors with unit-normalization (`normalize_embeddings=True`).
+# MAGIC Computes 768-dimensional dense vectors with unit-normalization (`normalize_embeddings=True`).
+# MAGIC
+# MAGIC Each chunk is prefixed with `DOCUMENT_PREFIX` **at encode time only** - the text
+# MAGIC stored in `chunk_text` stays clean, because the dashboard renders it directly as
+# MAGIC the search-result snippet.
 
 # COMMAND ----------
 
@@ -480,11 +500,21 @@ os.environ["TRANSFORMERS_CACHE"] = "/tmp/.cache/huggingface"
 print(f"🧠 Loading embedding model '{EMBEDDING_MODEL_NAME}'...")
 embedding_model = SentenceTransformer(EMBEDDING_MODEL_NAME, cache_folder="/tmp/.cache/huggingface")
 
+# Fail fast rather than writing vectors the schema will reject (or, worse, accept
+# at the wrong width because EMBEDDING_DIM drifted from the model).
+_actual_dim = embedding_model.get_sentence_embedding_dimension()
+if _actual_dim != EMBEDDING_DIM:
+    raise ValueError(
+        f"{EMBEDDING_MODEL_NAME} outputs {_actual_dim} dims but EMBEDDING_DIM is {EMBEDDING_DIM}. "
+        f"Fix the match/case above and the VECTOR(n) columns before ingesting."
+    )
+print(f"✅ Model ready: {_actual_dim}-dim, document prefix {DOCUMENT_PREFIX!r}")
+
 # Encode paper chunks
 if len(paper_chunks_df) > 0:
     print(f"Computing embeddings for {len(paper_chunks_df)} paper chunks in batches of {BATCH_SIZE}...")
     paper_vectors = embedding_model.encode(
-        paper_chunks_df["chunk_text"].tolist(),
+        [DOCUMENT_PREFIX + t for t in paper_chunks_df["chunk_text"].tolist()],
         batch_size=BATCH_SIZE,
         show_progress_bar=True,
         normalize_embeddings=True,
@@ -496,7 +526,7 @@ if len(paper_chunks_df) > 0:
 if len(note_chunks_df) > 0:
     print(f"Computing embeddings for {len(note_chunks_df)} note chunks...")
     note_vectors = embedding_model.encode(
-        note_chunks_df["chunk_text"].tolist(),
+        [DOCUMENT_PREFIX + t for t in note_chunks_df["chunk_text"].tolist()],
         batch_size=BATCH_SIZE,
         show_progress_bar=False,
         normalize_embeddings=True,
@@ -509,7 +539,7 @@ if len(note_chunks_df) > 0:
 # MAGIC %md
 # MAGIC ## 8. Batch Insert Embeddings into Lakebase pgvector
 # MAGIC
-# MAGIC Uses `psycopg2.extras.execute_batch` to bulk persist vectors into `paper_embeddings` and `note_embeddings` with `%s::vector(384)` type casting.
+# MAGIC Uses `psycopg2.extras.execute_batch` to bulk persist vectors into `paper_embeddings` and `note_embeddings` with `%s::vector(768)` type casting (the cast is interpolated from `EMBEDDING_DIM`, so it follows the model).
 
 # COMMAND ----------
 
