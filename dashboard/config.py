@@ -30,11 +30,16 @@ def _get_secret(scope: str, key: str, env_fallback: str) -> str | None:
 DATABASE_URL: str | None = _get_secret("database", "lakebase-url", "DATABASE_URL")
 
 # --- Embedding ---
-# The model is fixed by the data: the Spark pipeline wrote 384-dim unit-normalised
-# vectors with all-MiniLM-L6-v2, so query vectors must come from the same model or
-# cosine distance in pgvector stops meaning anything.
-EMBEDDING_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
-EMBEDDING_DIMENSION: int = 384
+# The model is fixed by the data: the Spark pipeline writes 768-dim unit-normalised
+# vectors with modernbert-embed-base, so query vectors must come from the same model
+# or cosine distance in pgvector stops meaning anything.
+EMBEDDING_MODEL: str = "nomic-ai/modernbert-embed-base"
+EMBEDDING_DIMENSION: int = 768
+
+# ModernBERT-embed is asymmetric: a query must be marked as a query. The pipeline
+# applies "search_document: " to the other side. Omitting either does not error -
+# it silently degrades ranking, so both live in config, never inline.
+EMBEDDING_QUERY_PREFIX: str = "search_query: "
 
 # How to produce query vectors:
 #   "local"  - sentence-transformers in-process (needs torch, ~500 MB RAM)
