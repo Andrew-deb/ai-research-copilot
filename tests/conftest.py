@@ -18,6 +18,7 @@ os.environ["EMBEDDING_PRELOAD"] = "false"
 import pytest
 
 import embedding as embedding_module
+from config import EMBEDDING_DIMENSION
 import llm_client as llm_module
 from middleware import auth as auth_module
 from repositories import lakebase as lakebase_module
@@ -217,7 +218,8 @@ def db(monkeypatch):
         if hasattr(lakebase_module, name):
             monkeypatch.setattr(lakebase_module, name, getattr(fake, name))
 
-    monkeypatch.setattr(embedding_module, "encode_query", lambda text: [0.0] * 384)
+    monkeypatch.setattr(embedding_module, "encode_query",
+                        lambda text: [0.0] * EMBEDDING_DIMENSION)
     monkeypatch.setattr(llm_module, "chat", lambda *a, **k: "Synthesised answer [1].")
     monkeypatch.setattr(llm_module, "is_available", lambda: True)
 
