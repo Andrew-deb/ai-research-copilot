@@ -6,7 +6,7 @@ This directory contains the batch data ingestion and embedding pipeline structur
 
 | File | Purpose |
 |------|---------|
-| `ingest_papers_embeddings.py` | Databricks notebook: Ingests research papers from OpenAlex & Semantic Scholar, chunks text, generates 768-d embeddings with `nomic-ai/modernbert-embed-base`, and batch-persists vectors to Lakebase pgvector with HNSW index verification. |
+| `ingest_papers_embeddings.py` | Databricks notebook: Ingests research papers from OpenAlex & Semantic Scholar, downloads open-access PDFs and extracts Conclusion/Discussion/Methods sections, chunks text, generates 768-d embeddings with `nomic-ai/modernbert-embed-base`, and batch-persists vectors to Lakebase pgvector with HNSW index verification. |
 
 ## Databricks Notebook Cell guide
 
@@ -14,13 +14,18 @@ This directory contains the batch data ingestion and embedding pipeline structur
 2. **Widgets & Config** (`dbutils.widgets` with dynamic `match/case` dimension detection)
 3. **Resolve Lakebase URL** (Databricks SDK secret resolution from scope `database/lakebase-url`)
 4. **Test Connection** (Verifies connection & pgvector extension)
-5. **Harvest & Normalize Papers** (OpenAlex polite pool API + Semantic Scholar TLDRs & citation metrics)
-6. **Upsert Raw Papers** (`ON CONFLICT (openalex_id) DO UPDATE` with `COALESCE` protection)
-7. **Incremental Delta Detection** (`LEFT JOIN ... WHERE pe.id IS NULL` anti-join)
-8. **Sliding Window Chunking** (800 chars / 100 overlap + title prepending)
-9. **Batch Vector Encoding** (`nomic-ai/modernbert-embed-base` with `normalize_embeddings=True` and the `search_document: ` prefix)
-10. **Batch Vector Upsert** (`psycopg2.extras.execute_batch` with `%s::vector(768)`)
-11. **Verification & Similarity Test** (Live test query executing cosine similarity search)
+5. **Claim the Run** (Postgres advisory lock + open a `pipeline_runs` ledger row)
+6. **Harvest Papers** (OpenAlex polite pool; relevance seed on first sight of a topic, then `from_publication_date` cursor paging from a per-topic watermark)
+7. **Batch S2 Enrichment** (`POST /paper/batch`, skipping papers already enriched)
+8. **Upsert Raw Papers** (`ON CONFLICT (openalex_id) DO UPDATE` with `COALESCE` protection; `xmax = 0` distinguishes insert from update)
+9. **Fetch Open-Access PDFs** (per-paper `try/except`, content-type check, size ceiling, polite delay; retries `fetch_failed` after a cooling-off window, bounded by `fulltext_attempts`)
+10. **Extract Sections** (`pypdf` -> heading regex -> `paper_sections`; every outcome recorded in `papers.fulltext_status`)
+11. **Incremental Delta Detection** (per `(paper_id, section_name)` anti-join — `section_name IS NULL` means the abstract)
+12. **Sliding Window Chunking** (4000 chars / 400 overlap + title prepending, over abstracts *and* sections)
+13. **Batch Vector Encoding** (`nomic-ai/modernbert-embed-base` with `normalize_embeddings=True` and the `search_document: ` prefix)
+14. **Batch Vector Upsert** (`psycopg2.extras.execute_batch` with `%s::vector(768)`, carrying `section_name`)
+15. **Verification & Similarity Test** (corpus composition, full-text outcomes, and *two* live queries — depth and discovery)
+16. **Close the Run Ledger** (record counts and duration, release the advisory lock)
 
 ---
 
@@ -38,8 +43,26 @@ This directory contains the batch data ingestion and embedding pipeline structur
   $$\text{Cosine Distance}(\mathbf{u}, \mathbf{v}) = 1 - (\mathbf{u} \cdot \mathbf{v})$$
 * **Quality over raw throughput:** ModernBERT-embed is slower per sentence than a 384-dim MiniLM, but the corpus is small (tens to low thousands of chunks) so encoding is minutes either way, and 768 dimensions materially improve retrieval on dense research abstracts. 768 also stays under pgvector's 2000-dimension HNSW index ceiling.
 
-### 3. Incremental Delta Ingestion (Anti-Join Pattern)
-* The pipeline avoids re-embedding existing papers. It performs a `LEFT JOIN ... WHERE pe.id IS NULL` anti-join query to identify only records without corresponding vector representations.
+### 3. Selective Section Extraction, Not Full Text
+
+* **What is indexed:** abstract + Conclusion + Discussion + Methods. Introduction restates the abstract and Related Work describes *other* papers, so both are noise. References are never indexed.
+* **Why not full text:** naive full-text ingestion is ~13x the abstract-only corpus; this is ~2.5x. The discarded sections are the ones that dilute retrieval, so the trade is quality *and* cost, not quality *versus* cost.
+* **Sections are stored, not just chunked:** `paper_sections` holds the extracted text, so re-chunking or changing the embedding model is a re-encode — never a re-crawl.
+* **Every failure is named:** `papers.fulltext_status` distinguishes `no_url`, `fetch_failed`, `parse_failed`, `no_sections` and `ok`. All five would otherwise look identical to "this paper has no sections", which is how a broken crawler hides.
+* **`pypdf`, not PyMuPDF:** pure Python, so `%pip install` on a Databricks cluster has no binary dependency to fight.
+
+### 4. Incremental Delta Ingestion (Anti-Join Pattern)
+* The pipeline avoids re-embedding existing content. It performs a `LEFT JOIN ... WHERE pe.id IS NULL` anti-join on `(paper_id, section_name)` to identify only the units without corresponding vector representations.
+
+### 5. Built to Be Scheduled, Not Just Re-Run
+
+Before Phase 2.5 a scheduled run mostly re-did its last one: the harvest sent `search=<topic>` with no sort or date filter, and OpenAlex's relevance ranking is stable, so the same ~75 works came back every time — while ~83 seconds per run were spent sleeping between Semantic Scholar calls that re-fetched TLDRs already stored.
+
+* **Discovery is incremental.** A topic is seeded by relevance the first time it is seen (a cold corpus needs the canonical papers, not last week's preprints), then queried by `from_publication_date` sorted newest-first from a per-topic watermark. Watermarks never move backwards.
+* **Enrichment is conditional, then batched.** Papers already carrying `semantic_scholar_id` and `tldr` are skipped outright; the remainder go through `POST /graph/v1/paper/batch`. The response is *positionally aligned with the request ids* — matching by index is what makes it fast, and getting it wrong attaches enrichment to the wrong papers.
+* **Transient failures are retried, permanent ones are not.** `fetch_failed` is retried after a cooling-off window while `fulltext_attempts` allows; `parse_failed` and `no_sections` are not, because neither changes on its own.
+* **One run at a time.** A Postgres session advisory lock — released automatically if the driver dies, so there is no stale-lock cleanup to write.
+* **Every run is recorded.** `pipeline_runs` holds counts and duration, so "was last night worth it?" is a query rather than a scroll through driver logs that no longer exist.
 
 ---
 
