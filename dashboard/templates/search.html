@@ -49,7 +49,12 @@
               {% if paper.citation_count %} · {{ paper.citation_count }} citations{% endif %}
               {% if paper.source_api %} · {{ paper.source_api }}{% endif %}
             </div>
-            {% if paper.snippet %}<p class="paper-tldr">…{{ paper.snippet }}…</p>
+            {% if paper.snippet %}
+              <p class="paper-tldr">
+                {% if paper.snippet_section and paper.snippet_section != 'abstract' %}
+                  <span class="section-badge">from the {{ paper.snippet_section }}</span>
+                {% endif %}…{{ paper.snippet }}…
+              </p>
             {% elif paper.tldr %}<p class="paper-tldr">{{ paper.tldr }}</p>{% endif %}
           </li>
         {% endfor %}
