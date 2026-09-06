@@ -245,6 +245,7 @@ def semantic_search_papers(query_embedding: list[float], top_k: int = 10) -> lis
             p.*,
             pe.chunk_text,
             pe.chunk_index,
+            pe.section_name,
             1 - (pe.embedding <=> %s::vector({EMBEDDING_DIMENSION})) AS similarity
         FROM paper_embeddings pe
         JOIN papers p ON p.paper_id = pe.paper_id
