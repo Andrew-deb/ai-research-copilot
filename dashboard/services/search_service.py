@@ -80,9 +80,17 @@ def semantic_paper_matches(query: str, top_k: int = 10, min_similarity: float = 
         paper_id = str(row["paper_id"])
         existing = best_by_paper.get(paper_id)
         if existing is None or similarity > existing["similarity"]:
-            paper = {k: v for k, v in row.items() if k not in ("chunk_text", "chunk_index", "similarity")}
+            paper = {k: v for k, v in row.items()
+                     if k not in ("chunk_text", "chunk_index", "section_name", "similarity")}
             paper["similarity"] = round(similarity, 4)
             paper["snippet"] = row.get("chunk_text")
+            # Which part of the paper the snippet came from. NULL in the database
+            # means the abstract; it is surfaced as "abstract" so templates and the
+            # agent never have to special-case None. Named snippet_section rather
+            # than section_name because it describes the *snippet*, not the paper —
+            # the same paper can match on its conclusion for one query and its
+            # abstract for the next.
+            paper["snippet_section"] = row.get("section_name") or "abstract"
             best_by_paper[paper_id] = paper
 
     ranked = sorted(best_by_paper.values(), key=lambda p: p["similarity"], reverse=True)
