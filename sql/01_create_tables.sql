@@ -58,6 +58,16 @@ CREATE TABLE IF NOT EXISTS papers (
                              CHECK (source_api IN ('openalex', 'semantic_scholar', 'manual')),
     open_access_url      TEXT,
     payload              JSONB,
+    -- Outcome of the Phase 2 full-text fetch. NULL = not attempted yet.
+    -- Explicit so that "no sections" distinguishes no_url / fetch_failed /
+    -- parse_failed / no_sections instead of all looking like a zero count.
+    fulltext_status      TEXT CHECK (fulltext_status IS NULL OR fulltext_status IN
+                             ('ok', 'no_url', 'fetch_failed', 'parse_failed', 'no_sections')),
+    fulltext_checked_at  TIMESTAMPTZ,
+    -- Retry budget for transient fetch failures. Without it, a host that was down
+    -- for one afternoon is written off permanently; with no ceiling, a dead URL is
+    -- retried on every scheduled run forever.
+    fulltext_attempts    INTEGER NOT NULL DEFAULT 0,
     synced_at            TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -65,6 +75,69 @@ CREATE TABLE IF NOT EXISTS papers (
 CREATE INDEX IF NOT EXISTS idx_papers_doi ON papers (doi) WHERE doi IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_papers_source ON papers (source_api);
 CREATE INDEX IF NOT EXISTS idx_papers_year ON papers (publication_year);
+CREATE INDEX IF NOT EXISTS idx_papers_fulltext_status ON papers (fulltext_status);
+
+
+-- ---------------------------------------------------------------------------
+-- paper_sections — body text extracted from open-access PDFs (Phase 2).
+-- One row per (paper, section). Stored rather than chunked on the fly so that
+-- re-chunking or changing the embedding model never re-downloads a PDF.
+-- section_name is free text, not an enum: the wanted-section list is a notebook
+-- widget and must be tunable without a schema migration.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS paper_sections (
+    section_id   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    paper_id     UUID NOT NULL REFERENCES papers(paper_id) ON DELETE CASCADE,
+    section_name TEXT NOT NULL,
+    section_text TEXT NOT NULL,
+    char_count   INTEGER NOT NULL,
+    extracted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (paper_id, section_name)
+);
+
+CREATE INDEX IF NOT EXISTS idx_paper_sections_paper ON paper_sections (paper_id);
+
+
+-- ---------------------------------------------------------------------------
+-- pipeline_runs — one row per ingestion run (Phase 2.5).
+-- A job cluster's stdout dies with the cluster, so without this table there is no
+-- way to answer "did last night's run add anything?" after the fact.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS pipeline_runs (
+    run_id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    started_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+    finished_at        TIMESTAMPTZ,
+    status             TEXT NOT NULL DEFAULT 'running'
+                           CHECK (status IN ('running', 'ok', 'failed', 'skipped_locked')),
+    trigger            TEXT,
+    papers_harvested   INTEGER NOT NULL DEFAULT 0,
+    papers_inserted    INTEGER NOT NULL DEFAULT 0,
+    papers_enriched    INTEGER NOT NULL DEFAULT 0,
+    s2_requests        INTEGER NOT NULL DEFAULT 0,
+    pdfs_fetched       INTEGER NOT NULL DEFAULT 0,
+    sections_extracted INTEGER NOT NULL DEFAULT 0,
+    chunks_embedded    INTEGER NOT NULL DEFAULT 0,
+    notes_embedded     INTEGER NOT NULL DEFAULT 0,
+    duration_seconds   DOUBLE PRECISION,
+    error              TEXT,
+    notes              JSONB
+);
+
+CREATE INDEX IF NOT EXISTS idx_pipeline_runs_started ON pipeline_runs (started_at DESC);
+
+
+-- ---------------------------------------------------------------------------
+-- topic_watermarks — per-topic incremental discovery cursor (Phase 2.5).
+-- Per topic rather than global: a seed topic added later must start from the
+-- canon, not inherit the others' watermark and skip everything already published.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS topic_watermarks (
+    topic             TEXT PRIMARY KEY,
+    last_seeded_at    TIMESTAMPTZ,
+    watermark_date    DATE,
+    last_run_at       TIMESTAMPTZ,
+    papers_ingested   INTEGER NOT NULL DEFAULT 0
+);
 
 
 -- ---------------------------------------------------------------------------

@@ -20,6 +20,10 @@ CREATE TABLE IF NOT EXISTS paper_embeddings (
     paper_id    UUID NOT NULL REFERENCES papers(paper_id) ON DELETE CASCADE,
     chunk_index INTEGER NOT NULL DEFAULT 0,
     chunk_text  TEXT NOT NULL,
+    -- Which part of the paper this chunk came from: 'conclusion', 'discussion',
+    -- 'methods', ... NULL means the abstract. NULL rather than a literal
+    -- 'abstract' so every row written before Phase 2 is already correct.
+    section_name TEXT,
     embedding   VECTOR(768) NOT NULL,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -30,6 +34,10 @@ CREATE INDEX IF NOT EXISTS idx_paper_embeddings_embedding
     USING hnsw (embedding vector_cosine_ops);
 
 CREATE INDEX IF NOT EXISTS idx_paper_embeddings_paper ON paper_embeddings (paper_id);
+
+-- The ingestion delta asks "does an embedding exist for this (paper, section)?"
+CREATE INDEX IF NOT EXISTS idx_paper_embeddings_paper_section
+    ON paper_embeddings (paper_id, section_name);
 
 
 -- ---------------------------------------------------------------------------
