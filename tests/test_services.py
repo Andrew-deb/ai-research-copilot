@@ -57,6 +57,50 @@ def test_semantic_matches_fold_chunks_to_one_row_per_paper(db, monkeypatch):
     assert matches[0]["snippet"] == "chunk B"
 
 
+def test_snippet_section_is_reported_and_defaults_to_abstract(db, monkeypatch):
+    """
+    Phase 2: a chunk knows which part of the paper it came from. NULL in the
+    database means the abstract, and the service resolves that here so templates
+    and the agent never special-case None.
+    """
+    from repositories import lakebase
+    abstract_paper = db.seed_paper(title="Abstract-only Paper")
+    section_paper = db.seed_paper(title="Paper With Sections")
+
+    monkeypatch.setattr(lakebase, "semantic_search_papers", lambda query_embedding, top_k=10: [
+        {**section_paper, "chunk_text": "we conclude", "chunk_index": 0,
+         "section_name": "conclusion", "similarity": 0.91},
+        {**abstract_paper, "chunk_text": "this paper", "chunk_index": 0,
+         "section_name": None, "similarity": 0.55},
+    ])
+
+    matches = search_service.semantic_paper_matches("q", top_k=5)
+    assert matches[0]["snippet_section"] == "conclusion"
+    assert matches[1]["snippet_section"] == "abstract"
+    # It describes the snippet, not the paper - the raw column must not leak through.
+    assert "section_name" not in matches[0]
+
+
+def test_best_chunk_decides_the_reported_section(db, monkeypatch):
+    """
+    The fold keeps the highest-similarity chunk, so the section badge must follow
+    that chunk. Reporting the first chunk's section would mislabel the excerpt.
+    """
+    from repositories import lakebase
+    paper = db.seed_paper(title="Multi-section Paper")
+
+    monkeypatch.setattr(lakebase, "semantic_search_papers", lambda query_embedding, top_k=10: [
+        {**paper, "chunk_text": "abstract text", "chunk_index": 0,
+         "section_name": None, "similarity": 0.40},
+        {**paper, "chunk_text": "limitations we found", "chunk_index": 0,
+         "section_name": "discussion", "similarity": 0.87},
+    ])
+
+    match = search_service.semantic_paper_matches("q", top_k=5)[0]
+    assert match["snippet"] == "limitations we found"
+    assert match["snippet_section"] == "discussion"
+
+
 def test_semantic_matches_respect_min_similarity(db, monkeypatch):
     from repositories import lakebase
     paper = db.seed_paper()
