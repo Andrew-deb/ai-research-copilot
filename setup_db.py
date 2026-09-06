@@ -1,7 +1,9 @@
 """
 setup_db.py — One-time Lakebase schema initializer and data seeder.
 
-Runs all SQL files in sql/ in order, seeds demo data, and verifies the result.
+Runs the three schema files (01-03) in order, seeds demo data, and verifies the
+result. The higher-numbered files in sql/ are migrations for an existing
+database and are applied by hand - 01-03 already contain what they add.
 Run once before starting the application. Safe to re-run — seeding is skipped
 if data already exists.
 """
