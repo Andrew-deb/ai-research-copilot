@@ -73,6 +73,11 @@ try:
     dbutils.widgets.text("s2_batch_delay", "1.1", "Pause between S2 batch requests (seconds)")
     dbutils.widgets.text("fulltext_retry_after_days", "7", "Retry fetch_failed papers older than this")
     dbutils.widgets.text("fulltext_max_attempts", "3", "Give up on a PDF after this many attempts")
+    dbutils.widgets.text("max_pdf_candidates", "3", "Candidate PDF URLs to try per paper")
+    dbutils.widgets.dropdown("model_source", "volume", ["volume", "huggingface"], "Where to load the embedding model from")
+    dbutils.widgets.text("model_volume_path",
+                         "/Volumes/workspace/default/models/modernbert-embed-base",
+                         "Persisted model directory (see setup_embedding_model.py)")
     dbutils.widgets.dropdown("run_trigger", "manual", ["manual", "scheduled"], "How this run was started")
 
     PAPERS_TABLE_NAME = dbutils.widgets.get("papers_table_name")
@@ -98,6 +103,9 @@ try:
     S2_BATCH_DELAY = float(dbutils.widgets.get("s2_batch_delay"))
     FULLTEXT_RETRY_AFTER_DAYS = int(dbutils.widgets.get("fulltext_retry_after_days"))
     FULLTEXT_MAX_ATTEMPTS = int(dbutils.widgets.get("fulltext_max_attempts"))
+    MAX_PDF_CANDIDATES = int(dbutils.widgets.get("max_pdf_candidates"))
+    MODEL_SOURCE = dbutils.widgets.get("model_source").strip().lower()
+    MODEL_VOLUME_PATH = dbutils.widgets.get("model_volume_path").strip().rstrip("/")
     RUN_TRIGGER = dbutils.widgets.get("run_trigger").strip().lower()
 except NameError:
     PAPERS_TABLE_NAME = "papers"
@@ -129,6 +137,9 @@ except NameError:
     S2_BATCH_DELAY = 1.1
     FULLTEXT_RETRY_AFTER_DAYS = 7
     FULLTEXT_MAX_ATTEMPTS = 3
+    MAX_PDF_CANDIDATES = 3
+    MODEL_SOURCE = os.getenv("MODEL_SOURCE", "huggingface")
+    MODEL_VOLUME_PATH = os.getenv("MODEL_VOLUME_PATH", "/tmp/models/modernbert-embed-base")
     RUN_TRIGGER = "manual"
 
 # Match embedding dimension to the selected model
@@ -177,6 +188,8 @@ print(f"  • Fetch new papers: {FETCH_NEW_PAPERS}")
 print(f"  • Fetch full text: {FETCH_FULLTEXT} -> sections {WANTED_SECTIONS}")
 print(f"  • Discovery: {DISCOVERY_MODE}, cap {MAX_NEW_PAPERS_PER_RUN} papers/run")
 print(f"  • S2 batching: {S2_BATCH_SIZE} DOIs/request")
+print(f"  • Model source: {MODEL_SOURCE}"
+      + (f" -> {MODEL_VOLUME_PATH}" if MODEL_SOURCE == "volume" else " (Hugging Face Hub)"))
 
 # COMMAND ----------
 
@@ -310,6 +323,10 @@ with lock_conn.cursor() as cur:
         "wanted_sections": WANTED_SECTIONS,
         "fetch_new_papers": FETCH_NEW_PAPERS,
         "fetch_fulltext": FETCH_FULLTEXT,
+        # Recorded so a run that fell back to the Hub is visible afterwards, not
+        # only in the driver log that dies with the cluster.
+        "model_source": MODEL_SOURCE,
+        "model_volume_path": MODEL_VOLUME_PATH if MODEL_SOURCE == "volume" else None,
     })))
     RUN_ID = cur.fetchone()[0]
 
@@ -363,7 +380,10 @@ S2_API_KEY = get_semantic_scholar_api_key()
 
 OPENALEX_SELECT = (
     "id,doi,title,publication_year,publication_date,cited_by_count,"
-    "primary_location,abstract_inverted_index,open_access"
+    "primary_location,abstract_inverted_index,open_access,"
+    # Phase 2.6: the repository copies. open_access.oa_url alone is frequently the
+    # publisher's landing page, which is both robot-blocked and not a PDF.
+    "best_oa_location,locations"
 )
 
 
@@ -760,47 +780,150 @@ if FETCH_NEW_PAPERS and harvested_papers:
 # MAGIC %md
 # MAGIC ## 5. Fetch Open-Access PDFs
 # MAGIC
-# MAGIC For papers with an `open_access_url` and no full-text attempt yet, download the PDF
-# MAGIC into memory. Every failure is **recorded, not raised** — `papers.fulltext_status`
-# MAGIC distinguishes `no_url` / `fetch_failed` / `parse_failed` / `no_sections` / `ok`, so a
-# MAGIC missing section is always explainable. One bad PDF must never fail the run.
+# MAGIC For papers with at least one candidate PDF URL and no completed full-text attempt,
+# MAGIC download the PDF into memory. Every failure is **recorded, not raised**, and the
+# MAGIC status says which kind of failure it was — because only some kinds are worth
+# MAGIC retrying.
+# MAGIC
+# MAGIC **Repository copies first (Phase 2.6).** The first real run downloaded 56 PDFs out
+# MAGIC of 152 papers. 24 attempts came back `403 Forbidden` from publishers — ACM, Oxford
+# MAGIC University Press, Elsevier, MDPI, PNAS, Science, RSC — and 42 returned an HTML
+# MAGIC landing page rather than a PDF. Both have the same root cause: `open_access.oa_url`
+# MAGIC often points at the *publisher's* page for a work, which is exactly the copy that
+# MAGIC blocks robots.
+# MAGIC
+# MAGIC OpenAlex also knows about repository copies — arXiv, PubMed Central, institutional
+# MAGIC archives — and publishes a direct `pdf_url` for them. Those exist to be fetched
+# MAGIC programmatically. So candidates are now tried repository-first.
+# MAGIC
+# MAGIC A `403` is a publisher declining automated download. The response to that is to
+# MAGIC use the open copy they have already deposited elsewhere — **not** to disguise the
+# MAGIC client as a browser.
 
 # COMMAND ----------
 
-# DBTITLE 1,Download Open-Access PDFs (per-paper try/except)
+# DBTITLE 1,Download Open-Access PDFs (repository-first, classified failures)
 import time
+
+import pandas as pd
 import requests
 
 PDF_HEADERS = {
-    # Identify the crawler. Several OA hosts return 403 to an unlabelled client.
+    # Identify the crawler honestly. Several OA hosts return 403 to an unlabelled
+    # client, and the polite-pool contact is what earns the higher rate limits.
     "User-Agent": f"ai-research-copilot/1.0 (mailto:{os.getenv('OPENALEX_EMAIL', 'research@example.com')})",
     "Accept": "application/pdf,*/*",
 }
+
+# Retrying these could plausibly succeed later. Everything else is permanent, and
+# the whole point of the taxonomy is that the retry query can tell them apart.
+RETRYABLE_HTTP = {408, 425, 429, 500, 502, 503, 504}
+
+
+def pdf_candidates(payload: dict | None, fallback_url: str | None) -> list[str]:
+    """
+    Candidate PDF URLs for one paper, best first.
+
+    Order is deliberate:
+      1. repository `pdf_url`  - arXiv, PMC, institutional archives. Deposited to
+                                 be fetched; they do not block robots.
+      2. best_oa_location      - OpenAlex's own pick, often the publisher.
+      3. any other `pdf_url`   - whatever else is on record.
+      4. open_access.oa_url    - the old behaviour, kept as a last resort. It is
+                                 frequently a landing page, which is why it is last.
+
+    Papers ingested before Phase 2.6 have a payload without `locations`, so they
+    fall through to (4) and behave exactly as before.
+    """
+    payload = payload or {}
+    repository, best, other = [], [], []
+
+    best_loc = payload.get("best_oa_location") or {}
+    if best_loc.get("pdf_url"):
+        best.append(best_loc["pdf_url"])
+
+    for loc in payload.get("locations") or []:
+        if not isinstance(loc, dict) or not loc.get("pdf_url"):
+            continue
+        source = loc.get("source") or {}
+        if source.get("type") == "repository":
+            repository.append(loc["pdf_url"])
+        else:
+            other.append(loc["pdf_url"])
+
+    ordered = repository + best + other + ([fallback_url] if fallback_url else [])
+
+    seen, out = set(), []
+    for url in ordered:
+        url = (url or "").strip()
+        if url and url not in seen:
+            seen.add(url)
+            out.append(url)
+    return out[:MAX_PDF_CANDIDATES]
+
+
+def classify_http_error(exc: Exception) -> str:
+    """Map a request failure to a status that says whether retrying could help."""
+    response = getattr(exc, "response", None)
+    code = getattr(response, "status_code", None)
+    if code in (401, 403):
+        return "access_denied"          # the publisher blocks robots; it will again
+    if code in (404, 410):
+        return "not_found"              # the URL is wrong or the copy is gone
+    if code is not None and code not in RETRYABLE_HTTP:
+        return "fetch_failed"           # unexpected 4xx: record it, retry once or twice
+    return "fetch_failed"               # 5xx, timeout, connection reset - transient
+
+
+def try_download(url: str) -> tuple[bytes | None, str]:
+    """Fetch one URL. Returns (bytes, 'ok') or (None, <status>)."""
+    try:
+        resp = requests.get(url, headers=PDF_HEADERS, timeout=FULLTEXT_TIMEOUT, stream=True)
+        resp.raise_for_status()
+    except Exception as exc:            # noqa: BLE001 - one URL must not stop the run
+        return None, classify_http_error(exc)
+
+    try:
+        # An open_access_url is frequently an HTML landing page, not the PDF.
+        content_type = (resp.headers.get("Content-Type") or "").lower()
+        if "pdf" not in content_type:
+            return None, "not_pdf"
+
+        # Read with a ceiling so one pathological file cannot exhaust driver memory.
+        body = bytearray()
+        for block in resp.iter_content(chunk_size=64 * 1024):
+            body.extend(block)
+            if len(body) > FULLTEXT_MAX_BYTES:
+                return None, "too_large"
+        return bytes(body), "ok"
+    finally:
+        resp.close()
+
 
 pdf_bytes_by_paper: dict[str, bytes] = {}
 fulltext_status: dict[str, str] = {}
 
 if not FETCH_FULLTEXT:
-    print("⏭️  FETCH_FULLTEXT=false — skipping PDF acquisition.")
-    candidates_df = pd.DataFrame(columns=["paper_id", "open_access_url"])
+    print("Skipping PDF acquisition (fetch_fulltext = false).")
+    candidates_df = pd.DataFrame(columns=["paper_id", "open_access_url", "payload"])
 else:
     conn = psycopg2.connect(
         host=db_host, port=db_port, dbname=db_name,
         user=db_user, password=db_password, sslmode='require'
     )
 
-    # Two populations (Phase 2.5):
-    #   1. never attempted            -> fulltext_status IS NULL
-    #   2. transiently failed         -> fetch_failed, cooled off, budget remaining
+    # Two populations:
+    #   1. never attempted    -> fulltext_status IS NULL
+    #   2. transiently failed -> fetch_failed, cooled off, budget remaining
     #
-    # parse_failed and no_sections are NOT retried: an HTML landing page or a scanned
-    # PDF will not become parseable on its own, and heading extraction is deterministic
-    # given the same text and the same SECTION_SYNONYMS. Re-running those would burn
-    # bandwidth on a guaranteed identical outcome. To re-attempt them after improving
-    # SECTION_SYNONYMS, clear their fulltext_status by hand - that is the deliberate
-    # act the exclusion is protecting.
+    # access_denied, not_found, not_pdf, too_large, parse_failed and no_sections are
+    # NOT retried. A publisher that blocks robots will block them next week; a dead
+    # URL stays dead; a scanned PDF will not grow a text layer; and heading
+    # extraction is deterministic given the same text and the same SECTION_SYNONYMS.
+    # To re-attempt any of them - after improving SECTION_SYNONYMS, say - clear their
+    # fulltext_status by hand. That deliberate act is what the exclusion protects.
     candidates_df = pd.read_sql_query(f"""
-        SELECT paper_id, open_access_url
+        SELECT paper_id, open_access_url, payload
         FROM {PAPERS_TABLE_NAME}
         WHERE fulltext_status IS NULL
            OR (
@@ -814,54 +937,46 @@ else:
                        "retry_days": FULLTEXT_RETRY_AFTER_DAYS})
     conn.close()
 
-    print(f"📥 {len(candidates_df)} paper(s) awaiting a full-text attempt "
-          f"(new + retryable fetch_failed, max {FULLTEXT_MAX_ATTEMPTS} attempts, "
+    print(f"{len(candidates_df)} paper(s) awaiting a full-text attempt "
+          f"(new + retryable, max {FULLTEXT_MAX_ATTEMPTS} attempts, "
           f"{FULLTEXT_RETRY_AFTER_DAYS}d cooling-off).")
 
     for _, row in candidates_df.iterrows():
         paper_id = str(row["paper_id"])
-        url = row["open_access_url"]
+        urls = pdf_candidates(row.get("payload"), row.get("open_access_url"))
 
-        if not url or not str(url).strip():
+        if not urls:
             fulltext_status[paper_id] = "no_url"
             continue
 
-        try:
-            resp = requests.get(str(url).strip(), headers=PDF_HEADERS,
-                                timeout=FULLTEXT_TIMEOUT, stream=True)
-            resp.raise_for_status()
+        # Try candidates in order and keep the *most informative* failure: a 403 on
+        # the publisher copy is less interesting than "we also tried the repository
+        # and it was a landing page". Later statuses in this list win.
+        severity = ["access_denied", "not_found", "fetch_failed", "too_large", "not_pdf"]
+        worst = None
 
-            # An open_access_url is frequently an HTML landing page, not the PDF.
-            content_type = (resp.headers.get("Content-Type") or "").lower()
-            if "pdf" not in content_type:
-                fulltext_status[paper_id] = "parse_failed"
-                resp.close()
-                continue
+        for url in urls:
+            blob, status = try_download(url)
+            if status == "ok":
+                pdf_bytes_by_paper[paper_id] = blob
+                worst = None
+                break
+            if worst is None or severity.index(status) > severity.index(worst):
+                worst = status
+            time.sleep(FULLTEXT_DELAY)
 
-            # Read with a ceiling so one pathological file cannot exhaust driver memory.
-            body = bytearray()
-            for block in resp.iter_content(chunk_size=64 * 1024):
-                body.extend(block)
-                if len(body) > FULLTEXT_MAX_BYTES:
-                    break
-            resp.close()
+        if worst is not None:
+            fulltext_status[paper_id] = worst
+            print(f"  [{worst}] {paper_id} after {len(urls)} candidate URL(s)")
 
-            if len(body) > FULLTEXT_MAX_BYTES:
-                fulltext_status[paper_id] = "fetch_failed"   # oversized; treated as unavailable
-                continue
+        time.sleep(FULLTEXT_DELAY)      # polite to OA hosts
 
-            pdf_bytes_by_paper[paper_id] = bytes(body)
-
-        except Exception as exc:                       # noqa: BLE001 - one paper must not stop the run
-            fulltext_status[paper_id] = "fetch_failed"
-            print(f"  ⚠️  fetch_failed {paper_id}: {type(exc).__name__}: {str(exc)[:120]}")
-
-        time.sleep(FULLTEXT_DELAY)                     # polite to OA hosts
-
-    print(f"✅ Downloaded {len(pdf_bytes_by_paper)} PDF(s); "
-          f"{sum(1 for v in fulltext_status.values() if v == 'no_url')} without a URL, "
-          f"{sum(1 for v in fulltext_status.values() if v == 'fetch_failed')} fetch failures, "
-          f"{sum(1 for v in fulltext_status.values() if v == 'parse_failed')} non-PDF responses.")
+    from collections import Counter as _Counter
+    _mix = _Counter(fulltext_status.values())
+    print(f"\nDownloaded {len(pdf_bytes_by_paper)} PDF(s). Failures: {dict(_mix)}")
+    if _mix.get("access_denied"):
+        print(f"  NOTE: {_mix['access_denied']} paper(s) blocked by the publisher. "
+              f"These are never retried - the abstract they already have is unaffected.")
 
 # COMMAND ----------
 
@@ -886,14 +1001,27 @@ from collections import Counter
 # Canonical name -> heading variants seen in the wild. Longest variants are listed
 # first so that "results and discussion" is not shadowed by "discussion".
 SECTION_SYNONYMS = {
+    # Expanded in Phase 2.6: the first real run left 13 of 56 parsed PDFs at
+    # `no_sections` (23%). Every variant below was chosen because it is a heading
+    # a real paper uses, not because it might appear somewhere in the text - the
+    # match is exact against a whole line, so a loose entry here is how References
+    # ends up indexed as a Conclusion.
     "conclusion": ("conclusions and future work", "conclusion and future work",
-                   "concluding remarks", "summary and conclusions",
-                   "conclusions", "conclusion"),
+                   "discussion and conclusion", "discussion and conclusions",
+                   "conclusions and future directions", "conclusion and future work",
+                   "summary and conclusions", "summary and conclusion",
+                   "concluding remarks", "closing remarks",
+                   "conclusions", "conclusion", "summary"),
     "discussion": ("results and discussion", "discussion and limitations",
-                   "discussions", "discussion"),
+                   "limitations and future work", "general discussion",
+                   "discussions", "discussion", "limitations"),
     "methods":    ("materials and methods", "methods and materials",
-                   "experimental setup", "experimental design",
-                   "methodology", "methods", "method", "approach"),
+                   "data and methods", "methods and data",
+                   "experimental setup", "experimental section",
+                   "experimental design", "experimental procedure",
+                   "study design", "research design", "research methodology",
+                   "methodology", "methods", "method", "approach",
+                   "implementation details", "model architecture"),
 }
 
 # Headings that end the body. Everything after them is citations or back matter.
@@ -928,11 +1056,15 @@ def _canonical_heading(line: str) -> str | None:
     for stop in STOP_HEADINGS:
         if norm == stop or norm.startswith(stop):
             return "__stop__"
+    # Longest variant wins across the whole table, so a combined heading like
+    # "discussion and conclusion" resolves once and deterministically rather than
+    # depending on which canonical name dict iteration reaches first.
+    best = None
     for canonical, variants in SECTION_SYNONYMS.items():
         for variant in variants:
-            if norm == variant:
-                return canonical
-    return None
+            if norm == variant and (best is None or len(variant) > len(best[1])):
+                best = (canonical, variant)
+    return best[0] if best else None
 
 
 def extract_sections(pdf_text: str, wanted: list[str]) -> dict[str, str]:
@@ -970,7 +1102,14 @@ def extract_sections(pdf_text: str, wanted: list[str]) -> dict[str, str]:
 section_rows = []
 
 if FETCH_FULLTEXT and pdf_bytes_by_paper:
+    import logging as _logging
+
     from pypdf import PdfReader
+
+    # pypdf logs "Exceeded 5000 form XObject invocations" per complex PDF. It means
+    # some vector graphics were skipped, which is irrelevant to text extraction, and
+    # it buries the status lines that do matter.
+    _logging.getLogger("pypdf").setLevel(_logging.ERROR)
 
     for paper_id, blob in pdf_bytes_by_paper.items():
         try:
@@ -1201,47 +1340,185 @@ print(f"✅ Generated {len(note_chunks_df)} chunks from {len(unembedded_notes_df
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 9. Batch Vector Encoding with `sentence-transformers`
+# MAGIC ## 9. Load the Embedding Model
+# MAGIC
+# MAGIC The model is loaded from a **Unity Catalog Volume**, written once by
+# MAGIC `notebooks/setup_embedding_model.py`. It is not downloaded from the Hugging Face
+# MAGIC Hub on a normal run: a job cluster is created fresh per run, so the Hub download
+# MAGIC (568 MB, throttled when unauthenticated) was costing ~18 minutes *per execution* —
+# MAGIC more time acquiring the model than processing data.
+# MAGIC
+# MAGIC ```text
+# MAGIC Hugging Face -> setup_embedding_model.py -> UC Volume -> here
+# MAGIC ```
+# MAGIC
+# MAGIC **This cell fails rather than falling back.** A missing path in `volume` mode
+# MAGIC raises, because an automatic re-download would let a production misconfiguration
+# MAGIC present as a merely slow run — which is the exact dependency this design removes.
+# MAGIC `model_source=huggingface` exists for development and recovery, is deliberate, and
+# MAGIC announces itself loudly.
+# MAGIC
+# MAGIC ### The contract check
+# MAGIC
+# MAGIC `embedding_contract.json` sits beside the model and records what the stored
+# MAGIC vectors mean: base model, dimension, both task prefixes, normalisation. Those four
+# MAGIC values are otherwise kept aligned **by hand** across this notebook,
+# MAGIC `dashboard/config.py`, `mcp_server/config.py` and `sql/`, with only the dimension
+# MAGIC checked at runtime. Validating the contract closes the other three.
+
+# COMMAND ----------
+
+# DBTITLE 1,Load the Model and Validate the Embedding Contract
+import json
+
+from sentence_transformers import SentenceTransformer
+
+CONTRACT_FILENAME = "embedding_contract.json"
+
+# Databricks renders tqdm through ipywidgets, which spammed the run log with
+# "Loading the widget is taking longer than expected" a dozen times and rendered
+# nothing useful. The batch counter below is more informative anyway.
+os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+
+
+def embedding_dimension(model) -> int:
+    """
+    sentence-transformers 6.0 renamed get_sentence_embedding_dimension() to
+    get_embedding_dimension(). Support both, so this notebook is not pinned to one
+    runtime's library version.
+    """
+    for name in ("get_embedding_dimension", "get_sentence_embedding_dimension"):
+        fn = getattr(model, name, None)
+        if callable(fn):
+            return int(fn())
+    raise AttributeError("SentenceTransformer exposes no embedding-dimension accessor.")
+
+
+def validate_embedding_contract(stored: dict, expected: dict) -> None:
+    """
+    Compare the contract saved beside the model against this notebook's constants.
+
+    Raises on the first disagreement, naming the field. A mismatch here means the
+    vectors about to be written would not share a space with the ones already
+    stored - which nothing downstream can detect, because a wrong-prefix or
+    wrong-model vector is still a perfectly valid 768-dim unit vector.
+    """
+    if not isinstance(stored, dict):
+        raise ValueError(f"{CONTRACT_FILENAME} is not a JSON object.")
+
+    for field, want in expected.items():
+        if field not in stored:
+            raise ValueError(
+                f"{CONTRACT_FILENAME} is missing {field!r}. It was written by an older "
+                f"version of setup_embedding_model.py - re-run it to refresh the contract."
+            )
+        got = stored[field]
+        if got != want:
+            raise ValueError(
+                f"Embedding contract mismatch on {field!r}: the stored model says {got!r}, "
+                f"this pipeline expects {want!r}.\n"
+                f"Vectors written under a mismatched contract are silently unusable. "
+                f"Either re-run setup_embedding_model.py with the right values, or fix "
+                f"this notebook's configuration - do not proceed."
+            )
+
+
+EXPECTED_CONTRACT = {
+    "base_model": EMBEDDING_MODEL_NAME,
+    "embedding_dim": EMBEDDING_DIM,
+    "document_prefix": DOCUMENT_PREFIX,
+    "query_prefix": QUERY_PREFIX,
+    "normalize": True,
+}
+
+if MODEL_SOURCE == "volume":
+    if not os.path.isdir(MODEL_VOLUME_PATH):
+        raise RuntimeError(
+            f"Embedding model not found at {MODEL_VOLUME_PATH}.\n\n"
+            f"Run notebooks/setup_embedding_model.py once to persist it there.\n\n"
+            f"This is deliberately fatal: falling back to a Hugging Face download would "
+            f"hide the misconfiguration behind a slow run, and re-introduce the per-run "
+            f"download this path exists to remove. For a development run, set "
+            f"model_source=huggingface explicitly."
+        )
+
+    contract_path = os.path.join(MODEL_VOLUME_PATH, CONTRACT_FILENAME)
+    if not os.path.isfile(contract_path):
+        raise RuntimeError(
+            f"{contract_path} is missing. The directory holds a model but nothing "
+            f"records what its vectors mean. Re-run setup_embedding_model.py."
+        )
+
+    with open(contract_path, encoding="utf-8") as fh:
+        stored_contract = json.load(fh)
+
+    # Cheap check first: a mismatch fails in milliseconds rather than after loading
+    # 568 MB of weights.
+    validate_embedding_contract(stored_contract, EXPECTED_CONTRACT)
+    print(f"Embedding contract verified against {contract_path}")
+
+    print(f"Loading embedding model from {MODEL_VOLUME_PATH} (no Hub request)...")
+    started = time.perf_counter()
+    embedding_model = SentenceTransformer(MODEL_VOLUME_PATH)
+    print(f"  loaded in {time.perf_counter() - started:.1f}s")
+
+elif MODEL_SOURCE == "huggingface":
+    print("=" * 72)
+    print("DEVELOPMENT MODE: downloading the embedding model from the Hugging Face Hub.")
+    print("This is not the production path. A scheduled run should use model_source=volume")
+    print("with a model persisted by notebooks/setup_embedding_model.py.")
+    print("=" * 72)
+    started = time.perf_counter()
+    embedding_model = SentenceTransformer(EMBEDDING_MODEL_NAME)
+    print(f"  downloaded and loaded in {time.perf_counter() - started:.1f}s")
+
+else:
+    raise ValueError(f"Unknown model_source {MODEL_SOURCE!r}. Expected 'volume' or 'huggingface'.")
+
+# Retained from Phase 1: fail fast rather than writing vectors the schema will
+# reject - or, worse, accept at the wrong width because EMBEDDING_DIM drifted.
+_actual_dim = embedding_dimension(embedding_model)
+if _actual_dim != EMBEDDING_DIM:
+    raise ValueError(
+        f"{EMBEDDING_MODEL_NAME} outputs {_actual_dim} dims but EMBEDDING_DIM is {EMBEDDING_DIM}. "
+        f"Fix the match/case in the config cell and the VECTOR(n) columns before ingesting."
+    )
+print(f"✅ Model ready: {_actual_dim}-dim, document prefix {DOCUMENT_PREFIX!r}")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 10. Batch Vector Encoding
 # MAGIC
 # MAGIC Computes 768-dimensional dense vectors with unit-normalization (`normalize_embeddings=True`).
 # MAGIC
 # MAGIC Each chunk is prefixed with `DOCUMENT_PREFIX` **at encode time only** - the text
 # MAGIC stored in `chunk_text` stays clean, because the dashboard renders it directly as
 # MAGIC the search-result snippet.
+# MAGIC
+# MAGIC This is the pipeline's real compute cost and no storage decision changes it:
+# MAGIC hundreds of chunks of up to 4000 characters through ModernBERT-base on CPU is
+# MAGIC genuinely minutes of work.
 
 # COMMAND ----------
 
 # DBTITLE 1,Generate Dense Neural Embeddings
-from sentence_transformers import SentenceTransformer
-
-# Set cache directories
-os.environ["HF_HOME"] = "/tmp/.cache/huggingface"
-os.environ["TRANSFORMERS_CACHE"] = "/tmp/.cache/huggingface"
-
-print(f"🧠 Loading embedding model '{EMBEDDING_MODEL_NAME}'...")
-embedding_model = SentenceTransformer(EMBEDDING_MODEL_NAME, cache_folder="/tmp/.cache/huggingface")
-
-# Fail fast rather than writing vectors the schema will reject (or, worse, accept
-# at the wrong width because EMBEDDING_DIM drifted from the model).
-_actual_dim = embedding_model.get_sentence_embedding_dimension()
-if _actual_dim != EMBEDDING_DIM:
-    raise ValueError(
-        f"{EMBEDDING_MODEL_NAME} outputs {_actual_dim} dims but EMBEDDING_DIM is {EMBEDDING_DIM}. "
-        f"Fix the match/case above and the VECTOR(n) columns before ingesting."
-    )
-print(f"✅ Model ready: {_actual_dim}-dim, document prefix {DOCUMENT_PREFIX!r}")
-
 # Encode paper chunks
 if len(paper_chunks_df) > 0:
     print(f"Computing embeddings for {len(paper_chunks_df)} paper chunks in batches of {BATCH_SIZE}...")
+    _started = time.perf_counter()
     paper_vectors = embedding_model.encode(
         [DOCUMENT_PREFIX + t for t in paper_chunks_df["chunk_text"].tolist()],
         batch_size=BATCH_SIZE,
-        show_progress_bar=True,
+        # Off deliberately: Databricks renders this through ipywidgets, which
+        # produced a dozen "Loading the widget is taking longer than expected"
+        # messages and no progress.
+        show_progress_bar=False,
         normalize_embeddings=True,
     )
     paper_chunks_df["embedding"] = [v.tolist() for v in paper_vectors]
-    print(f"✅ Generated {len(paper_vectors)} paper chunk vectors.")
+    print(f"✅ Generated {len(paper_vectors)} paper chunk vectors "
+          f"in {time.perf_counter() - _started:.1f}s.")
 
 # Encode note chunks
 if len(note_chunks_df) > 0:
@@ -1258,7 +1535,7 @@ if len(note_chunks_df) > 0:
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 10. Batch Insert Embeddings into Lakebase pgvector
+# MAGIC ## 11. Batch Insert Embeddings into Lakebase pgvector
 # MAGIC
 # MAGIC Uses `psycopg2.extras.execute_batch` to bulk persist vectors into `paper_embeddings` and `note_embeddings` with `%s::vector(768)` type casting (the cast is interpolated from `EMBEDDING_DIM`, so it follows the model).
 
@@ -1321,7 +1598,7 @@ if len(note_chunks_df) > 0:
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 11. Verification & Similarity Search Test
+# MAGIC ## 12. Verification & Similarity Search Test
 # MAGIC
 # MAGIC Corpus composition, full-text acquisition outcomes, and two cosine searches.
 # MAGIC
@@ -1415,7 +1692,7 @@ print("\n🎉 Notebook execution complete! Lakebase vector index is active and r
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 12. Close the Run Ledger
+# MAGIC ## 13. Close the Run Ledger
 # MAGIC
 # MAGIC Writes what this run actually did, then releases the advisory lock.
 # MAGIC
