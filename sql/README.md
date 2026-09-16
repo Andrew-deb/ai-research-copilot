@@ -12,6 +12,7 @@ Three SQL files that define the complete Lakebase schema. Run in order via `setu
 | `04_migrate_embeddings_768.sql` | **Migration.** 384-dim (all-MiniLM) → 768-dim (modernbert-embed-base) |
 | `05_paper_sections.sql` | **Migration.** Adds `paper_sections`, `papers.fulltext_status`, `paper_embeddings.section_name` |
 | `06_pipeline_runs.sql` | **Migration.** Adds `pipeline_runs`, `topic_watermarks`, `papers.fulltext_attempts` |
+| `07_fulltext_status_taxonomy.sql` | **Migration.** Splits `fulltext_status` by retryability; resets mis-classified rows |
 
 The `0X_` files numbered 4 and above are **migrations for an existing database**. A
 fresh install needs only `01`–`03`, which already contain everything the migrations
@@ -30,6 +31,7 @@ An **existing** database instead applies the migrations in order, once each:
 psql "$DATABASE_URL" -f sql/04_migrate_embeddings_768.sql   # destroys embeddings; re-run the pipeline after
 psql "$DATABASE_URL" -f sql/05_paper_sections.sql           # additive; destroys nothing
 psql "$DATABASE_URL" -f sql/06_pipeline_runs.sql            # additive; destroys nothing
+psql "$DATABASE_URL" -f sql/07_fulltext_status_taxonomy.sql # resets fetch_failed/parse_failed rows for one retry
 ```
 
 ## Key Design Decisions
@@ -57,5 +59,7 @@ psql "$DATABASE_URL" -f sql/06_pipeline_runs.sql            # additive; destroys
 **`topic_watermarks` is keyed per topic, not global** — A seed topic added later must start from the canon rather than inherit the other topics' watermark and silently skip everything published before today.
 
 **`papers.fulltext_attempts`** — Without a retry, a host down for one afternoon is written off permanently; without a ceiling, a dead URL is retried on every scheduled run forever. The counter bounds one failure mode against the other.
+
+**`fulltext_status` is split by retryability, not by symptom** — The first real run recorded all 35 HTTP failures as `fetch_failed`, but 32 were `403` or `404`: a publisher declining automated download, or a dead URL. Neither improves with time. `access_denied`, `not_found`, `not_pdf` and `too_large` are therefore permanent; only `fetch_failed` (408/429/5xx/timeout) is retried. A status that does not say whether retrying could help is a status that costs requests forever.
 
 **Trace table** — `mcp_traces` is written by `TraceMiddleware` automatically on every tool call. Individual MCP tools never write to it directly (cross-cutting concern).
