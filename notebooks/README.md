@@ -6,6 +6,7 @@ This directory contains the batch data ingestion and embedding pipeline structur
 
 | File | Purpose |
 |------|---------|
+| `setup_embedding_model.py` | **Run once.** Downloads `nomic-ai/modernbert-embed-base` from Hugging Face, writes it plus an `embedding_contract.json` to a Unity Catalog Volume, and loads it back to verify. The ingestion pipeline then never contacts the Hub. |
 | `ingest_papers_embeddings.py` | Databricks notebook: Ingests research papers from OpenAlex & Semantic Scholar, downloads open-access PDFs and extracts Conclusion/Discussion/Methods sections, chunks text, generates 768-d embeddings with `nomic-ai/modernbert-embed-base`, and batch-persists vectors to Lakebase pgvector with HNSW index verification. |
 
 ## Databricks Notebook Cell guide
@@ -48,7 +49,8 @@ This directory contains the batch data ingestion and embedding pipeline structur
 * **What is indexed:** abstract + Conclusion + Discussion + Methods. Introduction restates the abstract and Related Work describes *other* papers, so both are noise. References are never indexed.
 * **Why not full text:** naive full-text ingestion is ~13x the abstract-only corpus; this is ~2.5x. The discarded sections are the ones that dilute retrieval, so the trade is quality *and* cost, not quality *versus* cost.
 * **Sections are stored, not just chunked:** `paper_sections` holds the extracted text, so re-chunking or changing the embedding model is a re-encode — never a re-crawl.
-* **Every failure is named:** `papers.fulltext_status` distinguishes `no_url`, `fetch_failed`, `parse_failed`, `no_sections` and `ok`. All five would otherwise look identical to "this paper has no sections", which is how a broken crawler hides.
+* **Repository copies first:** `open_access.oa_url` is often the *publisher's* landing page — the copy that blocks robots and serves HTML. OpenAlex separately records repository `pdf_url`s (arXiv, PMC, institutional archives), which are deposited to be fetched. Candidates are tried repository-first, with `oa_url` as the last resort. A `403` is answered with the open copy, never with a spoofed User-Agent.
+* **Every failure is named, and named by whether retrying helps:** `access_denied` (401/403) and `not_found` (404/410) are permanent; `fetch_failed` (408/429/5xx/timeout) is retried. `not_pdf` means every candidate URL served HTML; `parse_failed` means a real PDF that would not read. All of these would otherwise look identical to "this paper has no sections", which is how a broken crawler hides.
 * **`pypdf`, not PyMuPDF:** pure Python, so `%pip install` on a Databricks cluster has no binary dependency to fight.
 
 ### 4. Incremental Delta Ingestion (Anti-Join Pattern)
@@ -69,6 +71,19 @@ Before Phase 2.5 a scheduled run mostly re-did its last one: the harvest sent `s
 ## Execution Instructions
 
 ### In Databricks Workspace
+
+**First, once:** create a volume and run `setup_embedding_model.py`.
+
+```sql
+CREATE VOLUME IF NOT EXISTS <catalog>.<schema>.<volume>;
+```
+
+It persists the 568 MB model to `/Volumes/<catalog>/<schema>/<volume>/models/modernbert-embed-base/`.
+Without this the ingestion pipeline raises — deliberately, because falling back to a
+Hugging Face download would hide the misconfiguration behind an 18-minute run.
+
+**Then, per run:**
+
 1. Import `ingest_papers_embeddings.py` into your Databricks workspace (`Workspace > Import > File`).
 2. Attach the notebook to any Single Node or Multi-Node cluster.
 3. Use the interactive widgets at the top to adjust topics, batch size, or embedding model.
