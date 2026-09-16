@@ -47,6 +47,18 @@ SECRETS_CONFIG = [
         "label": "OpenRouter API key",
         "required": True,
         "example": "sk-or-v1-..."
+    },
+    {
+        # Only the DASHBOARD needs this, and only when EMBEDDING_BACKEND=hf_api.
+        # The ingestion notebook does NOT: it downloads the model weights and runs
+        # sentence-transformers on the cluster, so it makes no inference calls.
+        # On Render the same value is an environment variable, not a secret scope.
+        "scope": "huggingface",
+        "key": "api-token",
+        "env_var": "HF_API_TOKEN",
+        "label": "Hugging Face read token (dashboard query embeddings)",
+        "required": False,
+        "example": "hf_..."
     }
 ]
 
