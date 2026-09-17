@@ -1451,6 +1451,7 @@ _HEADING_RE = re.compile(
 def _clean_pdf_text(raw: str) -> str:
     """Normalise ligatures, hyphenated line breaks and runaway whitespace."""
     text = unicodedata.normalize("NFKC", raw)
+    text = text.replace("\x00", "")          # NUL bytes from malformed PDFs
     text = text.replace("­", "")            # soft hyphen                 # soft hyphen
     text = re.sub(r"-\n(?=[a-z])", "", text)          # de-hyphenate across line breaks
     text = re.sub(r"[ \t]+", " ", text)
