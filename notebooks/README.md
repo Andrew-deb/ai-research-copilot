@@ -16,7 +16,8 @@ This directory contains the batch data ingestion and embedding pipeline structur
 3. **Resolve Lakebase URL** (Databricks SDK secret resolution from scope `database/lakebase-url`)
 4. **Test Connection** (Verifies connection & pgvector extension)
 5. **Claim the Run** (Postgres advisory lock + open a `pipeline_runs` ledger row)
-6. **Harvest Papers** (OpenAlex polite pool; relevance seed on first sight of a topic, then `from_publication_date` cursor paging from a per-topic watermark)
+6. **Paper Discovery** (`discover_openalex()` behind an explicit boundary; generic `research_fields` translated to OpenAlex field filters; relevance seed on first sight of a topic, then `from_publication_date` cursor paging from a per-topic watermark)
+6b. **Semantic Relevance Gate** (score each candidate against its topic; reject below threshold)
 7. **Batch S2 Enrichment** (`POST /paper/batch`, skipping papers already enriched)
 8. **Upsert Raw Papers** (`ON CONFLICT (openalex_id) DO UPDATE` with `COALESCE` protection; `xmax = 0` distinguishes insert from update)
 9. **Fetch Open-Access PDFs** (per-paper `try/except`, content-type check, size ceiling, polite delay; retries `fetch_failed` after a cooling-off window, bounded by `fulltext_attempts`)
@@ -56,7 +57,16 @@ This directory contains the batch data ingestion and embedding pipeline structur
 ### 4. Incremental Delta Ingestion (Anti-Join Pattern)
 * The pipeline avoids re-embedding existing content. It performs a `LEFT JOIN ... WHERE pe.id IS NULL` anti-join on `(paper_id, section_name)` to identify only the units without corresponding vector representations.
 
-### 5. Built to Be Scheduled, Not Just Re-Run
+### 5. Discovery Is a Boundary, Not a Hard-Coded Source
+
+OpenAlex is currently the only discovery provider, but it is not baked in. Everything OpenAlex-specific — the `search` parameter, `primary_topic.field.id`, cursor paging, inverted-index abstracts, the `W` prefix — lives behind `discover_openalex(...)`, which returns provider-neutral `PaperCandidate` records. Adding arXiv or PubMed/PMC later means another `discover_*` function returning the same shape.
+
+* **`research_fields` is a generic setting**, written in plain names (`computer science, mathematics`). Translating it into `primary_topic.field.id:fields/17` is OpenAlex's private business; arXiv would translate the same names into `cat:cs.*` and PubMed into MeSH terms. An unrecognised field name **raises** — silently dropping the filter would reintroduce the exact bug it fixes.
+* **The relevance gate is provider-agnostic.** It scores a candidate's title+abstract against the topic using the same model and the same `search_query:` / `search_document:` prefixes as retrieval, so its score means the same thing retrieval's does.
+* **Two filters, because they catch different things.** Measured on 20 real candidates: the field filter removes MegaBLAST (bioinformatics, scores 0.409 — above five legitimate CS papers), and the gate removes ChEMBL (a chemistry database OpenAlex labels Computer Science, scores 0.236). Neither is sufficient alone.
+* **Semantic Scholar and Wikipedia stay enrichment.** S2 tells us more about a paper already found; Wikipedia gives background on a concept. Neither is a paper feed, and neither was moved into discovery for symmetry.
+
+### 6. Built to Be Scheduled, Not Just Re-Run
 
 Before Phase 2.5 a scheduled run mostly re-did its last one: the harvest sent `search=<topic>` with no sort or date filter, and OpenAlex's relevance ranking is stable, so the same ~75 works came back every time — while ~83 seconds per run were spent sleeping between Semantic Scholar calls that re-fetched TLDRs already stored.
 
