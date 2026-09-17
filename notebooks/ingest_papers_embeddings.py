@@ -79,6 +79,11 @@ try:
                          "/Volumes/workspace/default/models/modernbert-embed-base",
                          "Persisted model directory (see setup_embedding_model.py)")
     dbutils.widgets.dropdown("run_trigger", "manual", ["manual", "scheduled"], "How this run was started")
+    dbutils.widgets.text("research_fields", "computer science",
+                         "Research fields (comma-separated; blank = all of science)")
+    dbutils.widgets.dropdown("relevance_gate_enabled", "true", ["true", "false"], "Apply the semantic relevance gate?")
+    dbutils.widgets.text("relevance_threshold", "0.40", "Minimum cosine similarity to accept a candidate")
+    dbutils.widgets.dropdown("score_unscored_papers", "true", ["true", "false"], "Score existing unscored papers?")
 
     PAPERS_TABLE_NAME = dbutils.widgets.get("papers_table_name")
     EMBEDDINGS_TABLE_NAME = dbutils.widgets.get("embeddings_table_name")
@@ -107,6 +112,10 @@ try:
     MODEL_SOURCE = dbutils.widgets.get("model_source").strip().lower()
     MODEL_VOLUME_PATH = dbutils.widgets.get("model_volume_path").strip().rstrip("/")
     RUN_TRIGGER = dbutils.widgets.get("run_trigger").strip().lower()
+    RESEARCH_FIELDS = [f.strip() for f in dbutils.widgets.get("research_fields").split(",") if f.strip()]
+    RELEVANCE_GATE_ENABLED = dbutils.widgets.get("relevance_gate_enabled").lower() == "true"
+    RELEVANCE_THRESHOLD = float(dbutils.widgets.get("relevance_threshold"))
+    SCORE_UNSCORED_PAPERS = dbutils.widgets.get("score_unscored_papers").lower() == "true"
 except NameError:
     PAPERS_TABLE_NAME = "papers"
     EMBEDDINGS_TABLE_NAME = "paper_embeddings"
@@ -141,6 +150,10 @@ except NameError:
     MODEL_SOURCE = os.getenv("MODEL_SOURCE", "huggingface")
     MODEL_VOLUME_PATH = os.getenv("MODEL_VOLUME_PATH", "/tmp/models/modernbert-embed-base")
     RUN_TRIGGER = "manual"
+    RESEARCH_FIELDS = ["computer science"]
+    RELEVANCE_GATE_ENABLED = True
+    RELEVANCE_THRESHOLD = 0.40
+    SCORE_UNSCORED_PAPERS = True
 
 # Match embedding dimension to the selected model
 match EMBEDDING_MODEL_NAME:
@@ -188,6 +201,8 @@ print(f"  • Fetch new papers: {FETCH_NEW_PAPERS}")
 print(f"  • Fetch full text: {FETCH_FULLTEXT} -> sections {WANTED_SECTIONS}")
 print(f"  • Discovery: {DISCOVERY_MODE}, cap {MAX_NEW_PAPERS_PER_RUN} papers/run")
 print(f"  • S2 batching: {S2_BATCH_SIZE} DOIs/request")
+print(f"  • Research fields: {RESEARCH_FIELDS or '(all of science)'}")
+print(f"  • Relevance gate: {'on' if RELEVANCE_GATE_ENABLED else 'off'} @ {RELEVANCE_THRESHOLD}")
 print(f"  • Model source: {MODEL_SOURCE}"
       + (f" -> {MODEL_VOLUME_PATH}" if MODEL_SOURCE == "volume" else " (Hugging Face Hub)"))
 
@@ -325,6 +340,9 @@ with lock_conn.cursor() as cur:
         "fetch_fulltext": FETCH_FULLTEXT,
         # Recorded so a run that fell back to the Hub is visible afterwards, not
         # only in the driver log that dies with the cluster.
+        "research_fields": RESEARCH_FIELDS,
+        "relevance_gate_enabled": RELEVANCE_GATE_ENABLED,
+        "relevance_threshold": RELEVANCE_THRESHOLD,
         "model_source": MODEL_SOURCE,
         "model_volume_path": MODEL_VOLUME_PATH if MODEL_SOURCE == "volume" else None,
     })))
@@ -335,45 +353,196 @@ print(f"Run {RUN_ID} claimed the pipeline lock (trigger={RUN_TRIGGER}).")
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 3. Harvest Papers from OpenAlex (incremental)
+# MAGIC ## 2c. Load the Embedding Model
 # MAGIC
-# MAGIC Queries the OpenAlex API (high-throughput polite pool) and reconstructs
-# MAGIC inverted-index abstracts into clean text.
+# MAGIC The model is loaded from a **Unity Catalog Volume**, written once by
+# MAGIC `notebooks/setup_embedding_model.py`. It is not downloaded from the Hugging Face
+# MAGIC Hub on a normal run: a job cluster is created fresh per run, so the Hub download
+# MAGIC (568 MB, throttled when unauthenticated) was costing ~18 minutes *per execution* —
+# MAGIC more time acquiring the model than processing data.
 # MAGIC
-# MAGIC **Incremental since Phase 2.5.** A topic is *seeded* by relevance the first time
-# MAGIC it is seen - a cold corpus needs the canonical papers, not last week's preprints -
-# MAGIC and thereafter queried by `from_publication_date` sorted newest-first, from a
-# MAGIC per-topic watermark. Without this a scheduled run returns the same ~75 works
-# MAGIC every time, because relevance ranking is stable.
+# MAGIC ```text
+# MAGIC Hugging Face -> setup_embedding_model.py -> UC Volume -> here
+# MAGIC ```
 # MAGIC
-# MAGIC Semantic Scholar enrichment moved to the next cell, where it is batched.
+# MAGIC **This cell fails rather than falling back.** A missing path in `volume` mode
+# MAGIC raises, because an automatic re-download would let a production misconfiguration
+# MAGIC present as a merely slow run — which is the exact dependency this design removes.
+# MAGIC `model_source=huggingface` exists for development and recovery, is deliberate, and
+# MAGIC announces itself loudly.
+# MAGIC
+# MAGIC **Loaded before discovery (Phase 2.8).** The relevance gate scores every
+# MAGIC candidate at discovery time, so the model has to exist by then. It used to load
+# MAGIC just before encoding.
+# MAGIC
+# MAGIC ### The contract check
+# MAGIC
+# MAGIC `embedding_contract.json` sits beside the model and records what the stored
+# MAGIC vectors mean: base model, dimension, both task prefixes, normalisation. Those four
+# MAGIC values are otherwise kept aligned **by hand** across this notebook,
+# MAGIC `dashboard/config.py`, `mcp_server/config.py` and `sql/`, with only the dimension
+# MAGIC checked at runtime. Validating the contract closes the other three.
 
 # COMMAND ----------
 
-# DBTITLE 1,Fetch & Normalize Academic Papers
+# DBTITLE 1,Load the Model and Validate the Embedding Contract
+import json
+
+from sentence_transformers import SentenceTransformer
+
+CONTRACT_FILENAME = "embedding_contract.json"
+
+# Databricks renders tqdm through ipywidgets, which spammed the run log with
+# "Loading the widget is taking longer than expected" a dozen times and rendered
+# nothing useful. The batch counter below is more informative anyway.
+os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+
+
+def embedding_dimension(model) -> int:
+    """
+    sentence-transformers 6.0 renamed get_sentence_embedding_dimension() to
+    get_embedding_dimension(). Support both, so this notebook is not pinned to one
+    runtime's library version.
+    """
+    for name in ("get_embedding_dimension", "get_sentence_embedding_dimension"):
+        fn = getattr(model, name, None)
+        if callable(fn):
+            return int(fn())
+    raise AttributeError("SentenceTransformer exposes no embedding-dimension accessor.")
+
+
+def validate_embedding_contract(stored: dict, expected: dict) -> None:
+    """
+    Compare the contract saved beside the model against this notebook's constants.
+
+    Raises on the first disagreement, naming the field. A mismatch here means the
+    vectors about to be written would not share a space with the ones already
+    stored - which nothing downstream can detect, because a wrong-prefix or
+    wrong-model vector is still a perfectly valid 768-dim unit vector.
+    """
+    if not isinstance(stored, dict):
+        raise ValueError(f"{CONTRACT_FILENAME} is not a JSON object.")
+
+    for field, want in expected.items():
+        if field not in stored:
+            raise ValueError(
+                f"{CONTRACT_FILENAME} is missing {field!r}. It was written by an older "
+                f"version of setup_embedding_model.py - re-run it to refresh the contract."
+            )
+        got = stored[field]
+        if got != want:
+            raise ValueError(
+                f"Embedding contract mismatch on {field!r}: the stored model says {got!r}, "
+                f"this pipeline expects {want!r}.\n"
+                f"Vectors written under a mismatched contract are silently unusable. "
+                f"Either re-run setup_embedding_model.py with the right values, or fix "
+                f"this notebook's configuration - do not proceed."
+            )
+
+
+EXPECTED_CONTRACT = {
+    "base_model": EMBEDDING_MODEL_NAME,
+    "embedding_dim": EMBEDDING_DIM,
+    "document_prefix": DOCUMENT_PREFIX,
+    "query_prefix": QUERY_PREFIX,
+    "normalize": True,
+}
+
+if MODEL_SOURCE == "volume":
+    if not os.path.isdir(MODEL_VOLUME_PATH):
+        raise RuntimeError(
+            f"Embedding model not found at {MODEL_VOLUME_PATH}.\n\n"
+            f"Run notebooks/setup_embedding_model.py once to persist it there.\n\n"
+            f"This is deliberately fatal: falling back to a Hugging Face download would "
+            f"hide the misconfiguration behind a slow run, and re-introduce the per-run "
+            f"download this path exists to remove. For a development run, set "
+            f"model_source=huggingface explicitly."
+        )
+
+    contract_path = os.path.join(MODEL_VOLUME_PATH, CONTRACT_FILENAME)
+    if not os.path.isfile(contract_path):
+        raise RuntimeError(
+            f"{contract_path} is missing. The directory holds a model but nothing "
+            f"records what its vectors mean. Re-run setup_embedding_model.py."
+        )
+
+    with open(contract_path, encoding="utf-8") as fh:
+        stored_contract = json.load(fh)
+
+    # Cheap check first: a mismatch fails in milliseconds rather than after loading
+    # 568 MB of weights.
+    validate_embedding_contract(stored_contract, EXPECTED_CONTRACT)
+    print(f"Embedding contract verified against {contract_path}")
+
+    print(f"Loading embedding model from {MODEL_VOLUME_PATH} (no Hub request)...")
+    started = time.perf_counter()
+    embedding_model = SentenceTransformer(MODEL_VOLUME_PATH)
+    print(f"  loaded in {time.perf_counter() - started:.1f}s")
+
+elif MODEL_SOURCE == "huggingface":
+    print("=" * 72)
+    print("DEVELOPMENT MODE: downloading the embedding model from the Hugging Face Hub.")
+    print("This is not the production path. A scheduled run should use model_source=volume")
+    print("with a model persisted by notebooks/setup_embedding_model.py.")
+    print("=" * 72)
+    started = time.perf_counter()
+    embedding_model = SentenceTransformer(EMBEDDING_MODEL_NAME)
+    print(f"  downloaded and loaded in {time.perf_counter() - started:.1f}s")
+
+else:
+    raise ValueError(f"Unknown model_source {MODEL_SOURCE!r}. Expected 'volume' or 'huggingface'.")
+
+# Retained from Phase 1: fail fast rather than writing vectors the schema will
+# reject - or, worse, accept at the wrong width because EMBEDDING_DIM drifted.
+_actual_dim = embedding_dimension(embedding_model)
+if _actual_dim != EMBEDDING_DIM:
+    raise ValueError(
+        f"{EMBEDDING_MODEL_NAME} outputs {_actual_dim} dims but EMBEDDING_DIM is {EMBEDDING_DIM}. "
+        f"Fix the match/case in the config cell and the VECTOR(n) columns before ingesting."
+    )
+print(f"✅ Model ready: {_actual_dim}-dim, document prefix {DOCUMENT_PREFIX!r}")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 3. Paper Discovery
+# MAGIC
+# MAGIC Finds candidate papers for each topic. **OpenAlex is currently the only discovery
+# MAGIC provider, but it is not baked in.** Everything OpenAlex-specific — the `search`
+# MAGIC parameter, the field filter syntax, cursor paging, inverted-index abstracts, the
+# MAGIC `W`-prefix — lives behind `discover_openalex(...)`, which returns provider-neutral
+# MAGIC `PaperCandidate` records. Nothing downstream knows where a candidate came from
+# MAGIC except through its `source` field.
+# MAGIC
+# MAGIC Adding arXiv or PubMed/PMC later means writing another `discover_*` function that
+# MAGIC returns the same shape. See plan §2.8.7.
+# MAGIC
+# MAGIC ### Field context
+# MAGIC
+# MAGIC `research_fields` is a **generic** setting written in plain names
+# MAGIC (`computer science, mathematics`). Translating it into
+# MAGIC `primary_topic.field.id:fields/17` is OpenAlex's private business; arXiv would
+# MAGIC translate the same input into `cat:cs.*` and PubMed into MeSH terms.
+# MAGIC
+# MAGIC Without it, `search=` matches words across all of science: measured 2026-09-16,
+# MAGIC *"vector database indexing"* returned MegaBLAST, the Ribosomal Database Project
+# MAGIC and BLAST+.
+# MAGIC
+# MAGIC ### Incremental discovery
+# MAGIC
+# MAGIC A topic is *seeded* by relevance the first time it is seen — a cold corpus needs
+# MAGIC the canonical papers, not last week's preprints — and thereafter queried by
+# MAGIC `from_publication_date`, newest first, from a per-topic watermark.
+
+# COMMAND ----------
+
+# DBTITLE 1,Discovery Provider: OpenAlex
+import datetime
 import json
 import time
 
 import pandas as pd
 import requests
-
-def get_openalex_email() -> str:
-    try:
-        from databricks.sdk import WorkspaceClient
-        w = WorkspaceClient()
-        sec = w.secrets.get_secret(scope="openalex", key="email")
-        return base64.b64decode(sec.value).decode("utf-8")
-    except Exception:
-        return os.getenv("OPENALEX_EMAIL", "user@research-copilot.dev")
-
-def get_semantic_scholar_api_key() -> str | None:
-    try:
-        from databricks.sdk import WorkspaceClient
-        w = WorkspaceClient()
-        sec = w.secrets.get_secret(scope="semantic-scholar", key="api-key")
-        return base64.b64decode(sec.value).decode("utf-8")
-    except Exception:
-        return os.getenv("SEMANTIC_SCHOLAR_API_KEY")
 
 OPENALEX_EMAIL = get_openalex_email()
 S2_API_KEY = get_semantic_scholar_api_key()
@@ -386,9 +555,111 @@ OPENALEX_SELECT = (
     "best_oa_location,locations"
 )
 
+# OpenAlex's own field taxonomy (https://api.openalex.org/fields). This map is the
+# ONLY place a generic research field becomes an OpenAlex concept - which is the
+# point: another provider translates the same names its own way.
+OPENALEX_FIELD_IDS = {
+    "agricultural and biological sciences": 11,
+    "arts and humanities": 12,
+    "biochemistry, genetics and molecular biology": 13,
+    "business, management and accounting": 14,
+    "chemical engineering": 15,
+    "chemistry": 16,
+    "computer science": 17,
+    "decision sciences": 18,
+    "earth and planetary sciences": 19,
+    "economics, econometrics and finance": 20,
+    "energy": 21,
+    "engineering": 22,
+    "environmental science": 23,
+    "immunology and microbiology": 24,
+    "materials science": 25,
+    "mathematics": 26,
+    "medicine": 27,
+    "neuroscience": 28,
+    "nursing": 29,
+    "pharmacology, toxicology and pharmaceutics": 30,
+    "physics and astronomy": 31,
+    "psychology": 32,
+    "social sciences": 33,
+    "veterinary": 34,
+    "dentistry": 35,
+    "health professions": 36,
+}
 
-def _standardize_openalex(item: dict) -> dict | None:
-    """One OpenAlex work -> our row shape, or None if it is unusable."""
+# Everyday shorthand, so the widget does not demand OpenAlex's exact wording.
+OPENALEX_FIELD_ALIASES = {
+    "cs": "computer science",
+    "computing": "computer science",
+    "math": "mathematics",
+    "maths": "mathematics",
+    "physics": "physics and astronomy",
+    "astronomy": "physics and astronomy",
+    "biology": "agricultural and biological sciences",
+    "biochemistry": "biochemistry, genetics and molecular biology",
+    "genetics": "biochemistry, genetics and molecular biology",
+    "molecular biology": "biochemistry, genetics and molecular biology",
+    "economics": "economics, econometrics and finance",
+    "finance": "economics, econometrics and finance",
+    "business": "business, management and accounting",
+    "earth science": "earth and planetary sciences",
+    "pharmacology": "pharmacology, toxicology and pharmaceutics",
+    "microbiology": "immunology and microbiology",
+    "immunology": "immunology and microbiology",
+}
+
+
+def openalex_field_filter(research_fields: list[str]) -> str | None:
+    """
+    Translate generic field names into OpenAlex's filter syntax.
+
+    Returns None when no fields are configured, which means "search all of science"
+    - the pre-Phase-2.8 behaviour, available deliberately but not by accident.
+
+    An unrecognised name RAISES rather than being skipped. A typo like
+    "comptuer science" would otherwise silently drop the filter and reintroduce
+    exactly the bug this function exists to fix, with no symptom except a corpus
+    slowly filling with biology again.
+    """
+    if not research_fields:
+        return None
+
+    ids, unknown = [], []
+    for raw in research_fields:
+        key = (raw or "").strip().lower()
+        if not key:
+            continue
+        key = OPENALEX_FIELD_ALIASES.get(key, key)
+        if key in OPENALEX_FIELD_IDS:
+            ids.append(f"fields/{OPENALEX_FIELD_IDS[key]}")
+        else:
+            unknown.append(raw)
+
+    if unknown:
+        raise ValueError(
+            f"Unknown research field(s): {unknown}. "
+            f"Known fields: {', '.join(sorted(OPENALEX_FIELD_IDS))}. "
+            f"Fix the research_fields widget - an unrecognised name would otherwise "
+            f"disable field filtering entirely."
+        )
+    if not ids:
+        return None
+
+    # "|" is OR in OpenAlex filter syntax, so interdisciplinary work can span fields.
+    return "primary_topic.field.id:" + "|".join(dict.fromkeys(ids))
+
+
+def _openalex_to_candidate(item: dict) -> dict | None:
+    """
+    One OpenAlex work -> a provider-neutral PaperCandidate, or None if unusable.
+
+    PaperCandidate is the contract every discovery provider returns:
+
+        source, source_id, doi, title, abstract, publication_year,
+        publication_date, venue, citation_count, open_access_url, raw
+
+    `raw` carries the provider payload through for enrichment and traceability.
+    """
     inv_idx = item.get("abstract_inverted_index") or {}
     pos_word = {pos: word for word, positions in inv_idx.items() for pos in positions}
     abstract = " ".join(pos_word[i] for i in sorted(pos_word)) if pos_word else None
@@ -402,13 +673,15 @@ def _standardize_openalex(item: dict) -> dict | None:
     venue = (loc.get("source") or {}).get("display_name")
     oa_url = (item.get("open_access") or {}).get("oa_url")
 
-    # A paper with no abstract is not ingested at all: the abstract is the only
-    # text guaranteed to exist for every paper, and the whole index rests on it.
+    # A paper with no abstract is not ingested at all: the abstract is the only text
+    # guaranteed to exist for every paper, the whole index rests on it, and the
+    # relevance gate has nothing to score without it.
     if not (openalex_id and item.get("title") and abstract):
         return None
 
     return {
-        "openalex_id": openalex_id,
+        "source": "openalex",
+        "source_id": openalex_id,
         "doi": doi,
         "title": item.get("title"),
         "abstract": abstract,
@@ -416,31 +689,33 @@ def _standardize_openalex(item: dict) -> dict | None:
         "publication_date": item.get("publication_date"),
         "venue": venue,
         "citation_count": item.get("cited_by_count", 0),
-        "source_api": "openalex",
         "open_access_url": oa_url,
-        "payload": item,
+        "raw": item,
     }
 
 
-def fetch_openalex_works(query: str, limit: int, from_date: str | None = None) -> list[dict]:
+def discover_openalex(topic: str, research_fields: list[str], limit: int,
+                      from_date: str | None = None) -> list[dict]:
     """
-    Fetch up to `limit` works for one topic.
+    THE DISCOVERY BOUNDARY. Everything OpenAlex-specific stops here.
 
-    Two modes, and the distinction is the point of Phase 2.5:
+    Returns up to `limit` PaperCandidate records for one topic.
 
-      from_date is None  -> SEED. Sort by relevance. A cold corpus needs the
+      from_date is None  -> SEED. Sorted by relevance. A cold corpus needs the
                             canonical papers for a topic, not last week's preprints.
-                            Uses basic `page` paging: OpenAlex does not support
-                            cursor paging together with relevance sorting.
+                            Basic `page` paging: OpenAlex does not support cursor
+                            paging together with relevance sorting.
 
-      from_date is set   -> INCREMENTAL. filter=from_publication_date, sorted newest
-                            first, cursor-paged. This is what makes a scheduled run
-                            return something a previous run did not already have.
+      from_date is set   -> INCREMENTAL. filter=from_publication_date, newest first,
+                            cursor-paged. This is what makes a scheduled run return
+                            something a previous run did not already have.
     """
     url = "https://api.openalex.org/works"
     headers = {"User-Agent": f"ResearchCopilot/1.0 (mailto:{OPENALEX_EMAIL})"}
+    field_filter = openalex_field_filter(research_fields)
+
     base = {
-        "search": query,
+        "search": topic,
         "mailto": OPENALEX_EMAIL,
         "select": OPENALEX_SELECT,
         "per-page": min(max(limit, 1), 200),
@@ -453,19 +728,23 @@ def fetch_openalex_works(query: str, limit: int, from_date: str | None = None) -
     while len(collected) < limit:
         params = dict(base)
         params["per-page"] = min(base["per-page"], limit - len(collected))
+
+        filters = [field_filter] if field_filter else []
         if from_date:
-            params["filter"] = f"from_publication_date:{from_date}"
+            filters.append(f"from_publication_date:{from_date}")
             params["sort"] = "publication_date:desc"
             params["cursor"] = cursor
         else:
             params["page"] = page
+        if filters:
+            params["filter"] = ",".join(filters)      # "," is AND in OpenAlex
 
         try:
             resp = requests.get(url, params=params, headers=headers, timeout=20)
             resp.raise_for_status()
             body = resp.json()
         except Exception as exc:
-            print(f"  [warn] OpenAlex query failed for '{query}' (page {page}): {exc}")
+            print(f"  [warn] OpenAlex query failed for '{topic}' (page {page}): {exc}")
             break
 
         results = body.get("results", [])
@@ -473,9 +752,9 @@ def fetch_openalex_works(query: str, limit: int, from_date: str | None = None) -
             break
 
         for item in results:
-            row = _standardize_openalex(item)
-            if row:
-                collected.append(row)
+            candidate = _openalex_to_candidate(item)
+            if candidate:
+                collected.append(candidate)
 
         if from_date:
             cursor = (body.get("meta") or {}).get("next_cursor")
@@ -483,16 +762,74 @@ def fetch_openalex_works(query: str, limit: int, from_date: str | None = None) -
                 break
         else:
             page += 1
-            # Basic paging is capped at 10k results; our per-run caps are far below
-            # that, but stop anyway rather than loop on a misbehaving response.
-            if page > 25:
+            if page > 25:          # basic paging caps at 10k; stop well before
                 break
 
-        time.sleep(0.2)   # OpenAlex polite pool spacing
+        time.sleep(0.2)            # OpenAlex polite pool spacing
 
     return collected[:limit]
 
+# COMMAND ----------
 
+# DBTITLE 1,Semantic Relevance Gate (provider-agnostic)
+# MAGIC %md is deliberately not used here: this cell is the gate, and it operates on
+# MAGIC PaperCandidate records regardless of which provider produced them.
+
+
+def candidate_text(candidate: dict) -> str:
+    """
+    The text a candidate is judged on: title plus abstract.
+
+    Deliberately the same shape the *document* embedding will eventually see, so the
+    gate's score and the retrieval score mean the same thing.
+    """
+    title = (candidate.get("title") or "").strip()
+    abstract = (candidate.get("abstract") or "").strip()
+    if title and abstract:
+        return f"{title}. {abstract}"
+    return title or abstract
+
+
+def relevance_scores(model, topic: str, candidates: list[dict]) -> list[float]:
+    """
+    Cosine similarity of each candidate against the topic.
+
+    Uses the asymmetric prefixes exactly as retrieval does - the topic is a *query*
+    and the paper is a *document*. Scoring them symmetrically would produce numbers
+    that do not correspond to what semantic search will later return.
+
+    Vectors are unit-normalised, so the dot product is the cosine.
+    """
+    if not candidates:
+        return []
+    query_vec = model.encode(QUERY_PREFIX + topic, normalize_embeddings=True)
+    doc_vecs = model.encode(
+        [DOCUMENT_PREFIX + candidate_text(c)[:CHUNK_SIZE] for c in candidates],
+        batch_size=BATCH_SIZE,
+        show_progress_bar=False,
+        normalize_embeddings=True,
+    )
+    return [float(query_vec @ doc_vec) for doc_vec in doc_vecs]
+
+
+def partition_by_relevance(candidates: list[dict], scores: list[float],
+                           threshold: float) -> tuple[list[dict], list[dict]]:
+    """
+    Split candidates into (accepted, rejected) at `threshold`.
+
+    Each candidate is annotated in place with the score and the topic it was scored
+    against, so the verdict stays interpretable after the fact - a bare 0.31 means
+    nothing without knowing what it was compared to.
+    """
+    accepted, rejected = [], []
+    for candidate, score in zip(candidates, scores):
+        candidate["relevance_score"] = score
+        (accepted if score >= threshold else rejected).append(candidate)
+    return accepted, rejected
+
+# COMMAND ----------
+
+# DBTITLE 1,Harvest Candidates, Then Gate Them
 def _load_watermarks(topics: list[str]) -> dict[str, dict]:
     """Per-topic discovery cursors. A topic with no row has never been seeded."""
     conn = psycopg2.connect(
@@ -508,16 +845,25 @@ def _load_watermarks(topics: list[str]) -> dict[str, dict]:
 
 
 harvested_papers = []
+candidates_found = 0
+candidates_rejected = 0
+topic_results: dict[str, list[dict]] = {}
 
 if not FETCH_NEW_PAPERS:
-    print("Skipping external paper fetch (fetch_new_papers = false). Processing existing database records.")
+    print("Skipping discovery (fetch_new_papers = false). Processing existing database records.")
 else:
+    # Fail before any network call if a field name is wrong.
+    _filter_preview = openalex_field_filter(RESEARCH_FIELDS)
+    print(f"Field context: {RESEARCH_FIELDS or ['(all of science)']}"
+          f"  ->  {_filter_preview or 'no filter'}")
+    print(f"Relevance gate: {'on' if RELEVANCE_GATE_ENABLED else 'OFF'}"
+          f" (threshold {RELEVANCE_THRESHOLD})")
+
     watermarks = _load_watermarks(TOPICS)
     remaining = MAX_NEW_PAPERS_PER_RUN
-    seen_openalex_ids: set[str] = set()
-    topic_results: dict[str, list[dict]] = {}
+    seen_source_ids: set[str] = set()
 
-    print(f"Harvesting up to {MAX_NEW_PAPERS_PER_RUN} papers across {len(TOPICS)} topics...")
+    print(f"\nDiscovering up to {MAX_NEW_PAPERS_PER_RUN} papers across {len(TOPICS)} topics...")
 
     for idx, topic in enumerate(TOPICS, start=1):
         if remaining <= 0:
@@ -537,19 +883,39 @@ else:
         budget = min(PAPERS_PER_TOPIC, remaining)
         print(f"  [{idx}/{len(TOPICS)}] '{topic}' - {mode}, budget {budget}")
 
-        works = fetch_openalex_works(topic, limit=budget, from_date=from_date)
+        candidates = discover_openalex(topic, RESEARCH_FIELDS, limit=budget, from_date=from_date)
+        candidates_found += len(candidates)
 
         # De-duplicate across topics within this run: seed topics overlap heavily,
         # and upserting the same work five times is five S2 lookups for nothing.
-        fresh = [w for w in works if w["openalex_id"] not in seen_openalex_ids]
-        seen_openalex_ids.update(w["openalex_id"] for w in fresh)
+        fresh = [c for c in candidates if c["source_id"] not in seen_source_ids]
 
+        if RELEVANCE_GATE_ENABLED and fresh:
+            scores = relevance_scores(embedding_model, topic, fresh)
+            accepted, rejected = partition_by_relevance(fresh, scores, RELEVANCE_THRESHOLD)
+            candidates_rejected += len(rejected)
+            for c in accepted:
+                c["relevance_topic"] = topic
+            if rejected:
+                worst = min(c["relevance_score"] for c in rejected)
+                best = max(c["relevance_score"] for c in rejected)
+                print(f"      gate: rejected {len(rejected)} (scores {worst:.3f}-{best:.3f})")
+                for c in sorted(rejected, key=lambda x: -x["relevance_score"])[:3]:
+                    print(f"        {c['relevance_score']:.3f}  {str(c['title'])[:64]}")
+            fresh = accepted
+        else:
+            for c in fresh:
+                c["relevance_topic"] = topic
+                c.setdefault("relevance_score", None)
+
+        seen_source_ids.update(c["source_id"] for c in fresh)
         topic_results[topic] = fresh
         harvested_papers.extend(fresh)
         remaining -= len(fresh)
-        print(f"      -> {len(works)} returned, {len(fresh)} new to this run")
+        print(f"      -> {len(candidates)} found, {len(fresh)} accepted")
 
-    print(f"\nHarvested {len(harvested_papers)} candidate papers from OpenAlex.")
+    print(f"\nDiscovered {candidates_found} candidates, "
+          f"rejected {candidates_rejected}, accepted {len(harvested_papers)}.")
 
 # COMMAND ----------
 
@@ -693,11 +1059,15 @@ if harvested_papers:
     INSERT INTO {PAPERS_TABLE_NAME} (
         openalex_id, semantic_scholar_id, doi, title, abstract,
         publication_year, venue, citation_count, tldr, influence_score,
-        source_api, open_access_url, payload, synced_at
+        source_api, open_access_url, payload, synced_at,
+        relevance_score, relevance_topic, relevance_threshold,
+        relevance_status, relevance_scored_at
     ) VALUES (
         %(openalex_id)s, %(semantic_scholar_id)s, %(doi)s, %(title)s, %(abstract)s,
         %(publication_year)s, %(venue)s, %(citation_count)s, %(tldr)s, %(influence_score)s,
-        %(source_api)s, %(open_access_url)s, %(payload)s, now()
+        %(source_api)s, %(open_access_url)s, %(payload)s, now(),
+        %(relevance_score)s, %(relevance_topic)s, %(relevance_threshold)s,
+        %(relevance_status)s, %(relevance_scored_at)s
     )
     ON CONFLICT (openalex_id) DO UPDATE SET
         semantic_scholar_id = COALESCE(EXCLUDED.semantic_scholar_id, {PAPERS_TABLE_NAME}.semantic_scholar_id),
@@ -708,15 +1078,48 @@ if harvested_papers:
         tldr                = COALESCE(EXCLUDED.tldr, {PAPERS_TABLE_NAME}.tldr),
         influence_score     = COALESCE(EXCLUDED.influence_score, {PAPERS_TABLE_NAME}.influence_score),
         open_access_url     = COALESCE(EXCLUDED.open_access_url, {PAPERS_TABLE_NAME}.open_access_url),
-        synced_at           = now()
+        synced_at           = now(),
+        -- A paper re-found under a different topic keeps its BEST score. Letting a
+        -- weaker match overwrite a stronger one would flag papers that a previous
+        -- run had correctly accepted.
+        relevance_score     = CASE
+            WHEN EXCLUDED.relevance_score IS NOT NULL
+             AND (papers.relevance_score IS NULL
+                  OR EXCLUDED.relevance_score > papers.relevance_score)
+            THEN EXCLUDED.relevance_score ELSE papers.relevance_score END,
+        relevance_topic     = CASE
+            WHEN EXCLUDED.relevance_score IS NOT NULL
+             AND (papers.relevance_score IS NULL
+                  OR EXCLUDED.relevance_score > papers.relevance_score)
+            THEN EXCLUDED.relevance_topic ELSE papers.relevance_topic END,
+        relevance_threshold = CASE
+            WHEN EXCLUDED.relevance_score IS NOT NULL
+             AND (papers.relevance_score IS NULL
+                  OR EXCLUDED.relevance_score > papers.relevance_score)
+            THEN EXCLUDED.relevance_threshold ELSE papers.relevance_threshold END,
+        relevance_status    = CASE
+            WHEN EXCLUDED.relevance_score IS NOT NULL
+             AND (papers.relevance_score IS NULL
+                  OR EXCLUDED.relevance_score > papers.relevance_score)
+            THEN EXCLUDED.relevance_status ELSE papers.relevance_status END,
+        relevance_scored_at = CASE
+            WHEN EXCLUDED.relevance_score IS NOT NULL
+             AND (papers.relevance_score IS NULL
+                  OR EXCLUDED.relevance_score > papers.relevance_score)
+            THEN EXCLUDED.relevance_scored_at ELSE papers.relevance_scored_at END
     RETURNING (xmax = 0) AS inserted;
     """
 
     with conn.cursor() as cur:
         for p in harvested_papers:
             s2 = s2_by_doi.get(p["doi"].lower(), {}) if p.get("doi") else {}
+            # PaperCandidate -> papers row. source_id and raw are the provider-neutral
+            # names; the papers table still calls them openalex_id and payload, which
+            # is fine while OpenAlex is the only discovery provider. A second provider
+            # is what would force a column rename, not this.
+            score = p.get("relevance_score")
             params = {
-                "openalex_id": p.get("openalex_id"),
+                "openalex_id": p.get("source_id"),
                 "semantic_scholar_id": s2.get("semantic_scholar_id"),
                 "doi": p.get("doi"),
                 "title": p.get("title", ""),
@@ -726,9 +1129,16 @@ if harvested_papers:
                 "citation_count": p.get("citation_count", 0),
                 "tldr": s2.get("tldr"),
                 "influence_score": s2.get("influence_score"),
-                "source_api": p.get("source_api", "openalex"),
+                "source_api": p.get("source", "openalex"),
                 "open_access_url": p.get("open_access_url"),
-                "payload": json.dumps(p.get("payload")) if p.get("payload") else None,
+                "payload": json.dumps(p.get("raw")) if p.get("raw") else None,
+                "relevance_score": score,
+                "relevance_topic": p.get("relevance_topic"),
+                "relevance_threshold": RELEVANCE_THRESHOLD if score is not None else None,
+                # Everything reaching the upsert passed the gate, so it is accepted.
+                # Rejected candidates are never inserted at all.
+                "relevance_status": "accepted" if score is not None else "unscored",
+                "relevance_scored_at": datetime.datetime.now(datetime.timezone.utc) if score is not None else None,
             }
             cur.execute(upsert_sql, params)
             # xmax = 0 distinguishes a fresh INSERT from an ON CONFLICT UPDATE, which
@@ -1340,155 +1750,7 @@ print(f"✅ Generated {len(note_chunks_df)} chunks from {len(unembedded_notes_df
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 9. Load the Embedding Model
-# MAGIC
-# MAGIC The model is loaded from a **Unity Catalog Volume**, written once by
-# MAGIC `notebooks/setup_embedding_model.py`. It is not downloaded from the Hugging Face
-# MAGIC Hub on a normal run: a job cluster is created fresh per run, so the Hub download
-# MAGIC (568 MB, throttled when unauthenticated) was costing ~18 minutes *per execution* —
-# MAGIC more time acquiring the model than processing data.
-# MAGIC
-# MAGIC ```text
-# MAGIC Hugging Face -> setup_embedding_model.py -> UC Volume -> here
-# MAGIC ```
-# MAGIC
-# MAGIC **This cell fails rather than falling back.** A missing path in `volume` mode
-# MAGIC raises, because an automatic re-download would let a production misconfiguration
-# MAGIC present as a merely slow run — which is the exact dependency this design removes.
-# MAGIC `model_source=huggingface` exists for development and recovery, is deliberate, and
-# MAGIC announces itself loudly.
-# MAGIC
-# MAGIC ### The contract check
-# MAGIC
-# MAGIC `embedding_contract.json` sits beside the model and records what the stored
-# MAGIC vectors mean: base model, dimension, both task prefixes, normalisation. Those four
-# MAGIC values are otherwise kept aligned **by hand** across this notebook,
-# MAGIC `dashboard/config.py`, `mcp_server/config.py` and `sql/`, with only the dimension
-# MAGIC checked at runtime. Validating the contract closes the other three.
-
-# COMMAND ----------
-
-# DBTITLE 1,Load the Model and Validate the Embedding Contract
-import json
-
-from sentence_transformers import SentenceTransformer
-
-CONTRACT_FILENAME = "embedding_contract.json"
-
-# Databricks renders tqdm through ipywidgets, which spammed the run log with
-# "Loading the widget is taking longer than expected" a dozen times and rendered
-# nothing useful. The batch counter below is more informative anyway.
-os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
-
-
-def embedding_dimension(model) -> int:
-    """
-    sentence-transformers 6.0 renamed get_sentence_embedding_dimension() to
-    get_embedding_dimension(). Support both, so this notebook is not pinned to one
-    runtime's library version.
-    """
-    for name in ("get_embedding_dimension", "get_sentence_embedding_dimension"):
-        fn = getattr(model, name, None)
-        if callable(fn):
-            return int(fn())
-    raise AttributeError("SentenceTransformer exposes no embedding-dimension accessor.")
-
-
-def validate_embedding_contract(stored: dict, expected: dict) -> None:
-    """
-    Compare the contract saved beside the model against this notebook's constants.
-
-    Raises on the first disagreement, naming the field. A mismatch here means the
-    vectors about to be written would not share a space with the ones already
-    stored - which nothing downstream can detect, because a wrong-prefix or
-    wrong-model vector is still a perfectly valid 768-dim unit vector.
-    """
-    if not isinstance(stored, dict):
-        raise ValueError(f"{CONTRACT_FILENAME} is not a JSON object.")
-
-    for field, want in expected.items():
-        if field not in stored:
-            raise ValueError(
-                f"{CONTRACT_FILENAME} is missing {field!r}. It was written by an older "
-                f"version of setup_embedding_model.py - re-run it to refresh the contract."
-            )
-        got = stored[field]
-        if got != want:
-            raise ValueError(
-                f"Embedding contract mismatch on {field!r}: the stored model says {got!r}, "
-                f"this pipeline expects {want!r}.\n"
-                f"Vectors written under a mismatched contract are silently unusable. "
-                f"Either re-run setup_embedding_model.py with the right values, or fix "
-                f"this notebook's configuration - do not proceed."
-            )
-
-
-EXPECTED_CONTRACT = {
-    "base_model": EMBEDDING_MODEL_NAME,
-    "embedding_dim": EMBEDDING_DIM,
-    "document_prefix": DOCUMENT_PREFIX,
-    "query_prefix": QUERY_PREFIX,
-    "normalize": True,
-}
-
-if MODEL_SOURCE == "volume":
-    if not os.path.isdir(MODEL_VOLUME_PATH):
-        raise RuntimeError(
-            f"Embedding model not found at {MODEL_VOLUME_PATH}.\n\n"
-            f"Run notebooks/setup_embedding_model.py once to persist it there.\n\n"
-            f"This is deliberately fatal: falling back to a Hugging Face download would "
-            f"hide the misconfiguration behind a slow run, and re-introduce the per-run "
-            f"download this path exists to remove. For a development run, set "
-            f"model_source=huggingface explicitly."
-        )
-
-    contract_path = os.path.join(MODEL_VOLUME_PATH, CONTRACT_FILENAME)
-    if not os.path.isfile(contract_path):
-        raise RuntimeError(
-            f"{contract_path} is missing. The directory holds a model but nothing "
-            f"records what its vectors mean. Re-run setup_embedding_model.py."
-        )
-
-    with open(contract_path, encoding="utf-8") as fh:
-        stored_contract = json.load(fh)
-
-    # Cheap check first: a mismatch fails in milliseconds rather than after loading
-    # 568 MB of weights.
-    validate_embedding_contract(stored_contract, EXPECTED_CONTRACT)
-    print(f"Embedding contract verified against {contract_path}")
-
-    print(f"Loading embedding model from {MODEL_VOLUME_PATH} (no Hub request)...")
-    started = time.perf_counter()
-    embedding_model = SentenceTransformer(MODEL_VOLUME_PATH)
-    print(f"  loaded in {time.perf_counter() - started:.1f}s")
-
-elif MODEL_SOURCE == "huggingface":
-    print("=" * 72)
-    print("DEVELOPMENT MODE: downloading the embedding model from the Hugging Face Hub.")
-    print("This is not the production path. A scheduled run should use model_source=volume")
-    print("with a model persisted by notebooks/setup_embedding_model.py.")
-    print("=" * 72)
-    started = time.perf_counter()
-    embedding_model = SentenceTransformer(EMBEDDING_MODEL_NAME)
-    print(f"  downloaded and loaded in {time.perf_counter() - started:.1f}s")
-
-else:
-    raise ValueError(f"Unknown model_source {MODEL_SOURCE!r}. Expected 'volume' or 'huggingface'.")
-
-# Retained from Phase 1: fail fast rather than writing vectors the schema will
-# reject - or, worse, accept at the wrong width because EMBEDDING_DIM drifted.
-_actual_dim = embedding_dimension(embedding_model)
-if _actual_dim != EMBEDDING_DIM:
-    raise ValueError(
-        f"{EMBEDDING_MODEL_NAME} outputs {_actual_dim} dims but EMBEDDING_DIM is {EMBEDDING_DIM}. "
-        f"Fix the match/case in the config cell and the VECTOR(n) columns before ingesting."
-    )
-print(f"✅ Model ready: {_actual_dim}-dim, document prefix {DOCUMENT_PREFIX!r}")
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC ## 10. Batch Vector Encoding
+# MAGIC ## 9. Batch Vector Encoding
 # MAGIC
 # MAGIC Computes 768-dimensional dense vectors with unit-normalization (`normalize_embeddings=True`).
 # MAGIC
@@ -1535,7 +1797,7 @@ if len(note_chunks_df) > 0:
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 11. Batch Insert Embeddings into Lakebase pgvector
+# MAGIC ## 10. Batch Insert Embeddings into Lakebase pgvector
 # MAGIC
 # MAGIC Uses `psycopg2.extras.execute_batch` to bulk persist vectors into `paper_embeddings` and `note_embeddings` with `%s::vector(768)` type casting (the cast is interpolated from `EMBEDDING_DIM`, so it follows the model).
 
@@ -1598,7 +1860,7 @@ if len(note_chunks_df) > 0:
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 12. Verification & Similarity Search Test
+# MAGIC ## 11. Verification & Similarity Search Test
 # MAGIC
 # MAGIC Corpus composition, full-text acquisition outcomes, and two cosine searches.
 # MAGIC
@@ -1689,6 +1951,126 @@ for kind, test_query in TEST_QUERIES:
 conn.close()
 print("\n🎉 Notebook execution complete! Lakebase vector index is active and ready for Agentic RAG.")
 
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 12. Score Existing Papers (flag only — nothing is deleted)
+# MAGIC
+# MAGIC Papers ingested before the relevance gate existed carry
+# MAGIC `relevance_status = 'unscored'`. This cell scores them so the threshold can be
+# MAGIC calibrated against the corpus we already have, **before** anyone decides what to
+# MAGIC do about the low scorers.
+# MAGIC
+# MAGIC **Nothing is deleted, and nothing is hidden.** A `flagged` paper stays fully
+# MAGIC searchable; no query in the dashboard or the MCP server filters on
+# MAGIC `relevance_status`. The flag is a note to a human.
+# MAGIC
+# MAGIC ### The honest limitation
+# MAGIC
+# MAGIC Papers ingested before Phase 2.8 never recorded *which topic found them* — the
+# MAGIC column did not exist. So a historical paper is scored against **every** configured
+# MAGIC topic and keeps its best match, with `relevance_topic` naming the winner.
+# MAGIC
+# MAGIC That is a fair substitute and slightly generous: scoring against all topics can
+# MAGIC only raise a paper's score, never lower it. A paper that scores low against all
+# MAGIC five topics really is unrelated to this corpus.
+# MAGIC
+# MAGIC New papers do not have this problem — the topic is known at discovery time.
+
+# COMMAND ----------
+
+# DBTITLE 1,Backfill Relevance Scores for Unscored Papers
+if not SCORE_UNSCORED_PAPERS:
+    print("Skipping relevance backfill (score_unscored_papers = false).")
+elif not TOPICS:
+    print("Skipping relevance backfill - no topics configured to score against.")
+else:
+    conn = psycopg2.connect(
+        host=db_host, port=db_port, dbname=db_name,
+        user=db_user, password=db_password, sslmode='require'
+    )
+    unscored_df = pd.read_sql_query(f"""
+        SELECT paper_id, title, abstract
+        FROM {PAPERS_TABLE_NAME}
+        WHERE relevance_status = 'unscored'
+        ORDER BY citation_count DESC NULLS LAST
+    """, conn)
+    conn.close()
+
+    print(f"{len(unscored_df)} paper(s) to score against {len(TOPICS)} topic(s).")
+
+    if len(unscored_df) == 0:
+        print("  Nothing to do.")
+    else:
+        candidates = [
+            {"title": row["title"], "abstract": row["abstract"]}
+            for _, row in unscored_df.iterrows()
+        ]
+
+        # Score every paper against every topic, keep the best. One encode pass per
+        # topic rather than per paper: the document vectors are recomputed each time,
+        # which is wasteful, but the corpus is small and the alternative is holding
+        # every vector in memory for a one-off backfill.
+        best_score = [float("-inf")] * len(candidates)
+        best_topic = [None] * len(candidates)
+
+        for topic in TOPICS:
+            scores = relevance_scores(embedding_model, topic, candidates)
+            for i, score in enumerate(scores):
+                if score > best_score[i]:
+                    best_score[i] = score
+                    best_topic[i] = topic
+            print(f"  scored against '{topic}'")
+
+        now = datetime.datetime.now(datetime.timezone.utc)
+        updates = [
+            (float(best_score[i]), best_topic[i], RELEVANCE_THRESHOLD,
+             "accepted" if best_score[i] >= RELEVANCE_THRESHOLD else "flagged",
+             now, str(row["paper_id"]))
+            for i, (_, row) in enumerate(unscored_df.iterrows())
+        ]
+
+        conn = psycopg2.connect(
+            host=db_host, port=db_port, dbname=db_name,
+            user=db_user, password=db_password, sslmode='require'
+        )
+        with conn:
+            with conn.cursor() as cur:
+                psycopg2.extras.execute_batch(cur, f"""
+                    UPDATE {PAPERS_TABLE_NAME}
+                       SET relevance_score = %s,
+                           relevance_topic = %s,
+                           relevance_threshold = %s,
+                           relevance_status = %s,
+                           relevance_scored_at = %s
+                     WHERE paper_id = %s;
+                """, updates, page_size=100)
+        conn.close()
+
+        flagged = sum(1 for u in updates if u[3] == "flagged")
+        print(f"\nScored {len(updates)} paper(s): "
+              f"{len(updates) - flagged} accepted, {flagged} flagged.")
+        print("Nothing was deleted. Flagged papers remain fully searchable.")
+
+        # The rows either side of the threshold are what tell you whether the
+        # threshold is right. Print them rather than making you write the query.
+        ranked = sorted(zip(best_score, best_topic, unscored_df["title"].tolist()),
+                        reverse=True)
+        near = [r for r in ranked if r[0] < RELEVANCE_THRESHOLD][:5]
+        weakest = [r for r in ranked if r[0] >= RELEVANCE_THRESHOLD][-5:]
+
+        if near:
+            print(f"\nHighest-scoring FLAGGED papers (just below {RELEVANCE_THRESHOLD}) -")
+            print("if these look on-topic, the threshold is too high:")
+            for score, topic, title in near:
+                print(f"  {score:.3f}  [{str(topic)[:24]}]  {str(title)[:60]}")
+
+        if weakest:
+            print(f"\nLowest-scoring ACCEPTED papers (just above {RELEVANCE_THRESHOLD}) -")
+            print("if these look off-topic, the threshold is too low:")
+            for score, topic, title in weakest:
+                print(f"  {score:.3f}  [{str(topic)[:24]}]  {str(title)[:60]}")
 # COMMAND ----------
 
 # MAGIC %md
@@ -1705,6 +2087,8 @@ print("\n🎉 Notebook execution complete! Lakebase vector index is active and r
 
 # DBTITLE 1,Record Run Outcome and Release the Lock
 _counts = {
+    "candidates_found": candidates_found,
+    "candidates_rejected": candidates_rejected,
     "papers_harvested": len(harvested_papers),
     "papers_inserted": papers_inserted,
     "papers_enriched": len(s2_by_doi),
@@ -1721,6 +2105,8 @@ with lock_conn.cursor() as cur:
             status             = 'ok',
             finished_at        = now(),
             duration_seconds   = %(duration)s,
+            candidates_found   = %(candidates_found)s,
+            candidates_rejected = %(candidates_rejected)s,
             papers_harvested   = %(papers_harvested)s,
             papers_inserted    = %(papers_inserted)s,
             papers_enriched    = %(papers_enriched)s,
