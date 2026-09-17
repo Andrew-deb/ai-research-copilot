@@ -13,6 +13,7 @@ Three SQL files that define the complete Lakebase schema. Run in order via `setu
 | `05_paper_sections.sql` | **Migration.** Adds `paper_sections`, `papers.fulltext_status`, `paper_embeddings.section_name` |
 | `06_pipeline_runs.sql` | **Migration.** Adds `pipeline_runs`, `topic_watermarks`, `papers.fulltext_attempts` |
 | `07_fulltext_status_taxonomy.sql` | **Migration.** Splits `fulltext_status` by retryability; resets mis-classified rows |
+| `08_relevance.sql` | **Migration.** Adds relevance scoring columns to `papers`; gate counters on `pipeline_runs` |
 
 The `0X_` files numbered 4 and above are **migrations for an existing database**. A
 fresh install needs only `01`–`03`, which already contain everything the migrations
@@ -32,6 +33,7 @@ psql "$DATABASE_URL" -f sql/04_migrate_embeddings_768.sql   # destroys embedding
 psql "$DATABASE_URL" -f sql/05_paper_sections.sql           # additive; destroys nothing
 psql "$DATABASE_URL" -f sql/06_pipeline_runs.sql            # additive; destroys nothing
 psql "$DATABASE_URL" -f sql/07_fulltext_status_taxonomy.sql # resets fetch_failed/parse_failed rows for one retry
+psql "$DATABASE_URL" -f sql/08_relevance.sql                # additive; deletes nothing
 ```
 
 ## Key Design Decisions
@@ -61,5 +63,9 @@ psql "$DATABASE_URL" -f sql/07_fulltext_status_taxonomy.sql # resets fetch_faile
 **`papers.fulltext_attempts`** — Without a retry, a host down for one afternoon is written off permanently; without a ceiling, a dead URL is retried on every scheduled run forever. The counter bounds one failure mode against the other.
 
 **`fulltext_status` is split by retryability, not by symptom** — The first real run recorded all 35 HTTP failures as `fetch_failed`, but 32 were `403` or `404`: a publisher declining automated download, or a dead URL. Neither improves with time. `access_denied`, `not_found`, `not_pdf` and `too_large` are therefore permanent; only `fetch_failed` (408/429/5xx/timeout) is retried. A status that does not say whether retrying could help is a status that costs requests forever.
+
+**Relevance is scored, recorded, and never enforced** — `relevance_status` is `accepted`, `flagged` or `unscored`. **Nothing in the application filters on it.** A flagged paper stays fully searchable; the flag is a note to a human while the threshold is being calibrated. Deletion, if it ever happens, is a separate deliberate step.
+
+**A relevance score is stored with its context** — `relevance_score` alone is uninterpretable. `relevance_topic` says what it was compared against and `relevance_threshold` says what bar was in force, because both change: topics get edited and the threshold is still being tuned. The embedding model is *not* stored, because `embedding_contract.json` is validated before any encoding (Phase 2.7), so every score provably comes from the same model.
 
 **Trace table** — `mcp_traces` is written by `TraceMiddleware` automatically on every tool call. Individual MCP tools never write to it directly (cross-cutting concern).
