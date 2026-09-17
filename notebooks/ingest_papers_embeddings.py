@@ -387,6 +387,7 @@ print(f"Run {RUN_ID} claimed the pipeline lock (trigger={RUN_TRIGGER}).")
 
 # DBTITLE 1,Load the Model and Validate the Embedding Contract
 import json
+import time
 
 from sentence_transformers import SentenceTransformer
 
@@ -543,6 +544,32 @@ import time
 
 import pandas as pd
 import requests
+
+def get_openalex_email() -> str:
+    """Retrieve OpenAlex polite-pool email from secret scope or .env fallback."""
+    try:
+        from databricks.sdk import WorkspaceClient
+        w = WorkspaceClient()
+        secret = w.secrets.get_secret(scope="api-keys", key="openalex-email")
+        return secret.value
+    except Exception:
+        pass
+    email = os.getenv("OPENALEX_EMAIL")
+    if not email:
+        # Fallback to a placeholder - OpenAlex requires an email for polite pool
+        email = "research-assistant@example.com"
+    return email
+
+def get_semantic_scholar_api_key() -> str | None:
+    """Retrieve Semantic Scholar API key from secret scope or .env fallback."""
+    try:
+        from databricks.sdk import WorkspaceClient
+        w = WorkspaceClient()
+        secret = w.secrets.get_secret(scope="api-keys", key="semantic-scholar-key")
+        return secret.value
+    except Exception:
+        pass
+    return os.getenv("SEMANTIC_SCHOLAR_API_KEY")
 
 OPENALEX_EMAIL = get_openalex_email()
 S2_API_KEY = get_semantic_scholar_api_key()
@@ -771,9 +798,14 @@ def discover_openalex(topic: str, research_fields: list[str], limit: int,
 
 # COMMAND ----------
 
+# MAGIC %md
+# MAGIC ### This cell is the gate, and it operates on PaperCandidate records regardless of which provider produced them.
+
+# COMMAND ----------
+
 # DBTITLE 1,Semantic Relevance Gate (provider-agnostic)
-# MAGIC %md is deliberately not used here: this cell is the gate, and it operates on
-# MAGIC PaperCandidate records regardless of which provider produced them.
+# is deliberately not used here: this cell is the gate, and it operates on
+# PaperCandidate records regardless of which provider produced them.
 
 
 def candidate_text(candidate: dict) -> str:
@@ -891,7 +923,7 @@ else:
         fresh = [c for c in candidates if c["source_id"] not in seen_source_ids]
 
         if RELEVANCE_GATE_ENABLED and fresh:
-            scores = relevance_scores(embedding_model, topic, fresh)
+            scores = relevance_scores(embedding_model, topic, fresh)  # Define this function or import it from the relevant module
             accepted, rejected = partition_by_relevance(fresh, scores, RELEVANCE_THRESHOLD)
             candidates_rejected += len(rejected)
             for c in accepted:
@@ -2072,6 +2104,7 @@ else:
             print("if these look off-topic, the threshold is too low:")
             for score, topic, title in weakest:
                 print(f"  {score:.3f}  [{str(topic)[:24]}]  {str(title)[:60]}")
+
 # COMMAND ----------
 
 # MAGIC %md
