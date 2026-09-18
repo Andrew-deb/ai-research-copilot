@@ -31,4 +31,4 @@ env:
   - name: "DB_POOL_MAX"
     value: "8"
   - name: "REQUIRE_FORWARDED_AUTH"
-    value: "false"
+    value: "true"
