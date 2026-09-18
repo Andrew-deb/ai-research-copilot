@@ -545,31 +545,52 @@ import time
 import pandas as pd
 import requests
 
-def get_openalex_email() -> str:
-    """Retrieve OpenAlex polite-pool email from secret scope or .env fallback."""
+# Secret scope names must match setup_secrets.py exactly: `openalex/email` and
+# `semantic-scholar/api-key`. Databricks returns secrets BASE64-ENCODED, so the
+# value has to be decoded - reading `secret.value` directly yields garbage that
+# still looks like a string, which is the kind of failure nothing complains about.
+def _databricks_secret(scope: str, key: str) -> str | None:
+    """Read one Databricks secret, or None if unavailable here."""
     try:
+        import base64
+
         from databricks.sdk import WorkspaceClient
-        w = WorkspaceClient()
-        secret = w.secrets.get_secret(scope="api-keys", key="openalex-email")
-        return secret.value
+        raw = WorkspaceClient().secrets.get_secret(scope=scope, key=key)
+        return base64.b64decode(raw.value).decode("utf-8")
     except Exception:
-        pass
-    email = os.getenv("OPENALEX_EMAIL")
+        return None
+
+
+def get_openalex_email() -> str:
+    """
+    OpenAlex polite-pool contact, from the secret scope or the .env fallback.
+
+    The placeholder is announced rather than used silently: OpenAlex grants higher,
+    more reliable rate limits to the polite pool, and quietly dropping out of it
+    looks exactly like OpenAlex having a slow day.
+    """
+    email = _databricks_secret("openalex", "email") or os.getenv("OPENALEX_EMAIL")
     if not email:
-        # Fallback to a placeholder - OpenAlex requires an email for polite pool
-        email = "research-assistant@example.com"
+        email = "user@research-copilot.dev"
+        print("  [warn] No OpenAlex email configured (scope openalex/email, or "
+              "OPENALEX_EMAIL). Using a placeholder - you are out of the polite pool "
+              "and will see lower rate limits.")
     return email
 
+
 def get_semantic_scholar_api_key() -> str | None:
-    """Retrieve Semantic Scholar API key from secret scope or .env fallback."""
-    try:
-        from databricks.sdk import WorkspaceClient
-        w = WorkspaceClient()
-        secret = w.secrets.get_secret(scope="api-keys", key="semantic-scholar-key")
-        return secret.value
-    except Exception:
-        pass
-    return os.getenv("SEMANTIC_SCHOLAR_API_KEY")
+    """
+    Semantic Scholar API key, from the secret scope or the .env fallback.
+
+    None is workable - S2 serves unauthenticated requests - but at a much lower rate
+    limit, which surfaces as 429s in the batch enrichment rather than as an error.
+    """
+    key = _databricks_secret("semantic-scholar", "api-key") or os.getenv("SEMANTIC_SCHOLAR_API_KEY")
+    if not key:
+        print("  [warn] No Semantic Scholar API key (scope semantic-scholar/api-key, "
+              "or SEMANTIC_SCHOLAR_API_KEY). Batch enrichment will run unauthenticated "
+              "and may hit 429s.")
+    return key
 
 OPENALEX_EMAIL = get_openalex_email()
 S2_API_KEY = get_semantic_scholar_api_key()
