@@ -7,6 +7,7 @@
 <h1 class="page-title">Collections</h1>
 <p class="page-lead">Curated reading lists. Generate a pedagogically sequenced reading plan for any collection.</p>
 
+{% if can(CAP.library_write) %}
 <section class="panel">
   <h2>New collection</h2>
   <form class="stack-form" method="post" action="{{ url_for('collections.create_collection') }}">
@@ -19,9 +20,19 @@
     <button type="submit" class="btn btn-primary">Create collection</button>
   </form>
 </section>
+{% else %}
+<section class="panel">
+  <h2>Your own collections</h2>
+  <p class="locked-note">
+    The collections below are shared examples, open to everyone.
+    <a href="{{ url_for('auth.login') }}">Sign in</a> to build your own reading lists,
+    reorder them, and generate reading plans.
+  </p>
+</section>
+{% endif %}
 
 <section class="panel">
-  <h2>Your collections</h2>
+  <h2>{{ 'Collections' if not can(CAP.library_write) else 'Your collections' }}</h2>
   {% if collections %}
     <div class="collection-grid">
       {% for c in collections %}
