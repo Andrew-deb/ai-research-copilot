@@ -2,6 +2,7 @@
 
 from flask import Blueprint, render_template, request, url_for
 
+from middleware.capabilities import require_capability, require_quota
 from middleware.auth import current_user_id
 from routes.helpers import action_response, form_or_json
 from services import collection_service
@@ -16,6 +17,7 @@ def list_collections():
 
 
 @bp.post("/collections")
+@require_capability("library:write")
 def create_collection():
     data = form_or_json("name", "description")
     collection = collection_service.create_collection(
@@ -35,6 +37,7 @@ def collection_detail(collection_id: str):
 
 
 @bp.post("/collection/<collection_id>/papers")
+@require_capability("library:write")
 def add_paper(collection_id: str):
     data = form_or_json("paper_id")
     result = collection_service.add_paper(current_user_id(), collection_id, data["paper_id"])
@@ -46,6 +49,7 @@ def add_paper(collection_id: str):
 
 
 @bp.post("/collection/<collection_id>/papers/<paper_id>/remove")
+@require_capability("library:write")
 def remove_paper(collection_id: str, paper_id: str):
     result = collection_service.remove_paper(current_user_id(), collection_id, paper_id)
     return action_response(
@@ -56,6 +60,7 @@ def remove_paper(collection_id: str, paper_id: str):
 
 
 @bp.post("/collection/<collection_id>/plan")
+@require_capability("library:write")
 def generate_plan(collection_id: str):
     plan = collection_service.generate_reading_plan(current_user_id(), collection_id)
     return action_response(
@@ -66,6 +71,7 @@ def generate_plan(collection_id: str):
 
 
 @bp.post("/collection/<collection_id>/reorder")
+@require_capability("library:write")
 def reorder(collection_id: str):
     payload = request.get_json(silent=True) or {}
     ordered = payload.get("ordered_paper_ids") or request.form.getlist("ordered_paper_ids")
