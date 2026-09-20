@@ -77,7 +77,20 @@ class FakeDB:
     def get_dashboard_stats(self, user_id):
         active = sum(1 for g in self.goals.values() if g["user_id"] == user_id and g["status"] == "active")
         notes = sum(1 for n in self.notes.values() if n["user_id"] == user_id)
-        return {"active_goals": active, "papers_in_collections": 0, "notes_written": notes}
+        by_status: dict[str, int] = {}
+        for (uid, _pid), row in self.progress.items():
+            if uid == user_id:
+                by_status[row["status"]] = by_status.get(row["status"], 0) + 1
+        stats = {
+            "active_goals": active,
+            "papers_in_collections": len(self._library_paper_ids(user_id)),
+            "notes_written": notes,
+            # The real query returns the breakdown inline so the home page needs one
+            # round trip rather than two identical ones.
+            "reading_by_status": by_status,
+        }
+        stats.update({f"papers_{k}": v for k, v in by_status.items()})
+        return stats
 
     def get_progress_stats(self, user_id):
         out: dict[str, int] = {}
@@ -97,9 +110,10 @@ class FakeDB:
         self.goals[gid] = row
         return dict(row)
 
-    def get_learning_goals(self, user_id, status=None):
-        return [dict(g) for g in self.goals.values()
+    def get_learning_goals(self, user_id, status=None, limit=None):
+        rows = [dict(g) for g in self.goals.values()
                 if g["user_id"] == user_id and (status is None or g["status"] == status)]
+        return rows[:limit] if limit is not None else rows
 
     def get_learning_goal(self, goal_id, user_id):
         g = self.goals.get(goal_id)
@@ -140,16 +154,42 @@ class FakeDB:
         r = self.progress.get((user_id, paper_id))
         return dict(r) if r else None
 
-    def get_user_progress(self, user_id):
+    def _library_paper_ids(self, user_id) -> set:
+        """Papers in this user's collections - the definition of "library"."""
+        mine = {c["collection_id"] for c in self.collections.values() if c["user_id"] == user_id}
+        return {pid for (cid, pid) in self.collection_papers if cid in mine}
+
+    def _paper_fields(self, pid) -> dict:
+        p = self.papers.get(pid, {})
+        return {"title": p.get("title"), "publication_year": p.get("publication_year"),
+                "venue": p.get("venue"), "tldr": p.get("tldr"),
+                "citation_count": p.get("citation_count"),
+                "open_access_url": p.get("open_access_url")}
+
+    def get_user_progress(self, user_id, limit=None):
         out = []
         for (uid, pid), row in self.progress.items():
             if uid != user_id:
                 continue
-            p = self.papers.get(pid, {})
-            out.append({**row, "title": p.get("title"), "publication_year": p.get("publication_year"),
-                        "venue": p.get("venue"), "tldr": p.get("tldr"),
-                        "citation_count": p.get("citation_count"), "open_access_url": p.get("open_access_url")})
-        return out
+            out.append({**row, **self._paper_fields(pid)})
+        return out[:limit] if limit is not None else out
+
+    def get_reading_board(self, user_id):
+        """Library papers plus anything explicitly given a status (see the real query)."""
+        rows = []
+        seen = set()
+        for (uid, pid), row in self.progress.items():
+            if uid != user_id:
+                continue
+            seen.add(pid)
+            rows.append({**row, **self._paper_fields(pid), "paper_id": pid, "has_progress": True})
+        for pid in self._library_paper_ids(user_id):
+            if pid in seen:
+                continue
+            rows.append({"paper_id": pid, "user_id": user_id, "progress_id": None,
+                         "status": "not_started", "updated_at": None, "has_progress": False,
+                         **self._paper_fields(pid)})
+        return rows
 
     def upsert_reading_progress(self, user_id, paper_id, status):
         row = self.progress.get((user_id, paper_id)) or {
@@ -198,6 +238,29 @@ class FakeDB:
 
     def add_paper_to_collection(self, collection_id, paper_id, sequence_order=0):
         self.collection_papers[(collection_id, paper_id)] = {"sequence_order": sequence_order}
+
+    def append_paper_to_collection(self, collection_id, paper_id):
+        """Mirrors the SQL: next position, or the existing one if already present."""
+        existing = self.collection_papers.get((collection_id, paper_id))
+        if existing:
+            return existing["sequence_order"]
+        used = [link["sequence_order"] for (cid, _pid), link in self.collection_papers.items()
+                if cid == collection_id]
+        nxt = max(used, default=0) + 1
+        self.collection_papers[(collection_id, paper_id)] = {"sequence_order": nxt}
+        return nxt
+
+    def update_paper_sequences(self, collection_id, ordered_paper_ids):
+        """Mirrors the single-statement renumber: position in the list wins."""
+        updated = 0
+        for order, paper_id in enumerate(ordered_paper_ids, start=1):
+            link = self.collection_papers.get((collection_id, str(paper_id)))
+            if link is None:
+                link = self.collection_papers.get((collection_id, paper_id))
+            if link is not None:
+                link["sequence_order"] = order
+                updated += 1
+        return updated
 
     def remove_paper_from_collection(self, collection_id, paper_id):
         return 1 if self.collection_papers.pop((collection_id, paper_id), None) else 0
