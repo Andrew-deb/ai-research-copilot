@@ -9,6 +9,7 @@
 
 <section class="panel">
   <h2>New goal</h2>
+  {% if can(CAP.goals_write) %}
   <form class="stack-form" method="post" action="{{ url_for('goals.create_goal') }}">
     <label>Title
       <input type="text" name="title" required maxlength="300" placeholder="e.g. Understand diffusion models">
@@ -18,6 +19,12 @@
     </label>
     <button type="submit" class="btn btn-primary">Create goal</button>
   </form>
+  {% else %}
+  <p class="locked-note">
+    A learning goal is matched against the corpus to suggest what to read next.
+    <a href="{{ url_for('auth.login') }}">Sign in</a> to set one.
+  </p>
+  {% endif %}
 </section>
 
 <section class="panel">
