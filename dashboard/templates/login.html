@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Sign in — Research Copilot{% endblock %}
+{% block topbar_title %}Sign in{% endblock %}
+
+{% block content %}
+<div class="auth-panel">
+  <h1 class="page-title">Sign in to Research Copilot</h1>
+  <p class="page-lead">
+    Your library, notes and reading progress are private to your account.
+  </p>
+
+  {% if error %}
+    <p class="empty-state" role="alert">{{ error }}</p>
+  {% endif %}
+
+  <a class="btn btn-primary btn-lg"
+     href="{{ url_for('auth.google', next=next_url) }}">
+    Continue with Google
+  </a>
+
+  <p class="auth-note">
+    We ask Google only for your name, email address and profile picture. We never
+    see your password, and we don't keep a Google token after you sign in.
+  </p>
+</div>
+{% endblock %}
