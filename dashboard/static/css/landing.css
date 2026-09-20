@@ -1,0 +1,157 @@
+/* landing.css — the chat-first page an anonymous visitor arrives on.
+   No sidebar: navigation is for people who already have somewhere to go. */
+
+.landing-body {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+}
+
+.landing-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 24px;
+}
+
+.landing-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.landing-top-actions { display: flex; align-items: center; gap: 8px; }
+
+/* The composer sits slightly above centre: optical centring, and it leaves room
+   for the value row to peek in and invite a scroll. */
+.landing-main {
+  flex: 1;
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 6vh 24px 48px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.landing-title {
+  margin: 0 0 10px;
+  font-size: clamp(26px, 4.6vw, 38px);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+.landing-sub {
+  margin: 0 0 28px;
+  max-width: 46ch;
+  color: var(--text-muted);
+  font-size: 14.5px;
+  line-height: 1.55;
+}
+
+.landing-composer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 7px 7px 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .04);
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.landing-composer:focus-within {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-tint);
+}
+
+.landing-input {
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+  padding: 8px 0;
+}
+.landing-input::placeholder { color: var(--text-muted); }
+
+.landing-send { border-radius: 999px; padding: 9px 20px; }
+
+/* Concrete questions, not "try asking me something" — they double as a statement
+   of what the corpus actually covers. */
+.landing-prompts {
+  list-style: none;
+  margin: 18px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.prompt-chip {
+  display: inline-block;
+  padding: 7px 13px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 12.5px;
+  font-family: inherit;
+  line-height: 1.35;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition: border-color .15s ease, color .15s ease, background .15s ease;
+}
+.prompt-chip:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.landing-value {
+  margin-top: 56px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 26px;
+  text-align: left;
+  width: 100%;
+}
+.value-item h2 {
+  margin: 0 0 5px;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+.value-item p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.landing-foot {
+  padding: 22px 24px 30px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 12.5px;
+}
+.landing-foot .dot { margin: 0 8px; opacity: .55; }
+
+@media (max-width: 560px) {
+  .landing-main { padding-top: 4vh; }
+  .landing-value { margin-top: 40px; gap: 20px; }
+}
