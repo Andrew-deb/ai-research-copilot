@@ -3,7 +3,12 @@
 {% block topbar_title %}Search{% endblock %}
 {% block extra_css %}<link rel="stylesheet" href="{{ url_for('static', filename='css/search.css') }}">{% endblock %}
 
+{% block topbar_center %}
+  {% with active_mode = 'search' %}{% include "_mode_switch.html" %}{% endwith %}
+{% endblock %}
+
 {% block content %}
+
 <h1 class="page-title">Search the literature</h1>
 
 <form class="search-bar" method="get" action="{{ url_for('search.search_page') }}">
