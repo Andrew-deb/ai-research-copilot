@@ -358,8 +358,71 @@ def semantic_search_papers(query_embedding: list[float], top_k: int = 10) -> lis
 
 
 # =============================================================================
+# Usage counters (Phase 3.2)
+# =============================================================================
+
+def increment_usage(scope: str, scope_id: str, metric: str) -> int:
+    """
+    Consume one unit and return the new total, in ONE statement.
+
+    Increment-and-report together rather than SELECT-then-UPDATE: two concurrent
+    requests reading the same count would both see room and both proceed. Letting
+    the database arbitrate is what makes the limit a limit.
+    """
+    row = run_write(
+        """
+        INSERT INTO usage_counters (scope, scope_id, metric, day, count)
+        VALUES (%s, %s, %s, CURRENT_DATE, 1)
+        ON CONFLICT (scope, scope_id, metric, day)
+        DO UPDATE SET count = usage_counters.count + 1
+        RETURNING count;
+        """,
+        (scope, scope_id, metric),
+        returning=True,
+    )
+    return int(row["count"]) if row else 1
+
+
+def get_usage_counts(scope: str, scope_id: str) -> dict[str, int]:
+    """Today's consumption per metric — read-only, consumes nothing."""
+    rows = run_query(
+        """
+        SELECT metric, count FROM usage_counters
+         WHERE scope = %s AND scope_id = %s AND day = CURRENT_DATE;
+        """,
+        (scope, scope_id),
+    )
+    return {row["metric"]: row["count"] for row in rows}
+
+
+# =============================================================================
 # Collections
 # =============================================================================
+
+def get_curated_collections() -> list[dict]:
+    """
+    The read-only demo collections, shown to everyone including signed-out
+    visitors. Owned by the system account, so collections.user_id stays NOT NULL.
+    """
+    return run_query(
+        """
+        SELECT c.*, COUNT(cp.paper_id) AS paper_count
+        FROM collections c
+        LEFT JOIN collection_papers cp ON cp.collection_id = c.collection_id
+        WHERE c.is_curated
+        GROUP BY c.collection_id
+        ORDER BY c.created_at;
+        """
+    )
+
+
+def get_curated_collection(collection_id: str) -> dict | None:
+    rows = run_query(
+        "SELECT * FROM collections WHERE collection_id = %s AND is_curated;",
+        (collection_id,),
+    )
+    return rows[0] if rows else None
+
 
 def create_collection(user_id: str, name: str, description: str | None = None) -> dict:
     return run_write(
