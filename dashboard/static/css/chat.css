@@ -1,17 +1,45 @@
 /* chat.css — the research chat page.
-   Shell only: the composer has no agent behind it until Phase 3.3. The layout
-   exists now so the agent lands in a page that already has a shape. */
+   Shell only: the composer has no agent behind it until Phase 3.3.
 
-/* Column, not flow: the thread scrolls while the composer stays put, which is
-   the one structural thing a chat page has to get right. */
+   Two layouts, switched by .is-empty on .chat-page:
+
+     empty         title + composer + starters centred together. The composer is
+                   what the page is for, so it sits where the eye lands.
+     conversation  thread takes the height, composer pins to the bottom. */
+
 .chat-page {
   display: flex;
   flex-direction: column;
   height: 100%;
   min-height: calc(100vh - 190px);
-  max-width: 760px;
+  max-width: 740px;
   margin: 0 auto;
   width: 100%;
+}
+
+/* Empty: one centred stack rather than a composer stranded at the bottom of an
+   otherwise blank page. */
+.chat-page.is-empty {
+  justify-content: center;
+  padding-bottom: 8vh;
+}
+.chat-page.is-empty .chat-stage { text-align: center; }
+.chat-page.is-empty .chip-row { justify-content: center; }
+
+.chat-title {
+  margin: 0 0 8px;
+  font-size: clamp(22px, 3.2vw, 30px);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+.chat-sub {
+  margin: 0 auto 26px;
+  max-width: 48ch;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1.55;
 }
 
 .chat-thread {
@@ -43,88 +71,23 @@
   color: var(--text);
 }
 
-/* The empty state carries the page's whole job right now, so it gets the
-   vertical centring rather than sitting at the top like a stray heading. */
-.chat-empty {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
-  padding: 24px 0;
-}
-.chat-empty-title {
-  margin: 0 0 8px;
-  font-size: clamp(20px, 3vw, 26px);
-  font-weight: 600;
-  letter-spacing: -0.015em;
-  color: var(--text);
-}
-.chat-empty-sub {
-  margin: 0 0 22px;
-  max-width: 44ch;
-  color: var(--text-muted);
-  font-size: 13.5px;
-  line-height: 1.55;
-}
+.chat-stage { padding: 4px 0 8px; }
 
-.chat-starters {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  width: 100%;
-  max-width: 460px;
-}
-.chat-starters .prompt-chip { display: block; width: 100%; }
-
-.chat-composer-wrap { padding: 12px 0 4px; }
-
-.chat-composer {
-  display: flex;
-  align-items: flex-end;
-  gap: 8px;
-  padding: 8px 8px 8px 14px;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
-  transition: border-color .15s ease, box-shadow .15s ease;
-}
-.chat-composer:focus-within {
-  border-color: var(--brand);
-  box-shadow: 0 0 0 3px var(--brand-tint);
-}
-
-.chat-input {
-  flex: 1;
-  border: 0;
-  outline: 0;
-  resize: none;
-  background: transparent;
-  color: var(--text);
-  font: inherit;
-  font-size: 14.5px;
-  line-height: 1.5;
-  padding: 7px 0;
-  max-height: 200px;
-}
-.chat-input::placeholder { color: var(--text-muted); }
-
-.chat-send { flex: none; border-radius: var(--radius); }
+.chat-starters .prompt-chip { white-space: nowrap; }
 
 /* The allowance is stated before it is spent: discovering a limit by hitting it
    reads as the product breaking, knowing it up front reads as a free tier. */
 .chat-note {
-  margin: 8px 2px 0;
+  margin: 10px 2px 0;
   color: var(--text-muted);
   font-size: 12px;
   line-height: 1.5;
 }
+.chat-page.is-empty .chat-note { text-align: center; }
 
 @media (max-width: 720px) {
   .chat-page { min-height: calc(100vh - 160px); }
+  .chat-page.is-empty { padding-bottom: 4vh; }
   .chat-msg-user { max-width: 92%; }
+  .chat-starters .prompt-chip { white-space: normal; }
 }
