@@ -47,17 +47,24 @@
     Ask about papers, methods or findings. Answers cite the papers they came from.
   </p>
 
-  {# Posts to the existing RAG endpoint. The agent replaces this in a later phase;
-     until then a visitor gets a real, cited answer rather than a mock. #}
-  <form class="landing-composer" id="landing-composer" action="{{ url_for('search.search_page') }}" method="get">
+  {# Posts to semantic search, which returns a real cited answer today. Pointing
+     it at /chat would be the eventual home but currently dead-ends, and a landing
+     page whose main input does nothing is worse than one that does something
+     smaller. #}
+  <form class="composer" action="{{ url_for('search.search_page') }}" method="get">
     <input type="hidden" name="mode" value="semantic">
-    <input class="landing-input" type="text" name="q" autocomplete="off" autofocus
-           placeholder="Ask about papers, methods, topics…"
-           aria-label="Ask a research question">
-    <button class="btn btn-primary landing-send" type="submit">Ask</button>
+    <textarea class="composer-input" name="q" rows="1" autofocus
+              placeholder="Ask about papers, methods, topics…"
+              aria-label="Ask a research question"></textarea>
+    <button class="composer-send" type="submit" aria-label="Search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 19V5M5 12l7-7 7 7"/>
+      </svg>
+    </button>
   </form>
 
-  <ul class="landing-prompts">
+  <ul class="chip-row landing-prompts">
     {% for prompt in prompts %}
       <li>
         <a class="prompt-chip"
