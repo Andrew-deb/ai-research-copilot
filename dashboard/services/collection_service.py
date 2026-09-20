@@ -58,10 +58,10 @@ def add_paper(user_id: str, collection_id: str, paper_id: str) -> dict:
     if not lakebase.get_paper(paper_id):
         raise PaperNotFoundError(f"Paper '{paper_id}' not found in the catalog.")
 
-    # Append to the end of the current sequence.
-    existing = lakebase.get_collection_papers(collection_id)
-    next_order = max((p.get("sequence_order") or 0 for p in existing), default=0) + 1
-    lakebase.add_paper_to_collection(collection_id, paper_id, next_order)
+    # Append at the end, with the position computed in SQL. Fetching every paper in
+    # the collection just to take max(sequence_order) meant a full join across papers
+    # and reading_progress crossing the wire to produce one integer.
+    next_order = lakebase.append_paper_to_collection(collection_id, paper_id)
     return {"status": "ok", "collection_id": collection_id, "paper_id": paper_id, "sequence_order": next_order}
 
 
@@ -76,8 +76,9 @@ def reorder(user_id: str, collection_id: str, ordered_paper_ids: list[str]) -> d
     _require_collection(collection_id, user_id)
     if not ordered_paper_ids:
         raise ValidationError("No paper order supplied.")
-    for order, paper_id in enumerate(ordered_paper_ids, start=1):
-        lakebase.update_paper_sequence(collection_id, paper_id, order)
+    # One statement for the whole collection. Per-paper UPDATEs meant N round trips
+    # to a remote database, and a failure part-way left the order half-applied.
+    lakebase.update_paper_sequences(collection_id, ordered_paper_ids)
     return {"status": "ok", "count": len(ordered_paper_ids)}
 
 
@@ -104,9 +105,13 @@ def generate_reading_plan(user_id: str, collection_id: str) -> dict:
     sequenced = sorted(papers, key=_sort_key)
     half = max(len(sequenced) // 2, 1)
 
+    # Persist the whole ordering in one statement, before building the response.
+    # This was an UPDATE per paper inside the loop below - a 20-paper collection
+    # was 20 sequential round trips.
+    lakebase.update_paper_sequences(collection_id, [p["paper_id"] for p in sequenced])
+
     plan = []
     for order, paper in enumerate(sequenced, start=1):
-        lakebase.update_paper_sequence(collection_id, paper["paper_id"], order)
         if order == 1:
             stage = "Foundations"
         elif order <= half:
