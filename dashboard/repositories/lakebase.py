@@ -131,23 +131,55 @@ def get_or_create_user(email: str, display_name: str | None = None) -> dict:
 # =============================================================================
 
 def get_dashboard_stats(user_id: str) -> dict:
-    """Return summary counts for the home page stat cards."""
-    stats = {}
+    """
+    Every number the home page stat cards need, in ONE round trip.
 
-    rows = run_query("SELECT COUNT(*) AS count FROM learning_goals WHERE user_id = %s AND status = 'active';", (user_id,))
-    stats["active_goals"] = rows[0]["count"] if rows else 0
+    This was four separate queries, and `home_service` then issued a fifth that was
+    byte-identical to the reading_progress one below. Lakebase is remote and every
+    statement costs a TLS round trip, so the home page was spending over a second
+    waiting on network before it rendered anything.
 
-    rows = run_query("SELECT COUNT(DISTINCT p.paper_id) AS count FROM papers p JOIN collection_papers cp ON cp.paper_id = p.paper_id JOIN collections c ON c.collection_id = cp.collection_id WHERE c.user_id = %s;", (user_id,))
-    stats["papers_in_collections"] = rows[0]["count"] if rows else 0
+    Scalar subqueries let Postgres answer all four counts in a single pass. The
+    reading breakdown comes back as a JSON object rather than a second result set,
+    which is what removes the duplicate query entirely.
+    """
+    rows = run_query(
+        """
+        SELECT
+            (SELECT COUNT(*) FROM learning_goals
+              WHERE user_id = %(uid)s AND status = 'active')          AS active_goals,
+            (SELECT COUNT(DISTINCT cp.paper_id)
+               FROM collection_papers cp
+               JOIN collections c ON c.collection_id = cp.collection_id
+              WHERE c.user_id = %(uid)s)                              AS papers_in_collections,
+            (SELECT COUNT(*) FROM notes WHERE user_id = %(uid)s)      AS notes_written,
+            COALESCE(
+                (SELECT jsonb_object_agg(status, n)
+                   FROM (SELECT status, COUNT(*) AS n
+                           FROM reading_progress
+                          WHERE user_id = %(uid)s
+                          GROUP BY status) AS by_status),
+                '{}'::jsonb
+            )                                                          AS reading_by_status;
+        """,
+        {"uid": user_id},
+    )
+    if not rows:
+        return {"active_goals": 0, "papers_in_collections": 0, "notes_written": 0,
+                "reading_by_status": {}}
 
-    rows = run_query("SELECT status, COUNT(*) AS count FROM reading_progress WHERE user_id = %s GROUP BY status;", (user_id,))
-    for row in rows:
-        stats[f"papers_{row['status']}"] = row["count"]
-
-    rows = run_query("SELECT COUNT(*) AS count FROM notes WHERE user_id = %s;", (user_id,))
-    stats["notes_written"] = rows[0]["count"] if rows else 0
-
-    return stats
+    row = dict(rows[0])
+    by_status = row.get("reading_by_status") or {}
+    # psycopg2 normally adapts jsonb to a dict, but that depends on the adapter being
+    # registered. Falling over on a string here would break the home page for a
+    # reason that has nothing to do with the home page.
+    if isinstance(by_status, str):
+        by_status = json.loads(by_status)
+    # Kept for callers that read the flat `papers_<status>` keys.
+    for status, count in by_status.items():
+        row[f"papers_{status}"] = count
+    row["reading_by_status"] = by_status
+    return row
 
 
 # =============================================================================
@@ -317,6 +349,35 @@ def add_paper_to_collection(collection_id: str, paper_id: str, sequence_order: i
     )
 
 
+def append_paper_to_collection(collection_id: str, paper_id: str) -> int:
+    """
+    Add a paper at the end of the collection, computing the next position in SQL.
+
+    The service used to fetch every paper in the collection - a join across papers
+    and reading_progress - purely to take max(sequence_order) in Python. That is a
+    whole result set crossing the wire to produce one integer, and it races with a
+    concurrent add.
+
+    ON CONFLICT DO UPDATE with a no-op assignment rather than DO NOTHING, so the
+    statement always returns a row: re-adding a paper reports the position it
+    already occupies instead of silently returning nothing.
+    """
+    row = run_write(
+        """
+        INSERT INTO collection_papers (collection_id, paper_id, sequence_order)
+        SELECT %(cid)s, %(pid)s, COALESCE(MAX(sequence_order), 0) + 1
+          FROM collection_papers
+         WHERE collection_id = %(cid)s
+        ON CONFLICT (collection_id, paper_id) DO UPDATE
+            SET sequence_order = collection_papers.sequence_order
+        RETURNING sequence_order;
+        """,
+        {"cid": collection_id, "pid": paper_id},
+        returning=True,
+    )
+    return int(row["sequence_order"]) if row else 1
+
+
 def remove_paper_from_collection(collection_id: str, paper_id: str) -> int:
     return run_write(
         "DELETE FROM collection_papers WHERE collection_id = %s AND paper_id = %s;",
@@ -328,6 +389,35 @@ def update_paper_sequence(collection_id: str, paper_id: str, sequence_order: int
     run_write(
         "UPDATE collection_papers SET sequence_order = %s WHERE collection_id = %s AND paper_id = %s;",
         (sequence_order, collection_id, paper_id),
+    )
+
+
+def update_paper_sequences(collection_id: str, ordered_paper_ids: list[str]) -> int:
+    """
+    Renumber a whole collection in ONE statement. Returns rows updated.
+
+    Reordering and reading-plan generation both used to issue one UPDATE per paper,
+    so a 20-paper collection was 20 sequential round trips to a remote database -
+    and a partial failure left the collection half-renumbered.
+
+    `unnest` of two parallel arrays keeps this a single prepared statement with two
+    parameters, rather than SQL built by string concatenation.
+    """
+    if not ordered_paper_ids:
+        return 0
+    return run_write(
+        """
+        UPDATE collection_papers cp
+           SET sequence_order = v.seq
+          FROM unnest(%(ids)s::uuid[], %(seqs)s::int[]) AS v(paper_id, seq)
+         WHERE cp.collection_id = %(cid)s
+           AND cp.paper_id = v.paper_id;
+        """,
+        {
+            "cid": collection_id,
+            "ids": [str(pid) for pid in ordered_paper_ids],
+            "seqs": list(range(1, len(ordered_paper_ids) + 1)),
+        },
     )
 
 
@@ -350,18 +440,69 @@ def upsert_reading_progress(user_id: str, paper_id: str, status: str) -> dict:
     )
 
 
-def get_user_progress(user_id: str) -> list[dict]:
-    """Return all progress rows joined with paper metadata, for the Kanban board."""
-    return run_query(
-        """
+def get_user_progress(user_id: str, limit: int | None = None) -> list[dict]:
+    """
+    Progress rows this user has actually set, newest first.
+
+    This is *activity* - it answers "what has this user been doing" for the home
+    page. It deliberately does NOT include untouched papers; see
+    `get_reading_board` for the Kanban view.
+    """
+    sql = """
         SELECT rp.*, p.title, p.publication_year, p.venue,
                p.tldr, p.citation_count, p.open_access_url
         FROM reading_progress rp
         JOIN papers p ON p.paper_id = rp.paper_id
         WHERE rp.user_id = %s
-        ORDER BY rp.updated_at DESC;
+        ORDER BY rp.updated_at DESC
+    """
+    params: list = [user_id]
+    if limit is not None:
+        sql += " LIMIT %s"
+        params.append(limit)
+    return run_query(sql + ";", tuple(params))
+
+
+def get_reading_board(user_id: str) -> list[dict]:
+    """
+    Everything that belongs on the Kanban board: papers in this user's collections,
+    plus any paper they have explicitly given a status.
+
+    The board used to inner-join `reading_progress`, so a paper appeared only after
+    its status had already been set somewhere else. That left "Not Started"
+    permanently empty and the board with nothing to drag - the page told you to drag
+    cards between columns while showing none.
+
+    Library membership is `collection_papers`, matching the definition already agreed
+    for the agent: `papers` is discovery history, a collection is a deliberate choice.
+    A collected paper with no progress row reads as `not_started`, which is true.
+    """
+    return run_query(
+        """
+        WITH library AS (
+            SELECT DISTINCT cp.paper_id
+              FROM collection_papers cp
+              JOIN collections c ON c.collection_id = cp.collection_id
+             WHERE c.user_id = %(uid)s
+        )
+        SELECT p.paper_id,
+               rp.progress_id,
+               %(uid)s::uuid                          AS user_id,
+               COALESCE(rp.status, 'not_started')     AS status,
+               rp.updated_at,
+               (rp.progress_id IS NOT NULL)           AS has_progress,
+               p.title, p.publication_year, p.venue,
+               p.tldr, p.citation_count, p.open_access_url
+          FROM papers p
+          LEFT JOIN reading_progress rp
+                 ON rp.paper_id = p.paper_id AND rp.user_id = %(uid)s
+         WHERE rp.progress_id IS NOT NULL
+            OR p.paper_id IN (SELECT paper_id FROM library)
+         -- Touched papers first, newest activity at the top; untouched collected
+         -- papers follow in a stable order rather than an arbitrary one.
+         ORDER BY rp.updated_at DESC NULLS LAST, p.title ASC;
         """,
-        (user_id,),
+        {"uid": user_id},
     )
 
 
@@ -413,16 +554,21 @@ def create_learning_goal(user_id: str, title: str, description: str | None = Non
     )
 
 
-def get_learning_goals(user_id: str, status: str | None = None) -> list[dict]:
+def get_learning_goals(user_id: str, status: str | None = None,
+                      limit: int | None = None) -> list[dict]:
+    # `limit` exists so the home page can ask for 5 rather than fetching every goal
+    # and slicing in Python - the rows still cross the wire either way otherwise.
+    clauses = ["user_id = %s"]
+    params: list = [user_id]
     if status:
-        return run_query(
-            "SELECT * FROM learning_goals WHERE user_id = %s AND status = %s ORDER BY created_at DESC;",
-            (user_id, status),
-        )
-    return run_query(
-        "SELECT * FROM learning_goals WHERE user_id = %s ORDER BY created_at DESC;",
-        (user_id,),
-    )
+        clauses.append("status = %s")
+        params.append(status)
+
+    sql = f"SELECT * FROM learning_goals WHERE {' AND '.join(clauses)} ORDER BY created_at DESC"
+    if limit is not None:
+        sql += " LIMIT %s"
+        params.append(limit)
+    return run_query(sql + ";", tuple(params))
 
 
 def get_learning_goal(goal_id: str, user_id: str) -> dict | None:
