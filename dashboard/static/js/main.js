@@ -38,10 +38,21 @@
   document.addEventListener("keydown", function (e) { if (e.key === "Escape") { closeSidebar(); } });
 
   // ---------- Fetch helpers ----------
+  function csrfToken() {
+    const tag = document.querySelector('meta[name="csrf-token"]');
+    return tag ? tag.getAttribute("content") : "";
+  }
+
   async function request(url, options) {
-    const res = await fetch(url, Object.assign({
-      headers: { "X-Requested-With": "XMLHttpRequest", "Accept": "application/json" },
-    }, options));
+    const opts = Object.assign({}, options);
+    // The session cookie travels automatically, so the token is what proves the
+    // request came from one of our pages rather than someone else's.
+    opts.headers = Object.assign({
+      "X-Requested-With": "XMLHttpRequest",
+      "Accept": "application/json",
+      "X-CSRFToken": csrfToken(),
+    }, opts.headers || {});
+    const res = await fetch(url, opts);
     let body = null;
     try { body = await res.json(); } catch (_) { /* no body */ }
     if (!res.ok) {
@@ -54,11 +65,7 @@
   function postJSON(url, data) {
     return request(url, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Requested-With": "XMLHttpRequest",
-        "Accept": "application/json",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data || {}),
     });
   }
