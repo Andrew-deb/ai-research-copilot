@@ -1,0 +1,15 @@
+{# Agent | Search, shown centred in the topbar.
+
+   An include rather than a copy in each template: the pair has to stay in sync,
+   and two hand-maintained copies is how one of them ends up pointing at the
+   wrong route.
+
+   Set `active_mode` to 'agent' or 'search' before including. #}
+<div class="mode-switch" role="tablist" aria-label="Answer mode">
+  <a class="mode-tab {{ 'is-active' if active_mode == 'agent' }}" role="tab"
+     aria-selected="{{ 'true' if active_mode == 'agent' else 'false' }}"
+     href="{{ url_for('chat.new_chat') }}">Agent</a>
+  <a class="mode-tab {{ 'is-active' if active_mode == 'search' }}" role="tab"
+     aria-selected="{{ 'true' if active_mode == 'search' else 'false' }}"
+     href="{{ url_for('search.search_page') }}">Search</a>
+</div>
