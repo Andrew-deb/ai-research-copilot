@@ -17,8 +17,16 @@ VALID_STATUSES = ["not_started", "reading", "completed", "skipped"]
 
 
 def get_board(user_id: str) -> dict:
-    """Papers with a progress row, bucketed into Kanban columns, plus counts."""
-    rows = lakebase.get_user_progress(user_id)
+    """
+    The Kanban board: papers in the user's collections plus anything they have
+    explicitly given a status, bucketed into columns.
+
+    Uses `get_reading_board`, not `get_user_progress`. The latter returns only rows
+    the user has already touched, which meant a collected paper never appeared until
+    its status had been set somewhere else - so the board showed nothing to drag
+    while instructing the user to drag things.
+    """
+    rows = lakebase.get_reading_board(user_id)
 
     columns: dict[str, list[dict]] = {status: [] for status in VALID_STATUSES}
     for row in rows:
