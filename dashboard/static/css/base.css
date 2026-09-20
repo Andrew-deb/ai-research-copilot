@@ -525,13 +525,27 @@ input:focus, textarea:focus, select:focus {
    starts, not a tool filed alongside the others.
    ========================================================================= */
 
+/* Brand and collapse share a row: the control belongs to the panel it collapses. */
+.sidebar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-right: 8px;
+}
+.sidebar-collapse { flex: none; }
+.sidebar-collapse svg { width: 16px; height: 16px; }
+
+/* Outlined, not filled. A solid brand-coloured block was the loudest thing on
+   screen and competed with the composer it exists to lead to. The colour lives
+   in the small mark instead. */
 .sidebar-cta {
   display: flex;
   align-items: center;
   gap: 9px;
-  margin: 10px 12px 8px;
-  padding: 9px 12px;
-  border: 1px solid var(--border-strong);
+  margin: 8px 12px;
+  padding: 8px 11px;
+  border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
   color: var(--text);
@@ -540,9 +554,20 @@ input:focus, textarea:focus, select:focus {
   text-decoration: none;
   transition: background .15s ease, border-color .15s ease;
 }
-.sidebar-cta:hover { background: var(--surface-2); text-decoration: none; }
-.sidebar-cta.active { border-color: var(--brand); background: var(--brand-tint); color: var(--brand-tint-fg); }
-.sidebar-cta svg { width: 16px; height: 16px; flex: none; }
+.sidebar-cta:hover { background: var(--surface-2); border-color: var(--border-strong); text-decoration: none; }
+.sidebar-cta.active { border-color: var(--brand); color: var(--text); }
+.cta-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--brand);
+  color: #fff;
+}
+.cta-mark svg { width: 13px; height: 13px; }
 
 .sidebar-search {
   display: flex;
@@ -635,3 +660,268 @@ input:focus, textarea:focus, select:focus {
   line-height: 1.5;
 }
 .locked-note a { font-weight: 500; }
+
+/* =========================================================================
+   Composer + suggestion chips — shared by the landing page and the chat page
+   Previously .prompt-chip lived only in landing.css, so the chat page rendered
+   unstyled grey blocks. Shared components belong in the shared stylesheet.
+   ========================================================================= */
+
+.composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 8px 8px 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: 26px;
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .04);
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.composer:focus-within {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-tint);
+}
+
+.composer-input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  resize: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+  line-height: 1.5;
+  padding: 8px 0;
+  max-height: 200px;
+}
+.composer-input::placeholder { color: var(--text-muted); }
+
+/* A round icon button rather than a labelled rectangle: the composer is already
+   the loudest element on the page, and a green block beside it competed with it. */
+.composer-send {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--brand);
+  color: #fff;
+  cursor: pointer;
+  transition: opacity .15s ease, transform .1s ease;
+}
+.composer-send svg { width: 17px; height: 17px; }
+.composer-send:hover { opacity: .9; }
+.composer-send:active { transform: scale(.94); }
+
+/* Suggestions, not controls. Quiet enough to read as examples. */
+.chip-row {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.chip-row.is-centred { justify-content: center; }
+
+.prompt-chip {
+  display: inline-block;
+  max-width: 100%;
+  padding: 7px 13px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 12.5px;
+  line-height: 1.35;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition: border-color .15s ease, color .15s ease, background .15s ease;
+}
+.prompt-chip:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-2);
+  color: var(--text);
+  text-decoration: none;
+}
+
+/* Desktop collapse. The shell is flex with a fixed sidebar and a margin-offset
+   main column, so hiding the panel means reclaiming that margin — not changing a
+   grid template. Breakpoint matches the existing one at 901px: below it the
+   sidebar is already off-canvas and this must not interfere. */
+@media (min-width: 901px) {
+  .app-shell.sidebar-collapsed .sidebar { display: none; }
+  .app-shell.sidebar-collapsed .main-col { margin-left: 0; }
+}
+
+/* =========================================================================
+   Typography — Poppins for display, Inter for reading (Phase 3.2)
+   Poppins is geometric and wide; it reads well large but tires at body size,
+   so it is scoped to headings and brand rather than applied globally.
+   ========================================================================= */
+:root { --font-display: "Poppins", var(--font); }
+
+h1, h2, h3,
+.page-title, .brand-name, .landing-title, .chat-title, .chat-empty-title {
+  font-family: var(--font-display);
+  letter-spacing: -0.015em;
+}
+
+/* =========================================================================
+   Sidebar head actions, scrolling history, collapse recovery
+   ========================================================================= */
+.sidebar-head-actions { display: flex; align-items: center; gap: 2px; flex: none; }
+
+/* History scrolls inside its own section so a long list never pushes the
+   workspace links out of reach. */
+.nav-section-scroll { flex: 1; min-height: 0; overflow-y: auto; }
+
+/* The bug this fixes: collapsing hid the sidebar, and the only control that
+   brings it back was display:none above 900px — so the panel could be closed
+   and never reopened. */
+@media (min-width: 901px) {
+  .app-shell.sidebar-collapsed .sidebar-toggle { display: grid; }
+}
+
+/* =========================================================================
+   Dialog — chat history search
+   ========================================================================= */
+.dialog-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 12vh 16px 16px;
+  background: rgba(0, 0, 0, .45);
+}
+.dialog-scrim[hidden] { display: none; }
+
+.dialog {
+  width: 100%;
+  max-width: 560px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.dialog-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.dialog-search svg { width: 16px; height: 16px; color: var(--text-muted); flex: none; }
+.dialog-search input {
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 14.5px;
+}
+.dialog-search input::placeholder { color: var(--text-muted); }
+
+.dialog-body { padding: 12px 8px 14px; max-height: 50vh; overflow-y: auto; }
+
+.dialog-label {
+  margin: 0 0 6px;
+  padding: 0 8px;
+  font-family: var(--font);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.dialog-list { list-style: none; margin: 0; padding: 0; }
+.dialog-list a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 13.5px;
+  text-decoration: none;
+}
+.dialog-list a:hover { background: var(--surface-2); text-decoration: none; }
+.dialog-list svg { width: 15px; height: 15px; color: var(--text-muted); flex: none; }
+
+.dialog-empty {
+  margin: 0;
+  padding: 10px;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* =========================================================================
+   Mode switch — Agent | Search
+   ========================================================================= */
+/* Centred against the viewport, not between its neighbours: the title and the
+   action buttons are different widths, so a flex centre would sit off-centre and
+   shift whenever either side changed. pointer-events are restored on the pill so
+   the invisible full-width wrapper cannot swallow clicks on the topbar. */
+.topbar-center {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+}
+.topbar-center > * { pointer-events: auto; }
+
+.mode-switch {
+  display: flex;
+  width: fit-content;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
+}
+
+.mode-tab {
+  padding: 6px 18px;
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: background .15s ease, color .15s ease;
+}
+.mode-tab:hover { color: var(--text); text-decoration: none; }
+.mode-tab.is-active {
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .06);
+}
+
+/* The topbar becomes the positioning context for the centred slot. */
+.topbar { position: relative; }
+
+/* Narrow screens: the pill matters more than the page label, which is already
+   repeated in the page heading below it. */
+@media (max-width: 720px) {
+  .topbar-title { display: none; }
+}
+@media (max-width: 420px) {
+  .topbar-center { display: none; }
+}
