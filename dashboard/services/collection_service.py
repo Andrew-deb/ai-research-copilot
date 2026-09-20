@@ -10,15 +10,55 @@ owns its own copy of the logic (no runtime dependency between the two apps).
 
 import logging
 
-from exceptions import CollectionNotFoundError, PaperNotFoundError, ValidationError
+from exceptions import (
+    CapabilityDeniedError,
+    CollectionNotFoundError,
+    PaperNotFoundError,
+    ValidationError,
+)
 from repositories import lakebase
 
 logger = logging.getLogger(__name__)
 
 
-def _require_collection(collection_id: str, user_id: str) -> dict:
-    collection = lakebase.get_collection(collection_id, user_id)
-    if not collection:
+def _require_collection(collection_id: str, user_id: str | None) -> dict:
+    """
+    A collection this caller may READ: their own, or a curated demo one.
+
+    Curated collections are owned by the system account, so an ownership-only
+    lookup reported them as missing — they existed, were listed, and 404ed when
+    opened. Read access is deliberately wider than write access.
+    """
+    if user_id:
+        collection = lakebase.get_collection(collection_id, user_id)
+        if collection:
+            return collection
+
+    curated = lakebase.get_curated_collection(collection_id)
+    if curated:
+        return curated
+
+    raise CollectionNotFoundError(f"Collection '{collection_id}' not found.")
+
+
+def _require_writable_collection(collection_id: str, user_id: str | None) -> dict:
+    """
+    A collection this caller may MODIFY.
+
+    Curated collections are read-only for everyone, signed-in users included, and
+    say so. Letting the ownership check reject them would produce "not found" for
+    something plainly on screen — an error that sends the reader looking for a bug
+    rather than telling them the rule.
+    """
+    collection = _require_collection(collection_id, user_id)
+    if collection.get("is_curated"):
+        raise CapabilityDeniedError(
+            "This is a shared example collection, so it cannot be edited. "
+            "Create your own collection to save papers into.",
+            capability="library:write",
+            requires_auth=False,
+        )
+    if not user_id or str(collection.get("user_id")) != str(user_id):
         raise CollectionNotFoundError(f"Collection '{collection_id}' not found.")
     return collection
 
@@ -27,8 +67,16 @@ def _require_collection(collection_id: str, user_id: str) -> dict:
 # CRUD
 # =============================================================================
 
-def list_collections(user_id: str) -> list[dict]:
-    return lakebase.get_collections(user_id)
+def list_collections(user_id: str | None) -> list[dict]:
+    """
+    Curated examples first, then the caller's own.
+
+    An anonymous visitor sees only the curated ones, which is what makes the page
+    worth opening at all rather than an empty shell with a sign-in prompt.
+    """
+    curated = [{**c, "is_curated": True} for c in lakebase.get_curated_collections()]
+    own = lakebase.get_collections(user_id) if user_id else []
+    return curated + [c for c in own if not c.get("is_curated")]
 
 
 def create_collection(user_id: str, name: str, description: str | None = None) -> dict:
@@ -41,7 +89,7 @@ def create_collection(user_id: str, name: str, description: str | None = None) -
     )
 
 
-def get_collection_detail(user_id: str, collection_id: str) -> dict:
+def get_collection_detail(user_id: str | None, collection_id: str) -> dict:
     collection = _require_collection(collection_id, user_id)
     papers = lakebase.get_collection_papers(collection_id)
     collection["papers"] = papers
@@ -54,7 +102,7 @@ def get_collection_detail(user_id: str, collection_id: str) -> dict:
 # =============================================================================
 
 def add_paper(user_id: str, collection_id: str, paper_id: str) -> dict:
-    _require_collection(collection_id, user_id)
+    _require_writable_collection(collection_id, user_id)
     if not lakebase.get_paper(paper_id):
         raise PaperNotFoundError(f"Paper '{paper_id}' not found in the catalog.")
 
@@ -66,14 +114,14 @@ def add_paper(user_id: str, collection_id: str, paper_id: str) -> dict:
 
 
 def remove_paper(user_id: str, collection_id: str, paper_id: str) -> dict:
-    _require_collection(collection_id, user_id)
+    _require_writable_collection(collection_id, user_id)
     removed = lakebase.remove_paper_from_collection(collection_id, paper_id)
     return {"status": "ok", "rows_affected": removed}
 
 
 def reorder(user_id: str, collection_id: str, ordered_paper_ids: list[str]) -> dict:
     """Persist a manual drag-reorder: position in the list becomes sequence_order."""
-    _require_collection(collection_id, user_id)
+    _require_writable_collection(collection_id, user_id)
     if not ordered_paper_ids:
         raise ValidationError("No paper order supplied.")
     # One statement for the whole collection. Per-paper UPDATEs meant N round trips
@@ -97,7 +145,7 @@ def _sort_key(paper: dict):
 
 def generate_reading_plan(user_id: str, collection_id: str) -> dict:
     """Sequence the collection pedagogically and persist the new sequence_order."""
-    _require_collection(collection_id, user_id)
+    _require_writable_collection(collection_id, user_id)
     papers = lakebase.get_collection_papers(collection_id)
     if not papers:
         raise ValidationError("Cannot generate a reading plan for an empty collection.")

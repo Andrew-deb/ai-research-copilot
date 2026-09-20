@@ -3,6 +3,7 @@
 from flask import Blueprint, jsonify, render_template, request
 
 import llm_client
+from middleware.capabilities import require_capability, require_quota
 from middleware.auth import current_user_id
 from routes.helpers import form_or_json
 from services import search_service
@@ -29,6 +30,7 @@ def search_page():
 
 
 @bp.get("/search/semantic")
+@require_quota("semantic_search")
 def semantic_json():
     """JSON semantic results — used for the live 'search as you type' panel."""
     query = (request.args.get("q") or "").strip()
@@ -37,6 +39,7 @@ def semantic_json():
 
 
 @bp.post("/search/ask")
+@require_quota("rag_query")
 def rag_ask():
     """JSON RAG answer — vector retrieval + cited LLM synthesis."""
     data = form_or_json("question")
@@ -50,6 +53,7 @@ def paper_detail(paper_id: str):
 
 
 @bp.get("/paper/<paper_id>/related")
+@require_quota("semantic_search")
 def paper_related(paper_id: str):
     """JSON — vector-similar papers, fetched by the detail page after it renders."""
     papers = search_service.get_related_papers(paper_id)
