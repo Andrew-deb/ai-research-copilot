@@ -1,0 +1,93 @@
+{# The first thing a new visitor sees. Deliberately NOT base.html: the sidebar is
+   a workspace navigator, and showing it to someone with no workspace yet asks
+   them to navigate before they know what this is. #}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Research Copilot — read the literature faster</title>
+
+  <script>
+    (function () {
+      var t = "light";
+      try {
+        var saved = localStorage.getItem('rc-theme');
+        if (saved === 'dark' || saved === 'light') { t = saved; }
+        else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) { t = 'dark'; }
+      } catch (e) {}
+      document.documentElement.setAttribute('data-theme', t);
+    })();
+  </script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/landing.css') }}">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+</head>
+<body class="landing-body">
+
+<header class="landing-top">
+  <a class="landing-brand" href="{{ url_for('home.index') }}">
+    <span class="brand-leaf">🌿</span>
+    <span class="brand-name">Research Copilot</span>
+  </a>
+  <div class="landing-top-actions">
+    <a class="btn btn-ghost btn-sm" href="{{ url_for('home.dashboard') }}">Try demo</a>
+    <a class="btn btn-sm" href="{{ url_for('auth.login') }}">Log in</a>
+  </div>
+</header>
+
+<main class="landing-main">
+  <h1 class="landing-title">What are you researching?</h1>
+  <p class="landing-sub">
+    Ask about papers, methods or findings. Answers cite the papers they came from.
+  </p>
+
+  {# Posts to the existing RAG endpoint. The agent replaces this in a later phase;
+     until then a visitor gets a real, cited answer rather than a mock. #}
+  <form class="landing-composer" id="landing-composer" action="{{ url_for('search.search_page') }}" method="get">
+    <input type="hidden" name="mode" value="semantic">
+    <input class="landing-input" type="text" name="q" autocomplete="off" autofocus
+           placeholder="Ask about papers, methods, topics…"
+           aria-label="Ask a research question">
+    <button class="btn btn-primary landing-send" type="submit">Ask</button>
+  </form>
+
+  <ul class="landing-prompts">
+    {% for prompt in prompts %}
+      <li>
+        <a class="prompt-chip"
+           href="{{ url_for('search.search_page', q=prompt, mode='semantic') }}">{{ prompt }}</a>
+      </li>
+    {% endfor %}
+  </ul>
+
+  <section class="landing-value">
+    <div class="value-item">
+      <h2>Search by meaning</h2>
+      <p>Find papers by what they argue, not just the words in the title.</p>
+    </div>
+    <div class="value-item">
+      <h2>Answers with citations</h2>
+      <p>Every claim points back at the paper and section it came from.</p>
+    </div>
+    <div class="value-item">
+      <h2>Keep what you find</h2>
+      <p>Collections, notes and reading progress — <a href="{{ url_for('auth.login') }}">once you sign in</a>.</p>
+    </div>
+  </section>
+</main>
+
+<footer class="landing-foot">
+  <a href="{{ url_for('home.dashboard') }}">Browse the demo workspace</a>
+  <span class="dot">·</span>
+  <span>No account needed to look around</span>
+</footer>
+
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
