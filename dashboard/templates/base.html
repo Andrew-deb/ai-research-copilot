@@ -24,7 +24,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@500;600&family=JetBrains+Mono:wght@400;500&display=swap">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
   {# Read by RC.request() and attached to every state-changing fetch. Identity
      lives in a cookie now, so the browser authenticates cross-origin requests
@@ -56,41 +56,33 @@
 
 <div class="app-shell">
   <aside class="sidebar" id="sidebar">
-    <a class="sidebar-brand" href="{{ url_for('home.index') }}">
-      <span class="brand-leaf">🌿</span>
-      <span class="brand-name">Research Copilot</span>
-    </a>
+    <div class="sidebar-head">
+      <a class="sidebar-brand" href="{{ url_for('home.index') }}">
+        <span class="brand-leaf">🌿</span>
+        <span class="brand-name">Research Copilot</span>
+      </a>
+      <div class="sidebar-head-actions">
+        <button type="button" class="icon-btn" id="chat-search-open"
+                aria-label="Search chats" title="Search chats">
+          {{ icon('search') }}
+        </button>
+        <button type="button" class="icon-btn sidebar-collapse" id="sidebar-collapse"
+                aria-label="Collapse navigation" title="Collapse navigation">
+          {{ icon('panel') }}
+        </button>
+      </div>
+    </div>
 
     {# The assistant sits above the workspace because it is meant to be the way
        most work starts, not a tool filed alongside the others. #}
     <a class="sidebar-cta {{ 'active' if ep == 'chat.new_chat' }}" href="{{ url_for('chat.new_chat') }}">
-      {{ icon('plus') }}<span>New research chat</span>
+      <span class="cta-mark">{{ icon('plus') }}</span><span>New research chat</span>
     </a>
 
-    <form class="sidebar-search" action="{{ url_for('search.search_page') }}" method="get" role="search">
-      <input type="hidden" name="mode" value="semantic">
-      {{ icon('search') }}
-      <input type="text" name="q" placeholder="Search research…" aria-label="Search research">
-    </form>
-
+    {# Workspace above recent chats: the workspace is a fixed five items, while
+       chat history grows without limit. Putting the growing list first would push
+       the stable navigation off-screen as soon as it filled up. #}
     <nav class="sidebar-nav">
-      <div class="nav-section">
-        <h2 class="nav-label">Recent chats</h2>
-        {% if recent_chats %}
-          {% for chat in recent_chats %}
-            <a href="{{ url_for('chat.conversation', conversation_id=chat.conversation_id) }}"
-               class="nav-item nav-item-chat {{ 'active' if request.view_args and request.view_args.get('conversation_id') == chat.conversation_id }}">
-              {{ icon('chat') }}<span>{{ chat.title }}</span>
-            </a>
-          {% endfor %}
-        {% else %}
-          {# Honest placeholder: conversation storage arrives with the agent, and
-             inventing a message schema to fill a sidebar would almost certainly
-             get its shape wrong. #}
-          <p class="nav-empty">No recent chats yet</p>
-        {% endif %}
-      </div>
-
       <div class="nav-section">
         <h2 class="nav-label">Workspace</h2>
         <a href="{{ url_for('home.dashboard') }}" class="nav-item {{ 'active' if ep in ('home.index', 'home.dashboard') }}">
@@ -108,6 +100,23 @@
         <a href="{{ url_for('goals.list_goals') }}" class="nav-item {{ 'active' if ep.startswith('goals.') }}">
           {{ icon('target') }}<span>Goals</span>
         </a>
+      </div>
+
+      {# Scrolls on its own so a long history never pushes the workspace away. #}
+      <div class="nav-section nav-section-scroll">
+        <h2 class="nav-label">Recent chats</h2>
+        {% if recent_chats %}
+          {% for chat in recent_chats %}
+            <a href="{{ url_for('chat.conversation', conversation_id=chat.conversation_id) }}"
+               class="nav-item nav-item-chat {{ 'active' if request.view_args and request.view_args.get('conversation_id') == chat.conversation_id }}">
+              {{ icon('chat') }}<span>{{ chat.title }}</span>
+            </a>
+          {% endfor %}
+        {% else %}
+          {# Honest placeholder: conversation storage arrives with the agent, and
+             inventing a message schema to fill a sidebar would get its shape wrong. #}
+          <p class="nav-empty">No recent chats yet</p>
+        {% endif %}
       </div>
     </nav>
 
@@ -134,12 +143,52 @@
 
   <div class="sidebar-scrim" id="sidebar-scrim" hidden></div>
 
+  {# Chat-history search. Deliberately separate from workspace search: that one
+     runs semantic retrieval over papers, this one filters conversation titles by
+     keyword. Reusing the corpus search here would mean two controls doing the
+     same job and neither doing this one. #}
+  <div class="dialog-scrim" id="chat-search-scrim" hidden>
+    <div class="dialog" role="dialog" aria-modal="true" aria-label="Search chats">
+      <div class="dialog-search">
+        {{ icon('search') }}
+        <input type="text" id="chat-search-input" autocomplete="off"
+               placeholder="Search your chats…" aria-label="Search your chats">
+        <button type="button" class="icon-btn" id="chat-search-close" aria-label="Close">&#215;</button>
+      </div>
+      <div class="dialog-body">
+        <h3 class="dialog-label">Recent chats</h3>
+        {% if recent_chats %}
+          <ul class="dialog-list" id="chat-search-results">
+            {% for chat in recent_chats %}
+              <li>
+                <a href="{{ url_for('chat.conversation', conversation_id=chat.conversation_id) }}"
+                   data-title="{{ chat.title | lower }}">
+                  {{ icon('chat') }}<span>{{ chat.title }}</span>
+                </a>
+              </li>
+            {% endfor %}
+          </ul>
+          <p class="dialog-empty" id="chat-search-none" hidden>No chats match that.</p>
+        {% else %}
+          <p class="dialog-empty">
+            No chats yet. Conversations appear here once the research assistant is
+            connected.
+          </p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
   <div class="main-col">
     <header class="topbar">
       <button type="button" class="icon-btn sidebar-toggle" id="sidebar-toggle" aria-label="Toggle navigation">
         {{ icon('menu') }}
       </button>
       <div class="topbar-title">{% block topbar_title %}{% endblock %}</div>
+      {# Absolutely centred rather than flex-centred: the title on the left and the
+         actions on the right are different widths, so a flex centre would sit
+         slightly off-centre and drift as either side changed. #}
+      <div class="topbar-center">{% block topbar_center %}{% endblock %}</div>
       <div class="topbar-actions">
         {% if not is_authenticated %}
           <a class="btn btn-sm" href="{{ url_for('auth.login') }}">Sign in</a>
