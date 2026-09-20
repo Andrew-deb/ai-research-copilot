@@ -35,7 +35,98 @@
     });
   }
   if (scrim) { scrim.addEventListener("click", closeSidebar); }
-  document.addEventListener("keydown", function (e) { if (e.key === "Escape") { closeSidebar(); } });
+  document.addEventListener("keydown", function (e) {
+    if (e.key !== "Escape") { return; }
+    // Innermost layer first: a dialog over the sidebar should close alone.
+    const dialog = document.getElementById("chat-search-scrim");
+    if (dialog && !dialog.hidden) { dialog.hidden = true; return; }
+    closeSidebar();
+  });
+
+  // Ctrl/Cmd+K is what every product with this dialog uses.
+  document.addEventListener("keydown", function (e) {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+      e.preventDefault();
+      const opener = document.getElementById("chat-search-open");
+      if (opener) { opener.click(); }
+    }
+  });
+
+  // ---------- Sidebar collapse (desktop) ----------
+  // Separate from the mobile toggle above: that one slides an off-canvas panel
+  // in and out, this one hides a panel that is always there. The preference is
+  // remembered, because re-collapsing it on every page load would make the
+  // control feel broken.
+  const shell = document.querySelector(".app-shell");
+  const collapseBtn = document.getElementById("sidebar-collapse");
+  const COLLAPSE_KEY = "rc-sidebar-collapsed";
+
+  function setCollapsed(collapsed) {
+    if (!shell) { return; }
+    shell.classList.toggle("sidebar-collapsed", collapsed);
+    try { localStorage.setItem(COLLAPSE_KEY, collapsed ? "1" : "0"); } catch (e) {}
+  }
+
+  try {
+    if (localStorage.getItem(COLLAPSE_KEY) === "1") { setCollapsed(true); }
+  } catch (e) {}
+
+  if (collapseBtn) {
+    collapseBtn.addEventListener("click", function () {
+      setCollapsed(!shell.classList.contains("sidebar-collapsed"));
+    });
+  }
+
+  // The topbar control brings a collapsed sidebar back, so a visitor who hides it
+  // is never stranded without navigation.
+  if (sidebarToggle && shell) {
+    sidebarToggle.addEventListener("click", function () {
+      if (shell.classList.contains("sidebar-collapsed")) { setCollapsed(false); }
+    });
+  }
+
+  // ---------- Chat history search dialog ----------
+  // Filters conversation titles by keyword. Deliberately NOT the corpus search:
+  // that one runs semantic retrieval over papers and already has its own page.
+  const searchScrim = document.getElementById("chat-search-scrim");
+  const searchOpen = document.getElementById("chat-search-open");
+  const searchClose = document.getElementById("chat-search-close");
+  const searchInput = document.getElementById("chat-search-input");
+  const searchResults = document.getElementById("chat-search-results");
+  const searchNone = document.getElementById("chat-search-none");
+
+  function openChatSearch() {
+    if (!searchScrim) { return; }
+    searchScrim.hidden = false;
+    if (searchInput) { searchInput.focus(); searchInput.select(); }
+  }
+  function closeChatSearch() {
+    if (searchScrim) { searchScrim.hidden = true; }
+  }
+
+  if (searchOpen) { searchOpen.addEventListener("click", openChatSearch); }
+  if (searchClose) { searchClose.addEventListener("click", closeChatSearch); }
+  if (searchScrim) {
+    // Click the backdrop, not the panel.
+    searchScrim.addEventListener("click", function (e) {
+      if (e.target === searchScrim) { closeChatSearch(); }
+    });
+  }
+
+  if (searchInput && searchResults) {
+    searchInput.addEventListener("input", function () {
+      const q = searchInput.value.trim().toLowerCase();
+      let shown = 0;
+      searchResults.querySelectorAll("li").forEach(function (li) {
+        const link = li.querySelector("a");
+        const title = link ? (link.dataset.title || "") : "";
+        const match = !q || title.indexOf(q) !== -1;
+        li.hidden = !match;
+        if (match) { shown += 1; }
+      });
+      if (searchNone) { searchNone.hidden = shown !== 0; }
+    });
+  }
 
   // ---------- Fetch helpers ----------
   function csrfToken() {
