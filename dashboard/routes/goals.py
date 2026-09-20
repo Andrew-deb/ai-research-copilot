@@ -2,6 +2,7 @@
 
 from flask import Blueprint, jsonify, render_template, url_for
 
+from middleware.capabilities import require_capability, require_quota
 from middleware.auth import current_user_id
 from routes.helpers import action_response, form_or_json
 from services import goal_service
@@ -16,6 +17,7 @@ def list_goals():
 
 
 @bp.post("/goals")
+@require_capability("goals:write")
 def create_goal():
     data = form_or_json("title", "description")
     goal = goal_service.create_goal(current_user_id(), data["title"], data.get("description"))
@@ -27,6 +29,7 @@ def create_goal():
 
 
 @bp.get("/goals/<goal_id>/matches")
+@require_quota("semantic_search")
 def goal_matches(goal_id: str):
     """JSON — papers pgvector matches to this goal, for the expandable panel on goals.html."""
     detail = goal_service.get_goal_detail(current_user_id(), goal_id)
@@ -46,6 +49,7 @@ def goal_matches(goal_id: str):
 
 
 @bp.post("/goals/<goal_id>/status")
+@require_capability("goals:write")
 def update_status(goal_id: str):
     data = form_or_json("status")
     goal = goal_service.set_status(current_user_id(), goal_id, data["status"])
