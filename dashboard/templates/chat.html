@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Research chat — Research Copilot{% endblock %}
+{% block topbar_title %}Research chat{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{{ url_for('static', filename='css/chat.css') }}">{% endblock %}
+
+{% block content %}
+{# Shell only. Phase 3.3 wires orchestration and MCP calls into the composer
+   below; 3.4 adds streaming, tool results and persistence. The markup exists now
+   so the agent lands in a page that already has a shape. #}
+<div class="chat-page">
+
+  <div class="chat-thread" id="chat-thread" aria-live="polite">
+    {% if messages %}
+      {% for message in messages %}
+        <article class="chat-msg chat-msg-{{ message.role }}">{{ message.content }}</article>
+      {% endfor %}
+    {% else %}
+      <div class="chat-empty">
+        <h1 class="chat-empty-title">What would you like to find out?</h1>
+        <p class="chat-empty-sub">
+          Ask across {{ 'the corpus' }} — the assistant searches papers, reads their
+          sections, and cites what it used.
+        </p>
+
+        <ul class="chat-starters">
+          <li><button type="button" class="prompt-chip" data-prompt="What are the main approaches to retrieval-augmented generation?">What are the main approaches to retrieval-augmented generation?</button></li>
+          <li><button type="button" class="prompt-chip" data-prompt="What limitations do authors report with LLM agents?">What limitations do authors report with LLM agents?</button></li>
+          <li><button type="button" class="prompt-chip" data-prompt="Compare how these papers evaluate human feedback">Compare how these papers evaluate human feedback</button></li>
+        </ul>
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="chat-composer-wrap">
+    {% if can_ask %}
+      <form class="chat-composer" id="chat-composer" autocomplete="off">
+        <textarea class="chat-input" id="chat-input" rows="1"
+                  placeholder="Ask a research question…"
+                  aria-label="Ask a research question"></textarea>
+        <button class="btn btn-primary chat-send" type="submit">Ask</button>
+      </form>
+
+      {# Stated up front rather than on refusal. Discovering a limit by hitting it
+         reads as the product breaking; knowing it in advance reads as a free tier. #}
+      <p class="chat-note">
+        {% if agent_daily_limit %}
+          {{ agent_daily_limit }} research question{{ '' if agent_daily_limit == 1 else 's' }} a day
+          {%- if not is_authenticated %} — <a href="{{ url_for('auth.login') }}">sign in</a> for more{% endif %}.
+        {% endif %}
+        The assistant is still being wired up; search and cited answers work today.
+      </p>
+    {% else %}
+      <p class="chat-note">
+        <a href="{{ url_for('auth.login') }}">Sign in</a> to ask research questions.
+      </p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+  // Placeholder behaviour only: the composer has no agent behind it yet, so it
+  // says so rather than pretending to think. Phase 3.3 replaces this wholesale.
+  (function () {
+    var form = document.getElementById("chat-composer");
+    var input = document.getElementById("chat-input");
+    if (!form || !input) { return; }
+
+    document.querySelectorAll(".prompt-chip[data-prompt]").forEach(function (chip) {
+      chip.addEventListener("click", function () {
+        input.value = chip.dataset.prompt;
+        input.focus();
+      });
+    });
+
+    // Grow with the text, to a point.
+    input.addEventListener("input", function () {
+      input.style.height = "auto";
+      input.style.height = Math.min(input.scrollHeight, 200) + "px";
+    });
+
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      var q = input.value.trim();
+      if (!q) { return; }
+      window.RC.toast("The research assistant is not connected yet — " +
+                      "try semantic search or the answer box on /search.", "info");
+    });
+  })();
+</script>
+{% endblock %}
