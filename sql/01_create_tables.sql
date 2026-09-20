@@ -10,13 +10,30 @@
 -- Email is the natural key (injected by Databricks Apps via X-Forwarded-Email).
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS users (
-    user_id      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    email        TEXT NOT NULL UNIQUE,
-    display_name TEXT,
-    created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+    user_id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email            TEXT NOT NULL UNIQUE,
+    display_name     TEXT,
+    -- Which external identity provider vouched for this account. 'dev' is the
+    -- local development identity and never exists in production.
+    auth_provider    TEXT NOT NULL DEFAULT 'dev'
+                         CHECK (auth_provider IN ('dev', 'google')),
+    -- The provider's immutable id (Google's `sub`). THIS is the identity key,
+    -- not email: a Google address can change or be reassigned, so matching on
+    -- email alone would let a new holder inherit the previous holder's account.
+    provider_subject TEXT,
+    avatar_url       TEXT,
+    -- Owns curated demo content, so collections.user_id stays NOT NULL.
+    is_system        BOOLEAN NOT NULL DEFAULT false,
+    last_login_at    TIMESTAMPTZ,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_email ON users (email);
+
+-- Partial: rows predating OAuth have no subject, and many NULLs must not collide.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_provider_subject
+    ON users (auth_provider, provider_subject)
+    WHERE provider_subject IS NOT NULL;
 
 
 -- ---------------------------------------------------------------------------
