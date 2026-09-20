@@ -49,3 +49,39 @@ __all__ = [
     "ExternalAPIError",
     "EmbeddingError",
 ]
+
+
+class CapabilityDeniedError(ResearchCopilotError):
+    """
+    Raised when the current tier may not use a feature at all.
+
+    Distinct from QuotaExceededError on purpose: this one is answered by signing
+    in, that one by waiting. Collapsing them would mean telling a signed-in user
+    who ran out of allowance to sign in.
+    """
+
+    def __init__(self, message: str, capability: str | None = None,
+                 requires_auth: bool = True):
+        super().__init__(message)
+        self.capability = capability
+        # False for curated demo content, which nobody may edit - so the UI knows
+        # not to offer signing in as the remedy.
+        self.requires_auth = requires_auth
+
+
+class QuotaExceededError(ResearchCopilotError):
+    """
+    Raised when a metered capability has no allowance left.
+
+    `scope` distinguishes "you have used yours" from "the whole application is
+    resting", which need different messages: the first invites signing in, the
+    second must not, because signing in would not help.
+    """
+
+    def __init__(self, message: str, metric: str, scope: str,
+                 used: int, limit: int):
+        super().__init__(message)
+        self.metric = metric
+        self.scope = scope
+        self.used = used
+        self.limit = limit
