@@ -2,6 +2,7 @@
 
 from flask import Blueprint, render_template, request, url_for
 
+from middleware.capabilities import require_capability, require_quota
 from middleware.auth import current_user_id
 from routes.helpers import action_response, form_or_json
 from services import progress_service
@@ -16,6 +17,7 @@ def board():
 
 
 @bp.post("/paper/<paper_id>/status")
+@require_capability("progress:write")
 def set_status(paper_id: str):
     data = form_or_json("status")
     progress = progress_service.set_status(current_user_id(), paper_id, data["status"])
@@ -27,6 +29,7 @@ def set_status(paper_id: str):
 
 
 @bp.post("/paper/<paper_id>/notes")
+@require_capability("notes:write")
 def add_note(paper_id: str):
     data = form_or_json("note_text")
     note = progress_service.save_note(current_user_id(), paper_id, data["note_text"])
