@@ -10,20 +10,34 @@
   <h1 class="page-title">{{ collection.name }}</h1>
   {% if collection.description %}<p class="page-lead">{{ collection.description }}</p>{% endif %}
 
+  {% set editable = can(CAP.library_write) and not collection.is_curated %}
+
   <div class="collection-toolbar">
     <span class="collection-count">{{ collection.paper_count }} paper{{ '' if collection.paper_count == 1 else 's' }}</span>
-    {% if collection.papers %}
+    {% if collection.is_curated %}<span class="tag">Shared example</span>{% endif %}
+    {% if collection.papers and editable %}
       <form method="post" action="{{ url_for('collections.generate_plan', collection_id=collection.collection_id) }}">
         <button type="submit" class="btn btn-primary">Generate reading plan</button>
       </form>
     {% endif %}
   </div>
 
+  {% if collection.is_curated %}
+    <p class="locked-note">
+      This is a shared example collection, so it stays as it is for everyone.
+      {% if can(CAP.library_write) %}
+        Create your own collection to save and reorder papers.
+      {% else %}
+        <a href="{{ url_for('auth.login') }}">Sign in</a> to build your own.
+      {% endif %}
+    </p>
+  {% endif %}
+
   {% if collection.papers %}
-    <ol class="reading-list js-sortable">
+    <ol class="reading-list {{ 'js-sortable' if editable }}">
       {% for paper in collection.papers %}
-        <li class="reading-item" data-paper-id="{{ paper.paper_id }}" draggable="true">
-          <span class="drag-handle" title="Drag to reorder">⠿</span>
+        <li class="reading-item" data-paper-id="{{ paper.paper_id }}" draggable="{{ 'true' if editable else 'false' }}">
+          {% if editable %}<span class="drag-handle" title="Drag to reorder">⠿</span>{% endif %}
           <span class="seq">{{ paper.sequence_order }}</span>
           <div class="reading-item-body">
             <a class="paper-title" href="{{ url_for('search.paper_detail', paper_id=paper.paper_id) }}">{{ paper.title }}</a>
@@ -34,13 +48,17 @@
             </div>
             {% if paper.tldr %}<p class="paper-tldr">{{ paper.tldr }}</p>{% endif %}
           </div>
-          <form method="post" action="{{ url_for('collections.remove_paper', collection_id=collection.collection_id, paper_id=paper.paper_id) }}">
-            <button type="submit" class="btn btn-ghost btn-danger" title="Remove from collection">Remove</button>
-          </form>
+          {% if editable %}
+            <form method="post" action="{{ url_for('collections.remove_paper', collection_id=collection.collection_id, paper_id=paper.paper_id) }}">
+              <button type="submit" class="btn btn-ghost btn-danger" title="Remove from collection">Remove</button>
+            </form>
+          {% endif %}
         </li>
       {% endfor %}
     </ol>
-    <p class="hint">Drag rows to reorder, or generate a reading plan to sequence by publication year and citation impact.</p>
+    {% if editable %}
+      <p class="hint">Drag rows to reorder, or generate a reading plan to sequence by publication year and citation impact.</p>
+    {% endif %}
   {% else %}
     <p class="empty">This collection is empty. Add papers from <a href="{{ url_for('search.search_page') }}">Search</a> or a paper's detail page.</p>
   {% endif %}
