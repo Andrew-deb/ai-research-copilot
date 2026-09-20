@@ -3,48 +3,71 @@
 {% block topbar_title %}Research chat{% endblock %}
 {% block extra_css %}<link rel="stylesheet" href="{{ url_for('static', filename='css/chat.css') }}">{% endblock %}
 
-{% block content %}
-{# Shell only. Phase 3.3 wires orchestration and MCP calls into the composer
-   below; 3.4 adds streaming, tool results and persistence. The markup exists now
-   so the agent lands in a page that already has a shape. #}
-<div class="chat-page">
+{# Agent and RAG search answer the same kind of question at different depths, so
+   the switch lives in the header: persistent chrome, not page content that
+   scrolls away with the conversation. #}
+{% block topbar_center %}
+  {% with active_mode = 'agent' %}{% include "_mode_switch.html" %}{% endwith %}
+{% endblock %}
 
-  <div class="chat-thread" id="chat-thread" aria-live="polite">
-    {% if messages %}
+{% block content %}
+
+{# Shell only. Phase 3.3 wires orchestration and MCP calls into the composer;
+   3.4 adds streaming, tool results and persistence.
+
+   Two states, and the difference is structural rather than cosmetic:
+
+     empty         title, composer and starters sit together in the middle. The
+                   composer is the page's subject, so it gets the focal position.
+     conversation  the thread takes the space and the composer pins to the
+                   bottom, because now the subject is what was said. #}
+<div class="chat-page {{ 'is-empty' if not messages }}">
+
+  {% if messages %}
+    <div class="chat-thread" id="chat-thread" aria-live="polite">
       {% for message in messages %}
         <article class="chat-msg chat-msg-{{ message.role }}">{{ message.content }}</article>
       {% endfor %}
-    {% else %}
-      <div class="chat-empty">
-        <h1 class="chat-empty-title">What would you like to find out?</h1>
-        <p class="chat-empty-sub">
-          Ask across {{ 'the corpus' }} — the assistant searches papers, reads their
-          sections, and cites what it used.
-        </p>
+    </div>
+  {% endif %}
 
-        <ul class="chat-starters">
-          <li><button type="button" class="prompt-chip" data-prompt="What are the main approaches to retrieval-augmented generation?">What are the main approaches to retrieval-augmented generation?</button></li>
-          <li><button type="button" class="prompt-chip" data-prompt="What limitations do authors report with LLM agents?">What limitations do authors report with LLM agents?</button></li>
-          <li><button type="button" class="prompt-chip" data-prompt="Compare how these papers evaluate human feedback">Compare how these papers evaluate human feedback</button></li>
-        </ul>
-      </div>
+  <div class="chat-stage">
+    {% if not messages %}
+      <h1 class="chat-title">What would you like to find out?</h1>
+      <p class="chat-sub">
+        Ask across the corpus — the assistant searches papers, reads their
+        sections, and cites what it used.
+      </p>
     {% endif %}
-  </div>
 
-  <div class="chat-composer-wrap">
     {% if can_ask %}
-      <form class="chat-composer" id="chat-composer" autocomplete="off">
-        <textarea class="chat-input" id="chat-input" rows="1"
+      <form class="composer" id="chat-composer" autocomplete="off">
+        <textarea class="composer-input" id="chat-input" rows="1"
                   placeholder="Ask a research question…"
                   aria-label="Ask a research question"></textarea>
-        <button class="btn btn-primary chat-send" type="submit">Ask</button>
+        <button class="composer-send" type="submit" aria-label="Ask">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 19V5M5 12l7-7 7 7"/>
+          </svg>
+        </button>
       </form>
+
+      {% if not messages %}
+        {# Below the composer, not above it: these are suggestions for an empty
+           input, and putting them first made them read as the primary control. #}
+        <ul class="chip-row chat-starters">
+          <li><button type="button" class="prompt-chip" data-prompt="What are the main approaches to retrieval-augmented generation?">Main approaches to RAG</button></li>
+          <li><button type="button" class="prompt-chip" data-prompt="What limitations do authors report with LLM agents?">Limitations of LLM agents</button></li>
+          <li><button type="button" class="prompt-chip" data-prompt="Compare how these papers evaluate human feedback">Comparing RLHF evaluations</button></li>
+        </ul>
+      {% endif %}
 
       {# Stated up front rather than on refusal. Discovering a limit by hitting it
          reads as the product breaking; knowing it in advance reads as a free tier. #}
       <p class="chat-note">
         {% if agent_daily_limit %}
-          {{ agent_daily_limit }} research question{{ '' if agent_daily_limit == 1 else 's' }} a day
+          {{ agent_daily_limit }} question{{ '' if agent_daily_limit == 1 else 's' }} a day
           {%- if not is_authenticated %} — <a href="{{ url_for('auth.login') }}">sign in</a> for more{% endif %}.
         {% endif %}
         The assistant is still being wired up; search and cited answers work today.
@@ -60,8 +83,8 @@
 
 {% block extra_js %}
 <script>
-  // Placeholder behaviour only: the composer has no agent behind it yet, so it
-  // says so rather than pretending to think. Phase 3.3 replaces this wholesale.
+  // Placeholder behaviour only: there is no agent behind this yet, so it says so
+  // rather than pretending to think. Phase 3.3 replaces this wholesale.
   (function () {
     var form = document.getElementById("chat-composer");
     var input = document.getElementById("chat-input");
@@ -71,19 +94,27 @@
       chip.addEventListener("click", function () {
         input.value = chip.dataset.prompt;
         input.focus();
+        input.dispatchEvent(new Event("input"));
       });
     });
 
-    // Grow with the text, to a point.
     input.addEventListener("input", function () {
       input.style.height = "auto";
       input.style.height = Math.min(input.scrollHeight, 200) + "px";
     });
 
+    // Enter sends, Shift+Enter breaks the line — the convention everywhere else,
+    // and getting it backwards is the fastest way to lose a half-typed question.
+    input.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        form.requestSubmit();
+      }
+    });
+
     form.addEventListener("submit", function (e) {
       e.preventDefault();
-      var q = input.value.trim();
-      if (!q) { return; }
+      if (!input.value.trim()) { return; }
       window.RC.toast("The research assistant is not connected yet — " +
                       "try semantic search or the answer box on /search.", "info");
     });
