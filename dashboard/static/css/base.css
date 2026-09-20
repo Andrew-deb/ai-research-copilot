@@ -476,3 +476,15 @@ input:focus, textarea:focus, select:focus {
 @media (min-width: 901px) {
   .sidebar-scrim { display: none !important; }
 }
+
+/* Shown when a list or board has nothing in it. Says what to do next, rather than
+   leaving the page silently blank - a blank board reads as a broken feature. */
+.empty-state {
+  margin: 16px 0 24px;
+  padding: 14px 16px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 13.5px;
+}
