@@ -518,3 +518,120 @@ input:focus, textarea:focus, select:focus {
   color: var(--text-muted);
   font-size: 12.5px;
 }
+
+/* =========================================================================
+   Sidebar as a research-assistant shell (Phase 3.2)
+   The assistant sits above the workspace because it is meant to be where work
+   starts, not a tool filed alongside the others.
+   ========================================================================= */
+
+.sidebar-cta {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 10px 12px 8px;
+  padding: 9px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13.5px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: background .15s ease, border-color .15s ease;
+}
+.sidebar-cta:hover { background: var(--surface-2); text-decoration: none; }
+.sidebar-cta.active { border-color: var(--brand); background: var(--brand-tint); color: var(--brand-tint-fg); }
+.sidebar-cta svg { width: 16px; height: 16px; flex: none; }
+
+.sidebar-search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 12px 6px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.sidebar-search svg { width: 14px; height: 14px; color: var(--text-muted); flex: none; }
+.sidebar-search input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+}
+.sidebar-search input::placeholder { color: var(--text-muted); }
+
+.nav-section { display: flex; flex-direction: column; gap: 2px; }
+.nav-section + .nav-section { margin-top: 16px; }
+
+.nav-label {
+  margin: 0 0 4px;
+  padding: 0 10px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* Says "nothing here yet", not "something is broken". Conversation storage
+   arrives with the agent. */
+.nav-empty {
+  margin: 2px 0 0;
+  padding: 6px 10px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-style: italic;
+}
+
+.nav-item-chat span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-footer { display: flex; flex-direction: column; gap: 8px; }
+.sidebar-signout { width: 100%; }
+
+/* Anonymous visitors get an invitation with a reason attached, rather than a
+   bare demand to sign in. */
+.guest-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+.guest-note { margin: 0; color: var(--text-muted); font-size: 12px; line-height: 1.45; }
+
+/* =========================================================================
+   Capability prompts — what the interface says instead of a failing control
+   ========================================================================= */
+
+/* Reads as a control but goes to sign-in. Muted so it does not compete with the
+   actions a visitor CAN take. */
+.btn-signin-prompt {
+  border-style: dashed;
+  color: var(--text-muted);
+}
+.btn-signin-prompt:hover { color: var(--text); border-style: solid; }
+
+.locked-note {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.locked-note a { font-weight: 500; }
