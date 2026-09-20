@@ -33,19 +33,31 @@
   <div class="detail-columns">
     <section class="panel">
       <h2>Reading status</h2>
-      <div class="status-buttons" role="group">
-        {% for st in reading_statuses %}
-          <button type="button"
-                  class="btn status-btn {{ 'is-current' if reading_status == st }}"
-                  data-action="{{ url_for('progress.set_status', paper_id=paper.paper_id) }}"
-                  data-status="{{ st }}">
-            {{ st | replace('_', ' ') | title }}
-          </button>
-        {% endfor %}
-      </div>
+      {% if can(CAP.progress_write) %}
+        <div class="status-buttons" role="group">
+          {% for st in reading_statuses %}
+            <button type="button"
+                    class="btn status-btn {{ 'is-current' if reading_status == st }}"
+                    data-action="{{ url_for('progress.set_status', paper_id=paper.paper_id) }}"
+                    data-status="{{ st }}">
+              {{ st | replace('_', ' ') | title }}
+            </button>
+          {% endfor %}
+        </div>
+      {% else %}
+        {# A control that fails on click teaches the visitor the product is
+           broken. This one says what it would do and how to unlock it. #}
+        <p class="locked-note">
+          <a href="{{ url_for('auth.login') }}">Sign in</a> to track what you've read.
+        </p>
+      {% endif %}
 
       <h2>Add to collection</h2>
-      {% if collections %}
+      {% if not can(CAP.library_write) %}
+        <p class="locked-note">
+          <a href="{{ url_for('auth.login') }}">Sign in</a> to save papers into your own collections.
+        </p>
+      {% elif collections %}
         <form class="inline-form" id="add-to-collection"
               data-url-template="{{ url_for('collections.add_paper', collection_id='CID') }}">
           <input type="hidden" name="paper_id" value="{{ paper.paper_id }}">
@@ -72,10 +84,17 @@
 
   <section class="panel">
     <h2>Notes</h2>
-    <form id="note-form" method="post" action="{{ url_for('progress.add_note', paper_id=paper.paper_id) }}">
-      <textarea name="note_text" rows="3" required placeholder="Your annotation — embedded for cross-note semantic search by the agent."></textarea>
-      <button type="submit" class="btn btn-primary">Save note</button>
-    </form>
+    {% if can(CAP.notes_write) %}
+      <form id="note-form" method="post" action="{{ url_for('progress.add_note', paper_id=paper.paper_id) }}">
+        <textarea name="note_text" rows="3" required placeholder="Your annotation — embedded for cross-note semantic search by the agent."></textarea>
+        <button type="submit" class="btn btn-primary">Save note</button>
+      </form>
+    {% else %}
+      <p class="locked-note">
+        Notes are private to your account and searchable by the assistant.
+        <a href="{{ url_for('auth.login') }}">Sign in</a> to write one.
+      </p>
+    {% endif %}
     <ul class="note-list">
       {% for note in notes %}
         <li><p>{{ note.note_text }}</p><time>{{ note.created_at }}</time></li>
