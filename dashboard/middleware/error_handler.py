@@ -19,6 +19,8 @@ from exceptions import (
     NoteNotFoundError,
     PaperNotFoundError,
     ResearchCopilotError,
+    CapabilityDeniedError,
+    QuotaExceededError,
     ValidationError,
 )
 
@@ -27,6 +29,12 @@ logger = logging.getLogger(__name__)
 # Domain exception → (HTTP status, short label)
 _STATUS_MAP: list[tuple[type[Exception], int, str]] = [
     (ValidationError, 400, "Invalid input"),
+    # 403 not 401: the visitor is not unauthenticated in a way a WWW-Authenticate
+    # header would fix — they are anonymous by design and need to sign in.
+    (CapabilityDeniedError, 403, "Sign in required"),
+    # 429 rather than 403: the answer is "later", not "never", and the difference
+    # is what stops a signed-in user being told to sign in.
+    (QuotaExceededError, 429, "Daily limit reached"),
     (PaperNotFoundError, 404, "Paper not found"),
     (CollectionNotFoundError, 404, "Collection not found"),
     (GoalNotFoundError, 404, "Learning goal not found"),
@@ -65,7 +73,21 @@ def register_error_handlers(app: Flask) -> None:
             logger.info("Domain error (%s): %s", status, message)
 
         if _wants_json():
-            return jsonify({"error": label, "detail": message}), status
+            body = {"error": label, "detail": message}
+            # Enough context for the page to offer the right next step without
+            # parsing the message text.
+            if isinstance(exc, CapabilityDeniedError):
+                body["requires_auth"] = exc.requires_auth
+                body["sign_in_url"] = url_for("auth.login")
+            elif isinstance(exc, QuotaExceededError):
+                body["metric"] = exc.metric
+                body["limit"] = exc.limit
+                # A global ceiling must NOT invite signing in: it would not help,
+                # and promising otherwise is worse than saying "come back later".
+                body["requires_auth"] = exc.scope == "anon"
+                if exc.scope == "anon":
+                    body["sign_in_url"] = url_for("auth.login")
+            return jsonify(body), status
 
         # A page navigation (GET) that failed → show the error page with the real
         # status. A form action (POST/DELETE) → flash and bounce back to the page.
