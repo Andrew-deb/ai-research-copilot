@@ -108,10 +108,39 @@ DEV_USER_EMAIL: str = os.getenv("DEV_USER_EMAIL", "demo@research-copilot.dev")
 DEV_USER_NAME: str = os.getenv("DEV_USER_NAME", "Demo Researcher")
 
 # --- Public anonymous demo ---
-# Defaults OFF in 3.1 and is switched on in 3.2, when the capability layer that
-# stops an anonymous visitor mutating anything actually exists. Shipping it on
-# before those guards land would give every visitor write access.
-ALLOW_ANONYMOUS_DEMO: bool = os.getenv("ALLOW_ANONYMOUS_DEMO", "false").lower() == "true"
+# On from 3.2, now that the capability layer refuses anonymous writes and the
+# quota layer meters anonymous AI use.
+ALLOW_ANONYMOUS_DEMO: bool = os.getenv("ALLOW_ANONYMOUS_DEMO", "true").lower() == "true"
+
+# =============================================================================
+# Quotas (Phase 3.2)
+# =============================================================================
+# EVERY NUMBER BELOW IS A PLACEHOLDER, not a production value.
+#
+# Production values come from the calibration step (plan 3.6), which measures
+# what an operation actually consumes and works backwards from the providers'
+# free allowances. Choosing them now would be guessing, so they are deliberately
+# stingy: an un-calibrated deploy should be restrictive rather than expensive.
+#
+# Authentication raises the allowance. It never removes it — an authenticated
+# user with a runaway script costs exactly as much as an anonymous one.
+
+ANON_SEARCH_PER_DAY: int = int(os.getenv("ANON_SEARCH_PER_DAY", "20"))
+ANON_RAG_PER_DAY: int = int(os.getenv("ANON_RAG_PER_DAY", "3"))
+ANON_AGENT_PER_DAY: int = int(os.getenv("ANON_AGENT_PER_DAY", "1"))
+
+USER_SEARCH_PER_DAY: int = int(os.getenv("USER_SEARCH_PER_DAY", "200"))
+USER_RAG_PER_DAY: int = int(os.getenv("USER_RAG_PER_DAY", "30"))
+USER_AGENT_PER_DAY: int = int(os.getenv("USER_AGENT_PER_DAY", "10"))
+
+# The ceilings that protect the budget. On a free tier they protect availability:
+# exhausting a provider's daily allowance means the feature is dead until it
+# resets, for everyone, including whoever is demonstrating it.
+GLOBAL_RAG_PER_DAY: int = int(os.getenv("GLOBAL_RAG_PER_DAY", "200"))
+GLOBAL_AGENT_PER_DAY: int = int(os.getenv("GLOBAL_AGENT_PER_DAY", "50"))
+
+# Off switch for local work, where metering only gets in the way.
+QUOTAS_ENABLED: bool = os.getenv("QUOTAS_ENABLED", "true").lower() == "true"
 
 # --- Session cookie ---
 # Lax rather than Strict on purpose: the Google callback is a top-level GET
