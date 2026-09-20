@@ -303,3 +303,108 @@ def test_a_users_own_collections_are_still_editable(client, db):
     resp = client.post(f"/collection/{own['collection_id']}/papers",
                        json={"paper_id": paper["paper_id"]}, headers=XHR)
     assert resp.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# The interface matches what the server will allow
+# ---------------------------------------------------------------------------
+#
+# A control that fails on click teaches the visitor the product is broken. These
+# assert the page never offers an action the request would refuse.
+
+def test_anonymous_sees_no_note_form(anon_client, db):
+    paper = db.seed_paper(title="Some Paper")
+    body = anon_client.get(f"/paper/{paper['paper_id']}").get_data(as_text=True)
+    assert 'id="note-form"' not in body
+    assert "Sign in" in body
+
+
+def test_anonymous_sees_no_reading_status_buttons(anon_client, db):
+    paper = db.seed_paper()
+    body = anon_client.get(f"/paper/{paper['paper_id']}").get_data(as_text=True)
+    assert "status-btn" not in body
+
+
+def test_anonymous_sees_no_collection_creation_form(anon_client):
+    body = anon_client.get("/collections").get_data(as_text=True)
+    assert "collections.create_collection" not in body
+    assert 'action="/collections"' not in body
+
+
+def test_anonymous_sees_no_goal_creation_form(anon_client):
+    body = anon_client.get("/goals").get_data(as_text=True)
+    assert 'action="/goals"' not in body
+
+
+def test_a_signed_in_user_does_see_those_controls(client, db):
+    """The control: the gate is the tier, not a template that lost its form."""
+    paper = db.seed_paper()
+    detail = client.get(f"/paper/{paper['paper_id']}").get_data(as_text=True)
+    assert 'id="note-form"' in detail
+    assert "status-btn" in detail
+    assert 'action="/goals"' in client.get("/goals").get_data(as_text=True)
+
+
+def test_a_curated_collection_offers_no_edit_controls_even_when_signed_in(client, db):
+    """Read-only for every tier, and the page has to say so rather than fail on click."""
+    coll = _curated(db)
+    paper = db.seed_paper()
+    db.add_paper_to_collection(coll["collection_id"], paper["paper_id"])
+
+    body = client.get(f"/collection/{coll['collection_id']}").get_data(as_text=True)
+
+    assert "Generate reading plan" not in body
+    assert "Remove from collection" not in body
+    assert "js-sortable" not in body
+    assert "shared example" in body.lower()
+
+
+def test_an_editable_collection_keeps_its_controls(client, db):
+    coll = client.post("/collections", json={"name": "Mine"}, headers=XHR).get_json()["collection"]
+    paper = db.seed_paper()
+    db.add_paper_to_collection(coll["collection_id"], paper["paper_id"])
+
+    body = client.get(f"/collection/{coll['collection_id']}").get_data(as_text=True)
+
+    assert "Generate reading plan" in body
+    assert "js-sortable" in body
+
+
+# ---------------------------------------------------------------------------
+# The shell
+# ---------------------------------------------------------------------------
+
+def test_a_new_visitor_lands_on_the_chat_first_page(anon_client):
+    """
+    Not the dashboard. Someone who has never been here has no workspace, and
+    showing them an empty one explains nothing about what this is.
+    """
+    body = anon_client.get("/").get_data(as_text=True)
+    assert "What are you researching?" in body
+    assert "Try demo" in body
+    assert 'class="sidebar"' not in body
+
+
+def test_a_signed_in_user_lands_on_their_workspace(client):
+    body = client.get("/").get_data(as_text=True)
+    assert "What are you researching?" not in body
+    assert 'class="sidebar"' in body
+
+
+def test_the_demo_workspace_is_reachable_without_an_account(anon_client):
+    """'Try demo' has to go somewhere, and that somewhere is the real product."""
+    assert anon_client.get("/dashboard").status_code == 200
+
+
+def test_the_chat_shell_renders(client):
+    body = client.get("/chat").get_data(as_text=True)
+    assert "chat-composer" in body
+    assert "No recent chats yet" in body
+
+
+def test_a_conversation_url_resolves_before_persistence_exists(client):
+    """
+    Routed now so the sidebar, back button and shared links all work the moment
+    storage lands, instead of needing a second pass over the navigation.
+    """
+    assert client.get("/chat/anything").status_code == 200
