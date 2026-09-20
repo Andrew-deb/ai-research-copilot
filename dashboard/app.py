@@ -25,14 +25,26 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 
+import datetime
+
 from flask import Flask
+from flask_wtf.csrf import CSRFProtect
 
 import embedding
-from config import DEBUG, EMBEDDING_PRELOAD, SECRET_KEY
+from config import (
+    DEBUG,
+    EMBEDDING_PRELOAD,
+    SECRET_KEY,
+    SESSION_COOKIE_HTTPONLY,
+    SESSION_COOKIE_SAMESITE,
+    SESSION_COOKIE_SECURE,
+    SESSION_LIFETIME_DAYS,
+)
 from middleware.auth import register_auth
 from middleware.error_handler import register_error_handlers
 from repositories import lakebase
 from routes import register_routes
+from routes.auth import init_oauth
 
 logging.basicConfig(
     level=logging.INFO,
@@ -43,8 +55,27 @@ logger = logging.getLogger("dashboard")
 
 def create_app() -> Flask:
     app = Flask(__name__, template_folder="templates", static_folder="static")
-    app.config.update(SECRET_KEY=SECRET_KEY, DEBUG=DEBUG, JSON_SORT_KEYS=False)
+    app.config.update(
+        SECRET_KEY=SECRET_KEY,
+        DEBUG=DEBUG,
+        JSON_SORT_KEYS=False,
+        # Identity now lives in a cookie rather than a proxy header, which makes
+        # these flags load-bearing rather than cosmetic.
+        SESSION_COOKIE_HTTPONLY=SESSION_COOKIE_HTTPONLY,
+        SESSION_COOKIE_SECURE=SESSION_COOKIE_SECURE,
+        SESSION_COOKIE_SAMESITE=SESSION_COOKIE_SAMESITE,
+        PERMANENT_SESSION_LIFETIME=datetime.timedelta(days=SESSION_LIFETIME_DAYS),
+    )
 
+    # Cookie authentication is forgeable across origins in a way header
+    # authentication was not: before this change an attacker's page could not make
+    # an authenticated request, because it could not set X-Forwarded-Email. Now the
+    # browser attaches the session cookie itself. SameSite=Lax blocks the common
+    # cross-site form POST, but it is one mitigation rather than a control, so
+    # every state-changing request carries a token as well.
+    CSRFProtect(app)
+
+    init_oauth(app)
     register_auth(app)
     register_routes(app)
     register_error_handlers(app)
