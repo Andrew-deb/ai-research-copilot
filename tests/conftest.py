@@ -48,6 +48,8 @@ class FakeDB:
         self.papers: dict[str, dict] = {}
         self.progress: dict[tuple[str, str], dict] = {}
         self.notes: dict[str, dict] = {}
+        # (scope, scope_id, metric) -> count. No day key: a test never spans one.
+        self.usage: dict[tuple[str, str, str], int] = {}
 
     # ---------- test helpers (not part of the repo surface) ----------
     def seed_paper(self, **overrides) -> dict:
@@ -250,13 +252,32 @@ class FakeDB:
         self.notes[nid] = row
         return dict(row)
 
+    # ---------- usage counters ----------
+    def increment_usage(self, scope, scope_id, metric):
+        key = (scope, scope_id, metric)
+        self.usage[key] = self.usage.get(key, 0) + 1
+        return self.usage[key]
+
+    def get_usage_counts(self, scope, scope_id):
+        return {m: n for (s, sid, m), n in self.usage.items()
+                if s == scope and sid == scope_id}
+
     # ---------- collections ----------
     def create_collection(self, user_id, name, description=None):
         cid = str(uuid.uuid4())
         row = {"collection_id": cid, "user_id": user_id, "name": name,
-               "description": description, "created_at": _now()}
+               "description": description, "is_curated": False, "created_at": _now()}
         self.collections[cid] = row
         return dict(row)
+
+    def get_curated_collections(self):
+        return [{**c, "paper_count": sum(1 for (cid, _p) in self.collection_papers
+                                         if cid == c["collection_id"])}
+                for c in self.collections.values() if c.get("is_curated")]
+
+    def get_curated_collection(self, collection_id):
+        c = self.collections.get(collection_id)
+        return dict(c) if c and c.get("is_curated") else None
 
     def get_collections(self, user_id):
         out = []
