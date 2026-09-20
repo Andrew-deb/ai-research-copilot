@@ -41,6 +41,7 @@ from config import (
     SESSION_LIFETIME_DAYS,
 )
 from middleware.auth import register_auth
+from middleware.capabilities import register_capabilities
 from middleware.error_handler import register_error_handlers
 from repositories import lakebase
 from routes import register_routes
@@ -77,6 +78,7 @@ def create_app() -> Flask:
 
     init_oauth(app)
     register_auth(app)
+    register_capabilities(app)
     register_routes(app)
     register_error_handlers(app)
 
