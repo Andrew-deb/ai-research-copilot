@@ -35,6 +35,13 @@ services:
         sync: false
       - key: OPENROUTER_API_KEY
         sync: false
+      # Google OAuth — create at https://console.cloud.google.com/apis/credentials
+      # Authorised redirect URI must be exactly:
+      #   https://<service>.onrender.com/auth/google/callback
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
       - key: HF_API_TOKEN
         sync: false
       - key: FLASK_SECRET_KEY
@@ -46,10 +53,14 @@ services:
       # semantic search isn't the one that pays for it.
       - key: EMBEDDING_PRELOAD
         value: "true"
-      # Render has no auth proxy, so there is no X-Forwarded-Email. The app
-      # falls back to the shared demo user, which is what a public demo wants.
-      # NOTE: every visitor shares one account and can edit the same data.
-      - key: REQUIRE_FORWARDED_AUTH
+      # Selects production posture: Secure session cookies, and config refuses to
+      # boot if the dev bypass or the default secret key are still set.
+      - key: APP_ENV
+        value: production
+      # Anonymous browsing stays OFF until 3.2 ships the capability layer that
+      # stops an anonymous visitor writing. Enabling it before those guards exist
+      # would give every visitor write access to shared data.
+      - key: ALLOW_ANONYMOUS_DEMO
         value: "false"
       # One worker, and Lakebase free tiers are stingy with connections.
       - key: DB_POOL_MAX
