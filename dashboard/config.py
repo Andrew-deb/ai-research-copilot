@@ -67,15 +67,98 @@ OPENROUTER_MODEL: str = os.getenv("OPENROUTER_MODEL", "openai/gpt-oss-120b:free"
 SECRET_KEY: str = os.getenv("FLASK_SECRET_KEY", "dev-secret-change-in-production")
 DEBUG: bool = os.getenv("FLASK_DEBUG", "false").lower() == "true"
 
-# --- Auth ---
-# When True, a request without the Databricks-injected X-Forwarded-Email header
-# is rejected with 401. Leave False for local dev (falls back to the demo user);
-# set REQUIRE_FORWARDED_AUTH=true in the Databricks App environment.
-REQUIRE_FORWARDED_AUTH: bool = os.getenv("REQUIRE_FORWARDED_AUTH", "false").lower() == "true"
-DEMO_USER_EMAIL: str = os.getenv("DEMO_USER_EMAIL", "demo@research-copilot.dev")
-DEMO_USER_NAME: str = os.getenv("DEMO_USER_NAME", "Demo Researcher")
+# =============================================================================
+# Identity (Phase 3.1)
+# =============================================================================
+# The dashboard is deployed on Render, not as a Databricks App, so there is no
+# OAuth proxy injecting X-Forwarded-Email. The app authenticates users itself via
+# Google, and authenticates *itself* to Databricks separately and server-side.
+# Those two boundaries never meet; see
+# context/decisions/authentication_and_demo_design.md.
+
+APP_ENV: str = os.getenv("APP_ENV", "local").strip().lower()
+IS_PRODUCTION: bool = APP_ENV == "production"
+
+# --- Google OAuth ---
+GOOGLE_CLIENT_ID: str | None = _get_secret("google", "client-id", "GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET: str | None = _get_secret("google", "client-secret", "GOOGLE_CLIENT_SECRET")
+GOOGLE_DISCOVERY_URL: str = "https://accounts.google.com/.well-known/openid-configuration"
+
+# --- Development shortcut ---
+# Skips the Google round trip and resolves every request to a fixed local
+# identity, so unrelated debugging does not require signing in. NEVER production:
+# see the guard at the bottom of this module.
+#
+# The address MUST stay `demo@research-copilot.dev`. It is not arbitrary - three
+# things key on it and they have to agree:
+#
+#     setup_db.py                              seeds this row
+#     mcp_server/middleware/request_context.py the agent writes as this user
+#     this bypass                              the dashboard reads as this user
+#
+# Renaming it once already split the identity in two: the agent wrote to one
+# library while the dashboard displayed another, and every collection, note and
+# reading-progress row created before the rename appeared to have vanished. The
+# data was never lost, just attached to a user the dashboard had stopped being.
+#
+# The *config name* is DEV_USER_EMAIL because this is the development identity,
+# distinct from the public anonymous demo tier. The *value* is a shared contract.
+ALLOW_DEV_USER_BYPASS: bool = os.getenv("ALLOW_DEV_USER_BYPASS", "true").lower() == "true"
+DEV_USER_EMAIL: str = os.getenv("DEV_USER_EMAIL", "demo@research-copilot.dev")
+DEV_USER_NAME: str = os.getenv("DEV_USER_NAME", "Demo Researcher")
+
+# --- Public anonymous demo ---
+# Defaults OFF in 3.1 and is switched on in 3.2, when the capability layer that
+# stops an anonymous visitor mutating anything actually exists. Shipping it on
+# before those guards land would give every visitor write access.
+ALLOW_ANONYMOUS_DEMO: bool = os.getenv("ALLOW_ANONYMOUS_DEMO", "false").lower() == "true"
+
+# --- Session cookie ---
+# Lax rather than Strict on purpose: the Google callback is a top-level GET
+# navigation from accounts.google.com, and Strict would withhold the cookie on
+# arrival - losing the OAuth `state` and breaking sign-in. Lax still withholds
+# the cookie on cross-site POST, which is where the CSRF risk lives.
+SESSION_COOKIE_SECURE: bool = IS_PRODUCTION
+SESSION_COOKIE_HTTPONLY: bool = True
+SESSION_COOKIE_SAMESITE: str = "Lax"
+SESSION_LIFETIME_DAYS: int = int(os.getenv("SESSION_LIFETIME_DAYS", "14"))
+
+# =============================================================================
+# Boot-time safety checks
+# =============================================================================
+# These raise rather than warn. A misconfigured production deploy should fail its
+# health check and never serve traffic, because every alternative here is worse
+# than being down: the first would make every visitor the dev user, and the
+# second would sign session cookies with a value published in this repository.
+
+if IS_PRODUCTION and ALLOW_DEV_USER_BYPASS:
+    raise RuntimeError(
+        "ALLOW_DEV_USER_BYPASS cannot be enabled when APP_ENV=production. "
+        "It resolves every request to the dev user without authentication. "
+        "Unset it in the Render environment."
+    )
+
+if IS_PRODUCTION and SECRET_KEY == "dev-secret-change-in-production":
+    raise RuntimeError(
+        "FLASK_SECRET_KEY is still the development default while APP_ENV=production. "
+        "It signs session cookies, so anyone could forge a session. "
+        "Render generates one automatically - check the environment."
+    )
+
+if IS_PRODUCTION and not (GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET):
+    raise RuntimeError(
+        "APP_ENV=production requires GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET. "
+        "Without them nobody can sign in, and with ALLOW_DEV_USER_BYPASS refused "
+        "the application has no way to identify anyone."
+    )
 
 if not DATABASE_URL:
     logger.warning("DATABASE_URL not set — database operations will fail.")
 if not OPENROUTER_API_KEY:
     logger.warning("OPENROUTER_API_KEY not set — RAG summaries will be unavailable.")
+if not IS_PRODUCTION and ALLOW_DEV_USER_BYPASS:
+    logger.warning(
+        "ALLOW_DEV_USER_BYPASS is on — every request resolves to %s without "
+        "signing in. Set ALLOW_DEV_USER_BYPASS=false to exercise the real Google flow.",
+        DEV_USER_EMAIL,
+    )

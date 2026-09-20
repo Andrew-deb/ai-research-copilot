@@ -115,6 +115,75 @@ def run_write(sql: str, params: tuple = (), returning: bool = False) -> Any:
 # Users
 # =============================================================================
 
+def get_user_by_id(user_id: str) -> dict | None:
+    rows = run_query("SELECT * FROM users WHERE user_id = %s;", (user_id,))
+    return rows[0] if rows else None
+
+
+def get_user_by_provider(provider: str, subject: str) -> dict | None:
+    """The account behind a provider identity. This is the real identity key."""
+    rows = run_query(
+        "SELECT * FROM users WHERE auth_provider = %s AND provider_subject = %s;",
+        (provider, subject),
+    )
+    return rows[0] if rows else None
+
+
+def create_oauth_user(provider: str, subject: str, email: str,
+                      display_name: str | None = None,
+                      avatar_url: str | None = None) -> dict:
+    return run_write(
+        """
+        INSERT INTO users (email, display_name, auth_provider, provider_subject,
+                           avatar_url, last_login_at)
+        VALUES (%s, %s, %s, %s, %s, now())
+        RETURNING *;
+        """,
+        (email, display_name, provider, subject, avatar_url),
+        returning=True,
+    )
+
+
+def link_user_provider(user_id: str, provider: str, subject: str,
+                       display_name: str | None = None,
+                       avatar_url: str | None = None) -> dict:
+    """
+    Attach a provider identity to an account that predates OAuth.
+
+    COALESCE on the display fields so signing in never blanks a name the user has
+    already set - Google may supply nothing, and nothing should not overwrite
+    something.
+    """
+    return run_write(
+        """
+        UPDATE users
+           SET auth_provider    = %s,
+               provider_subject = %s,
+               display_name     = COALESCE(%s, display_name),
+               avatar_url       = COALESCE(%s, avatar_url),
+               last_login_at    = now()
+         WHERE user_id = %s
+        RETURNING *;
+        """,
+        (provider, subject, display_name, avatar_url, user_id),
+        returning=True,
+    )
+
+
+def touch_user_login(user_id: str, display_name: str | None = None,
+                     avatar_url: str | None = None) -> None:
+    run_write(
+        """
+        UPDATE users
+           SET last_login_at = now(),
+               display_name  = COALESCE(%s, display_name),
+               avatar_url    = COALESCE(%s, avatar_url)
+         WHERE user_id = %s;
+        """,
+        (display_name, avatar_url, user_id),
+    )
+
+
 def get_or_create_user(email: str, display_name: str | None = None) -> dict:
     rows = run_query("SELECT * FROM users WHERE email = %s;", (email,))
     if rows:
