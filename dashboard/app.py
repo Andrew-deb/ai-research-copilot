@@ -46,6 +46,7 @@ from middleware.error_handler import register_error_handlers
 from repositories import lakebase
 from routes import register_routes
 from routes.auth import init_oauth
+from routes.chat import register_chat_context
 
 logging.basicConfig(
     level=logging.INFO,
@@ -79,6 +80,7 @@ def create_app() -> Flask:
     init_oauth(app)
     register_auth(app)
     register_capabilities(app)
+    register_chat_context(app)
     register_routes(app)
     register_error_handlers(app)
 
