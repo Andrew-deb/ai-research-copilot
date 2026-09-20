@@ -7,6 +7,17 @@
 <h1 class="page-title">Reading progress</h1>
 <p class="page-lead">Drag a paper between columns to update its status. {{ board.total }} paper{{ '' if board.total == 1 else 's' }} tracked.</p>
 
+{% if board.total == 0 %}
+  {# The board shows papers you have deliberately engaged with: anything in a
+     collection, plus anything you have given a status. An empty board used to be
+     silent, which read as "this feature is broken" rather than "nothing here yet". #}
+  <p class="empty-state">
+    Nothing here yet. Papers appear on this board once you
+    <a href="{{ url_for('collections.list_collections') }}">add them to a collection</a>,
+    or set a reading status from a paper's page.
+  </p>
+{% endif %}
+
 <div class="kanban">
   {% for status in ['not_started', 'reading', 'completed', 'skipped'] %}
     <section class="kanban-col" data-status="{{ status }}">
