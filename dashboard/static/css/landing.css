@@ -58,69 +58,10 @@
   line-height: 1.55;
 }
 
-.landing-composer {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 7px 7px 7px 16px;
-  border: 1px solid var(--border-strong);
-  border-radius: 999px;
-  background: var(--surface);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, .04);
-  transition: border-color .15s ease, box-shadow .15s ease;
-}
-.landing-composer:focus-within {
-  border-color: var(--brand);
-  box-shadow: 0 0 0 3px var(--brand-tint);
-}
 
-.landing-input {
-  flex: 1;
-  border: 0;
-  outline: 0;
-  background: transparent;
-  color: var(--text);
-  font: inherit;
-  font-size: 15px;
-  padding: 8px 0;
-}
-.landing-input::placeholder { color: var(--text-muted); }
-
-.landing-send { border-radius: 999px; padding: 9px 20px; }
-
-/* Concrete questions, not "try asking me something" — they double as a statement
-   of what the corpus actually covers. */
-.landing-prompts {
-  list-style: none;
-  margin: 18px 0 0;
-  padding: 0;
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 8px;
-}
-
-.prompt-chip {
-  display: inline-block;
-  padding: 7px 13px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  background: var(--surface);
-  color: var(--text-muted);
-  font-size: 12.5px;
-  font-family: inherit;
-  line-height: 1.35;
-  text-align: left;
-  text-decoration: none;
-  cursor: pointer;
-  transition: border-color .15s ease, color .15s ease, background .15s ease;
-}
-.prompt-chip:hover {
-  border-color: var(--border-strong);
-  background: var(--surface-2);
-  color: var(--text);
-}
+/* Landing-specific: the chips centre under the composer here, but flow left on
+   the chat page, so only the alignment lives in this file. */
+.landing-prompts { justify-content: center; }
 
 .landing-value {
   margin-top: 56px;
