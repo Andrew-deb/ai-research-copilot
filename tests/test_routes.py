@@ -5,9 +5,11 @@ JSON-vs-redirect content negotiation done by routes/helpers.action_response.
 
 import pytest
 
-from tests.conftest import as_user
-
-ALICE = as_user("alice@example.com")
+# Identity used to arrive as an X-Forwarded-Email header. Since Phase 3.1 it comes
+# from the session, with the dev bypass resolving it for tests that only need *an*
+# account. These route tests are about routing and validation, not about who is
+# signed in, so they pass no headers; tests/test_auth.py covers identity itself.
+ALICE: dict = {}
 
 
 # ---------------------------------------------------------------------------

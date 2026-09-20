@@ -14,6 +14,9 @@ import uuid
 # Must be set before app.py is imported — its module body calls create_app(),
 # which would otherwise spawn the real SentenceTransformer warmup thread.
 os.environ["EMBEDDING_PRELOAD"] = "false"
+# Resolve every test request to the dev identity unless a test signs in explicitly.
+os.environ.setdefault("APP_ENV", "local")
+os.environ.setdefault("ALLOW_DEV_USER_BYPASS", "true")
 
 import pytest
 
@@ -23,7 +26,10 @@ import llm_client as llm_module
 from middleware import auth as auth_module
 from repositories import lakebase as lakebase_module
 
-DEMO_EMAIL = "demo@research-copilot.dev"
+# The development identity. Shared with setup_db.py's seed and the MCP server's
+# default user, so the agent and the dashboard operate on the same library.
+DEV_EMAIL = "demo@research-copilot.dev"
+DEMO_EMAIL = DEV_EMAIL
 
 
 def _now():
@@ -64,7 +70,9 @@ class FakeDB:
         if existing:
             return dict(existing)
         uid = str(uuid.uuid4())
-        row = {"user_id": uid, "email": email, "display_name": display_name, "created_at": _now()}
+        row = {"user_id": uid, "email": email, "display_name": display_name,
+               "auth_provider": "dev", "provider_subject": None, "avatar_url": None,
+               "is_system": False, "last_login_at": None, "created_at": _now()}
         self.users_by_id[uid] = row
         self.users_by_email[email] = row
         return dict(row)
@@ -72,6 +80,43 @@ class FakeDB:
     def get_user_by_email(self, email):
         row = self.users_by_email.get(email)
         return dict(row) if row else None
+
+    def get_user_by_id(self, user_id):
+        row = self.users_by_id.get(str(user_id))
+        return dict(row) if row else None
+
+    def get_user_by_provider(self, provider, subject):
+        for row in self.users_by_id.values():
+            if row.get("auth_provider") == provider and row.get("provider_subject") == subject:
+                return dict(row)
+        return None
+
+    def create_oauth_user(self, provider, subject, email, display_name=None, avatar_url=None):
+        uid = str(uuid.uuid4())
+        row = {"user_id": uid, "email": email, "display_name": display_name,
+               "auth_provider": provider, "provider_subject": subject,
+               "avatar_url": avatar_url, "is_system": False,
+               "last_login_at": _now(), "created_at": _now()}
+        self.users_by_id[uid] = row
+        self.users_by_email[email] = row
+        return dict(row)
+
+    def link_user_provider(self, user_id, provider, subject, display_name=None, avatar_url=None):
+        row = self.users_by_id[str(user_id)]
+        row["auth_provider"] = provider
+        row["provider_subject"] = subject
+        # COALESCE semantics: never blank a name the user already has.
+        row["display_name"] = display_name or row.get("display_name")
+        row["avatar_url"] = avatar_url or row.get("avatar_url")
+        row["last_login_at"] = _now()
+        return dict(row)
+
+    def touch_user_login(self, user_id, display_name=None, avatar_url=None):
+        row = self.users_by_id.get(str(user_id))
+        if row:
+            row["last_login_at"] = _now()
+            row["display_name"] = display_name or row.get("display_name")
+            row["avatar_url"] = avatar_url or row.get("avatar_url")
 
     # ---------- home stats ----------
     def get_dashboard_stats(self, user_id):
@@ -296,8 +341,29 @@ def db(monkeypatch):
 def app(db):
     from app import create_app
     application = create_app()  # EMBEDDING_PRELOAD=false is set at conftest import
-    application.config.update(TESTING=True)
+    # CSRF off for the app under test so every POST test does not have to fetch a
+    # token first. tests/test_auth.py builds a separate app with it ON and proves
+    # an unprotected POST is refused - otherwise disabling it here could quietly
+    # become disabling it everywhere.
+    application.config.update(TESTING=True, WTF_CSRF_ENABLED=False)
+    application.config["_middleware_auth"] = auth_module
     return application
+
+
+@pytest.fixture
+def anon_app(app, monkeypatch):
+    """App with the dev bypass off and anonymous browsing on (the 3.2 posture)."""
+    monkeypatch.setattr(auth_module, "ALLOW_DEV_USER_BYPASS", False)
+    monkeypatch.setattr(auth_module, "ALLOW_ANONYMOUS_DEMO", True)
+    return app
+
+
+@pytest.fixture
+def signed_out_app(app, monkeypatch):
+    """App that requires a session: no bypass, no anonymous access."""
+    monkeypatch.setattr(auth_module, "ALLOW_DEV_USER_BYPASS", False)
+    monkeypatch.setattr(auth_module, "ALLOW_ANONYMOUS_DEMO", False)
+    return app
 
 
 @pytest.fixture
@@ -307,17 +373,24 @@ def client(app):
 
 
 @pytest.fixture
-def strict_app(app, monkeypatch):
-    """App with REQUIRE_FORWARDED_AUTH flipped on (Databricks App behaviour)."""
-    monkeypatch.setattr(auth_module, "REQUIRE_FORWARDED_AUTH", True)
-    return app
+def anon_client(anon_app):
+    return anon_app.test_client()
 
 
 @pytest.fixture
-def strict_client(strict_app):
-    return strict_app.test_client()
+def signed_out_client(signed_out_app):
+    return signed_out_app.test_client()
 
 
-def as_user(email: str) -> dict:
-    """Header dict that makes a request act as `email` (mimics the Databricks proxy)."""
-    return {"X-Forwarded-Email": email, "X-Forwarded-Preferred-Username": email.split("@")[0]}
+def sign_in(client, user_id: str) -> None:
+    """
+    Put a user_id in the session, the way the OAuth callback does.
+
+    Tests authenticate through the session rather than a header, because the
+    header path no longer exists in production and a test-only one would be a
+    second way to become a user.
+    """
+    with client.session_transaction() as sess:
+        sess.clear()
+        sess[auth_module.SESSION_USER_KEY] = str(user_id)
+    auth_module._USER_CACHE.clear()
