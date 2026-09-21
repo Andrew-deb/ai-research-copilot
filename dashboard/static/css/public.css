@@ -1,0 +1,230 @@
+/* public.css — pricing, help, documentation.
+   Reading pages rather than working pages, so they get a narrower measure and
+   more air than the workspace. */
+
+.public-page {
+  max-width: 940px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.public-head { text-align: center; margin-bottom: 26px; }
+
+.public-title {
+  margin: 0 0 8px;
+  font-size: clamp(28px, 4vw, 40px);
+  font-weight: 600;
+  letter-spacing: -0.025em;
+}
+
+.public-lead {
+  margin: 0 auto;
+  max-width: 54ch;
+  color: var(--text-muted);
+  font-size: 14.5px;
+  line-height: 1.6;
+}
+
+/* ---------- Plans ---------- */
+
+.plan-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+  margin: 32px 0 40px;
+  align-items: start;
+}
+
+.plan {
+  display: flex;
+  flex-direction: column;
+  padding: 22px 20px 24px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+/* The account is the intended choice, so it gets the emphasis — a border, not a
+   colour wash, so the three cards still read as one set. */
+.plan-featured { border-color: var(--brand); }
+.plan-support { border-style: dashed; }
+
+.plan-name {
+  margin: 0 0 4px;
+  font-size: 19px;
+  font-weight: 600;
+}
+
+.plan-for {
+  margin: 0 0 18px;
+  color: var(--text-muted);
+  font-size: 13px;
+  min-height: 2.6em;   /* keeps the prices on one line across cards */
+  line-height: 1.4;
+}
+
+.plan-price {
+  margin: 0 0 18px;
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.plan-unit {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-family: var(--font);
+  font-size: 12.5px;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+.plan-cta { width: 100%; justify-content: center; text-align: center; }
+
+.plan-inherits {
+  margin: 20px 0 8px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.plan-list {
+  list-style: none;
+  margin: 18px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.plan-list li {
+  position: relative;
+  padding-left: 22px;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.plan-list li::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 6px;
+  width: 9px;
+  height: 5px;
+  border-left: 1.8px solid var(--brand);
+  border-bottom: 1.8px solid var(--brand);
+  transform: rotate(-45deg);
+}
+/* Absences are listed too, marked differently. A plan that only lists what it
+   includes makes the reader guess at what it does not. */
+.plan-list li.plan-no { color: var(--text-subtle); }
+.plan-list li.plan-no::before {
+  border: 0;
+  top: 8px;
+  left: 3px;
+  width: 9px;
+  height: 1.8px;
+  background: var(--text-subtle);
+  transform: none;
+}
+
+.public-note {
+  padding: 20px 22px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-2);
+}
+.public-note h2 { margin: 0 0 8px; font-size: 15px; }
+.public-note p { margin: 0; color: var(--text-muted); font-size: 13.5px; line-height: 1.6; }
+
+/* ---------- Tabs, search, articles ---------- */
+
+/* Underline rather than the pill used for Agent | Search: that one switches
+   modes of working and lives in the chrome, so it reads as a control. This
+   switches between two readings of one page and belongs to the content, where a
+   quieter treatment does not compete with the heading above it. */
+.tab-switch {
+  display: flex;
+  gap: 22px;
+  margin: 0 0 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tab {
+  padding: 9px 1px 11px;
+  margin-bottom: -1px;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  font-size: 13.5px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: color .15s ease, border-color .15s ease;
+}
+.tab:hover { color: var(--text); text-decoration: none; }
+.tab.is-active { color: var(--text); border-bottom-color: var(--brand); }
+
+.doc-search {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 0 22px;
+  padding: 9px 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+.doc-search svg { width: 16px; height: 16px; color: var(--text-muted); flex: none; }
+.doc-search input {
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+}
+.doc-search input::placeholder { color: var(--text-muted); }
+
+.doc-body { display: flex; flex-direction: column; }
+
+.doc-item {
+  padding: 20px 0;
+  border-bottom: 1px solid var(--border);
+  max-width: 68ch;
+}
+.doc-item[hidden] { display: none; }
+.doc-item h2 { margin: 0 0 8px; font-size: 16px; }
+.doc-item p { margin: 0 0 10px; color: var(--text-muted); font-size: 14px; line-height: 1.65; }
+.doc-item p:last-child { margin-bottom: 0; }
+.doc-item code {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+.doc-pre {
+  margin: 0 0 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+  overflow-x: auto;
+}
+
+.doc-empty {
+  padding: 28px 0;
+  color: var(--text-muted);
+  font-size: 13.5px;
+}
+
+@media (max-width: 640px) {
+  .plan-for { min-height: 0; }
+  .tab-switch { gap: 16px; }
+}
