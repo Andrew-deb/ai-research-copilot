@@ -19,8 +19,18 @@
   if (!form || !input) { return; }
 
   var page = document.querySelector(".chat-page") || document.querySelector(".landing-main");
+  // Everything that travels WITH the composer — on /chat the composer, chips and
+  // allowance note share a .chat-stage; on the landing page the form is a direct
+  // child. The thread goes before whichever it is, as a sibling, so it can take
+  // the height and leave the composer pinned beneath it. Inserting it next to the
+  // form instead put it *inside* the stage, where nothing gave it any height and
+  // every reply simply pushed the page apart.
+  var stage = form.closest(".chat-stage") || form;
   var thread = document.getElementById("chat-thread");
   var pending = false;
+
+  // A conversation may also arrive server-rendered once persistence lands.
+  if (thread && page) { page.classList.add("has-conversation"); }
 
   /* ---------------------------------------------------------------- render */
 
@@ -30,12 +40,19 @@
     thread.className = "chat-thread";
     thread.id = "chat-thread";
     thread.setAttribute("aria-live", "polite");
-    // Above the composer wherever the composer happens to live, so this works
-    // on the landing page as well as /chat without either knowing about the
-    // other's layout.
-    form.parentNode.insertBefore(thread, form);
-    if (page) { page.classList.remove("is-empty"); }
+    stage.parentNode.insertBefore(thread, stage);
+    if (page) {
+      // The introduction has done its job the moment a question is asked, and
+      // the layout switches from "centred stack" to "thread above a pinned
+      // composer". Both are CSS; this just says which state the page is in.
+      page.classList.remove("is-empty");
+      page.classList.add("has-conversation");
+    }
     return thread;
+  }
+
+  function scrollToLatest() {
+    if (thread) { thread.scrollTop = thread.scrollHeight; }
   }
 
   function addMessage(role, text) {
@@ -43,6 +60,7 @@
     el.className = "chat-msg chat-msg-" + role;
     el.textContent = text;
     ensureThread().appendChild(el);
+    scrollToLatest();
     return el;
   }
 
@@ -65,6 +83,7 @@
       ol.appendChild(li);
     });
     ensureThread().appendChild(ol);
+    scrollToLatest();
   }
 
   function render(result) {

@@ -128,14 +128,45 @@
 .composer-input:disabled,
 .composer-send:disabled { opacity: .6; cursor: default; }
 
-/* The landing page grows a thread the moment a question is asked, and its hero
-   is centred — so the thread has to align left or the answer reads as a
-   caption under the heading. `flex: none` because /chat's thread fills a
-   height-constrained column while this one simply grows with the page. */
-.landing-main .chat-thread {
-  width: 100%;
-  flex: none;
-  overflow: visible;
+/* ---------- A conversation is under way ----------
+
+   What a chat is expected to do on the first send: the introduction goes away,
+   the thread takes the height, and the composer settles at the bottom and stays
+   there. Without this the page simply grew — the heading climbed, the composer
+   sank, and the two drifted further apart with every reply.
+
+   One class on the page container, applied by chat.js, so the landing page and
+   /chat switch the same way despite starting from different layouts. */
+
+/* The introduction has done its job once a question has been asked, and the
+   starters go with it: a suggestion unrelated to what is being discussed is
+   noise competing with the thread above it. They can be reinstated per-turn
+   later as follow-ups, which is a different feature to a fixed opening list. */
+.has-conversation .chat-title,
+.has-conversation .chat-sub,
+.has-conversation .landing-title,
+.has-conversation .landing-sub,
+.has-conversation .chat-starters,
+.has-conversation .landing-prompts,
+.has-conversation .landing-value { display: none; }
+
+/* The landing page borrows the chat page's geometry rather than keeping its own.
+   Its hero is a centred stack that grows with the document, which is precisely
+   the behaviour being corrected — so once a conversation exists it becomes the
+   same fixed-height column /chat uses, and .chat-thread's own flex: 1 and
+   overflow-y: auto then do the work in both places. */
+.landing-main.has-conversation {
+  height: 100%;
+  min-height: calc(100vh - 190px);
+  max-width: 740px;
+  justify-content: flex-start;
+  align-items: stretch;
   text-align: left;
-  margin-bottom: 16px;
+  padding-top: 0;
+}
+.landing-main.has-conversation .chat-thread { width: 100%; text-align: left; }
+.landing-main.has-conversation .chat-note { text-align: left; }
+
+@media (max-width: 720px) {
+  .landing-main.has-conversation { min-height: calc(100vh - 160px); }
 }
