@@ -1,0 +1,88 @@
+{# docs_base.html — the shell for /help and /docs.
+
+   Deliberately not base.html. The workspace sidebar answers "where in my
+   research do I want to go", which is the wrong question for someone reading
+   documentation: there the navigation has to be the documentation's own
+   structure, and a second sidebar beside it would leave two competing lefthand
+   columns. So these two pages get their own chrome - brand on the left, the
+   section switch centred, theme and the way back on the right - and each page
+   fills the space beneath however its content needs.
+
+   The icon macro is redefined here rather than shared with base.html: this shell
+   has no <body> in common with that one, and the four glyphs below are the only
+   ones it draws. #}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Documentation — Research Copilot{% endblock %}</title>
+
+  {# No-flash theme: resolve the saved choice (or system preference) before first
+     paint, exactly as base.html does. #}
+  <script>
+    (function () {
+      var t = "light";
+      try {
+        var saved = localStorage.getItem('rc-theme');
+        if (saved === 'dark' || saved === 'light') { t = saved; }
+        else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) { t = 'dark'; }
+      } catch (e) {}
+      document.documentElement.setAttribute('data-theme', t);
+    })();
+  </script>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/docs.css') }}">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+</head>
+<body class="doc-shell-body">
+
+{%- macro icon(name) -%}
+  {%- set paths = {
+    'book': '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"/>',
+    'search': '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.8-3.8"/>',
+    'sun': '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M6.3 17.7l-1.4 1.4M19.1 4.9l-1.4 1.4"/>',
+    'moon': '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>',
+    'arrow-left': '<path d="M19 12H5M12 19l-7-7 7-7"/>',
+    'chevron': '<path d="m9 18 6-6-6-6"/>',
+    'spark': '<path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/><circle cx="12" cy="12" r="3"/>',
+    'folder': '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
+    'target': '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/>',
+    'mail': '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m2 7 10 6 10-6"/>'
+  } -%}
+  <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
+       stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{ paths[name] | safe }}</svg>
+{%- endmacro -%}
+
+<header class="doc-top">
+  <a class="doc-brand" href="{{ url_for('home.index') }}">
+    <span class="doc-brand-mark">{{ icon('book') }}</span>
+    <span class="doc-brand-name">Research Copilot</span>
+    <span class="doc-badge">{% block doc_badge %}Docs{% endblock %}</span>
+  </a>
+
+  <div class="doc-top-center">{% block doc_switch %}{% endblock %}</div>
+
+  <div class="doc-top-actions">
+    <button type="button" class="icon-btn theme-toggle" id="theme-toggle"
+            aria-label="Toggle colour theme" title="Toggle theme">
+      <span class="theme-icon theme-icon-light">{{ icon('sun') }}</span>
+      <span class="theme-icon theme-icon-dark">{{ icon('moon') }}</span>
+    </button>
+    <a class="btn btn-sm doc-back" href="{{ url_for('home.index') }}">
+      {{ icon('arrow-left') }}<span>Back to app</span>
+    </a>
+  </div>
+</header>
+
+{% block doc_body %}{% endblock %}
+
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+<script src="{{ url_for('static', filename='js/docs.js') }}"></script>
+</body>
+</html>

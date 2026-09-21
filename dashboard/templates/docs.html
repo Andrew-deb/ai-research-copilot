@@ -1,125 +1,274 @@
-{% extends "base.html" %}
+{% extends "docs_base.html" %}
 {% block title %}Documentation — Research Copilot{% endblock %}
-{% block topbar_title %}Documentation{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="{{ url_for('static', filename='css/public.css') }}">{% endblock %}
+{% block doc_badge %}Docs{% endblock %}
+{% block doc_switch %}
+  {% with active_doc = 'docs' %}{% include "_doc_switch.html" %}{% endwith %}
+{% endblock %}
 
-{% block content %}
-<div class="public-page">
-  <header class="public-head">
-    <h1 class="public-title">Documentation</h1>
-    <p class="public-lead">How the system is built, and what it does with a paper.</p>
-  </header>
+{% block doc_body %}
+<div class="doc-layout">
 
-  {% with tabs = [('public.help_page', 'Help & support'), ('public.docs', 'Documentation')],
-          active = 'public.docs' %}
-    {% include "_tab_switch.html" %}
-  {% endwith %}
+  {# Left: the documentation's own structure. The filter narrows both this list
+     and the article body, so typing a term never leaves a visible nav entry
+     pointing at a section that has been hidden. #}
+  <aside class="doc-nav" id="doc-nav">
+    <div class="doc-filter">
+      {{ icon('search') }}
+      <input type="text" id="doc-filter" autocomplete="off"
+             placeholder="Filter" aria-label="Filter the documentation">
+    </div>
 
-  <div class="doc-search">
-    {{ icon('search') }}
-    <input type="text" id="doc-filter" autocomplete="off"
-           placeholder="Search the docs…" aria-label="Search the documentation">
-  </div>
+    <nav class="doc-nav-list" aria-label="Documentation">
+      <div class="doc-nav-group">
+        <h2 class="doc-nav-label">Getting started</h2>
+        <a class="doc-nav-item" href="#introduction">Introduction</a>
+        <a class="doc-nav-item" href="#quick-start">Quick start</a>
+      </div>
 
-  <div class="doc-body" id="doc-body">
-    <section class="doc-item">
+      <div class="doc-nav-group">
+        <h2 class="doc-nav-label">Platform</h2>
+        <a class="doc-nav-item" href="#architecture">Architecture</a>
+      </div>
+
+      <div class="doc-nav-group">
+        <h2 class="doc-nav-label">Corpus &amp; ingestion</h2>
+        <a class="doc-nav-item" href="#discovery">Paper discovery</a>
+        <a class="doc-nav-item" href="#relevance">Relevance filtering</a>
+        <a class="doc-nav-item" href="#fulltext">Full text &amp; sections</a>
+      </div>
+
+      <div class="doc-nav-group">
+        <h2 class="doc-nav-label">Retrieval</h2>
+        <a class="doc-nav-item" href="#embeddings">Embeddings</a>
+        <a class="doc-nav-item" href="#search">Semantic search</a>
+      </div>
+
+      <div class="doc-nav-group">
+        <h2 class="doc-nav-label">Operations</h2>
+        <a class="doc-nav-item" href="#quotas">Quotas &amp; limits</a>
+        <a class="doc-nav-item" href="#privacy">Privacy</a>
+      </div>
+    </nav>
+  </aside>
+
+  {# Middle: the article. Sections carry the eyebrow rather than the page, so a
+     visitor who arrives on a deep link still knows where they landed. #}
+  <article class="doc-article" id="doc-article">
+
+    <section class="doc-section" id="introduction">
+      <p class="doc-eyebrow">Getting started <span>›</span> Introduction</p>
+      <h2>Introduction</h2>
+      <div class="doc-prose">
+        <h3>What this is</h3>
+        <p>
+          Research Copilot indexes a narrow corpus of machine-learning literature
+          and answers questions against it. Papers are discovered automatically,
+          filtered for relevance, read where an open-access copy exists, split
+          into sections and embedded, so a question can be matched against what a
+          paper argues rather than the words in its title.
+        </p>
+        <h3>What it is not</h3>
+        <p>
+          It is not a search engine over all of science. The corpus is
+          deliberately narrow, and a paper outside the configured research fields
+          is rejected before it is ever stored. A missing paper is far more often
+          out of scope than a failure.
+        </p>
+      </div>
+    </section>
+
+    <section class="doc-section" id="quick-start">
+      <p class="doc-eyebrow">Getting started <span>›</span> Quick start</p>
+      <h2>Quick start</h2>
+      <div class="doc-prose">
+        <h3>Ask a question</h3>
+        <p>
+          Type a question rather than keywords. Semantic search embeds what you
+          wrote and compares it against every indexed passage, so
+          <em>why do models invent citations</em> reaches papers on hallucination
+          and grounding without either word appearing in your query.
+        </p>
+        <h3>Build a collection</h3>
+        <p>
+          Add papers from any result or paper page, then generate a reading plan.
+          The plan sequences a collection oldest-first weighted by citation
+          impact, so foundational work precedes what builds on it.
+        </p>
+      </div>
+    </section>
+
+    <section class="doc-section" id="architecture">
+      <p class="doc-eyebrow">Platform <span>›</span> Architecture</p>
       <h2>Architecture</h2>
-      <pre class="doc-pre">Browser
+      <div class="doc-prose">
+        <h3>Request path</h3>
+        <pre class="doc-pre">Browser
   └─ Flask on Render — dashboard, search, RAG, library
        ├─ Databricks Lakebase (Postgres 17 + pgvector)
        └─ MCP server on Databricks — research tools for the assistant</pre>
-      <p>
-        The browser talks only to Flask. Databricks credentials stay server-side;
-        no token for it ever reaches a page.
-      </p>
+        <h3>Trust boundary</h3>
+        <p>
+          The browser talks only to Flask. Databricks credentials stay
+          server-side; no token for it ever reaches a page, and the browser never
+          addresses the MCP server directly.
+        </p>
+      </div>
     </section>
 
-    <section class="doc-item">
-      <h2>Discovery</h2>
-      <p>
-        Papers come from OpenAlex, filtered to the configured research fields.
-        Discovery sits behind a single function so other providers — arXiv,
-        PubMed Central — can be added without changing anything downstream.
-      </p>
-      <p>
-        A topic is seeded by relevance the first time it is seen, then queried by
-        publication date from a per-topic watermark, so a scheduled run returns
-        what is new rather than what is most famous.
-      </p>
+    <section class="doc-section" id="discovery">
+      <p class="doc-eyebrow">Corpus &amp; ingestion <span>›</span> Paper discovery</p>
+      <h2>Paper discovery</h2>
+      <div class="doc-prose">
+        <h3>Providers</h3>
+        <p>
+          Papers come from OpenAlex today. Discovery sits behind a single
+          function, so arXiv, PubMed Central or another source can be added
+          without changing anything downstream of it. Semantic Scholar and
+          Wikipedia are enrichment rather than discovery: they add to a paper
+          already found, they do not find one.
+        </p>
+        <h3>Topic watermarks</h3>
+        <p>
+          A topic is seeded by relevance the first time it is seen, then queried
+          by publication date from a per-topic watermark. A scheduled run
+          therefore returns what is <em>new</em> rather than re-returning what is
+          most famous.
+        </p>
+      </div>
     </section>
 
-    <section class="doc-item">
+    <section class="doc-section" id="relevance">
+      <p class="doc-eyebrow">Corpus &amp; ingestion <span>›</span> Relevance filtering</p>
       <h2>Relevance filtering</h2>
-      <p>
-        Two filters, because they catch different failures. A field filter removes
-        other disciplines; an embedding gate scores each candidate against the
-        topic and drops weak matches. The field filter alone lets through a
-        chemistry database that happens to be labelled Computer Science; the gate
-        alone lets through a bioinformatics paper that outranks real matches.
-      </p>
+      <div class="doc-prose">
+        <p>
+          Two filters, because they catch different failures. Either one alone
+          lets the corpus drift.
+        </p>
+        <h3>Field filter</h3>
+        <p>
+          Rejects candidates outside the configured research fields. This is what
+          keeps a genomics alignment tool out of a corpus about vector search,
+          even when it scores well against the query text.
+        </p>
+        <h3>Semantic gate</h3>
+        <p>
+          Embeds each surviving candidate and scores it against the topic,
+          dropping weak matches. This is what catches a chemistry database that
+          happens to be labelled Computer Science — correctly filed, entirely
+          irrelevant.
+        </p>
+      </div>
     </section>
 
-    <section class="doc-item">
-      <h2>Full text and sections</h2>
-      <p>
-        Where an open-access copy exists, Conclusion, Discussion and Methods are
-        extracted and indexed alongside the abstract. Repository copies (arXiv,
-        PubMed Central, institutional archives) are tried before publisher copies,
-        because repositories are deposited to be fetched.
-      </p>
-      <p>
-        Every outcome is recorded — <code>ok</code>, <code>no_url</code>,
-        <code>access_denied</code>, <code>not_found</code>, <code>not_pdf</code>,
-        <code>parse_failed</code>, <code>no_sections</code> — split by whether
-        retrying could ever help.
-      </p>
+    <section class="doc-section" id="fulltext">
+      <p class="doc-eyebrow">Corpus &amp; ingestion <span>›</span> Full text &amp; sections</p>
+      <h2>Full text &amp; sections</h2>
+      <div class="doc-prose">
+        <h3>Acquisition order</h3>
+        <p>
+          Where an open-access copy exists, Conclusion, Discussion and Methods are
+          extracted and indexed alongside the abstract. Repository copies (arXiv,
+          PubMed Central, institutional archives) are tried before publisher
+          copies, because repositories are deposited in order to be fetched.
+        </p>
+        <h3>Outcome taxonomy</h3>
+        <p>
+          Every attempt records its outcome — <code>ok</code>, <code>no_url</code>,
+          <code>access_denied</code>, <code>not_found</code>, <code>not_pdf</code>,
+          <code>parse_failed</code>, <code>no_sections</code> — split by whether a
+          retry could ever help. A paywall is permanent; a timeout is not.
+        </p>
+      </div>
     </section>
 
-    <section class="doc-item">
+    <section class="doc-section" id="embeddings">
+      <p class="doc-eyebrow">Retrieval <span>›</span> Embeddings</p>
       <h2>Embeddings</h2>
-      <p>
-        <code>nomic-ai/modernbert-embed-base</code>, 768 dimensions, unit
-        normalised, asymmetric: documents are encoded with
-        <code>search_document:</code> and queries with <code>search_query:</code>.
-        A wrong prefix produces a perfectly valid vector in the wrong
-        neighbourhood, so the contract is validated before anything is written.
-      </p>
+      <div class="doc-prose">
+        <h3>Model</h3>
+        <p>
+          <code>nomic-ai/modernbert-embed-base</code> — 768 dimensions, unit
+          normalised, an 8192-token context window. The model is loaded from a
+          Unity Catalog volume rather than downloaded per run.
+        </p>
+        <h3>Asymmetric prefixes</h3>
+        <p>
+          Documents are encoded with <code>search_document:</code> and queries
+          with <code>search_query:</code>. Omitting a prefix does not raise an
+          error — it produces a perfectly valid vector in the wrong neighbourhood,
+          which is why the contract is asserted in tests rather than trusted.
+        </p>
+      </div>
     </section>
 
-    <section class="doc-item">
-      <h2>Retrieval</h2>
-      <p>
-        Cosine distance over pgvector with an HNSW index. Results arrive per chunk
-        and are folded to one row per paper, keeping the best-matching passage as
-        the displayed snippet — which is why a result can be labelled with the
-        section it came from.
-      </p>
+    <section class="doc-section" id="search">
+      <p class="doc-eyebrow">Retrieval <span>›</span> Semantic search</p>
+      <h2>Semantic search</h2>
+      <div class="doc-prose">
+        <h3>Index</h3>
+        <p>
+          Cosine distance over pgvector with an HNSW index, in Databricks
+          Lakebase.
+        </p>
+        <h3>Chunk folding</h3>
+        <p>
+          Results arrive per chunk and are folded to one row per paper, keeping
+          the best-matching passage as the displayed snippet. That is why a result
+          can be labelled with the section it came from, and why a match inside a
+          conclusion outranks a passing mention in an abstract.
+        </p>
+      </div>
     </section>
 
-    <section class="doc-item">
-      <h2>Quotas</h2>
-      <p>
-        Per-visitor limits shape usage; a global daily ceiling protects capacity.
-        They are separate on purpose: clearing cookies resets the first and cannot
-        touch the second. Each capability is metered independently, because a
-        semantic search and an agent run differ by more than an order of magnitude
-        in cost.
-      </p>
+    <section class="doc-section" id="quotas">
+      <p class="doc-eyebrow">Operations <span>›</span> Quotas &amp; limits</p>
+      <h2>Quotas &amp; limits</h2>
+      <div class="doc-prose">
+        <h3>Per-visitor limits</h3>
+        <p>
+          Each capability is metered independently, because a semantic search and
+          an agent run differ by more than an order of magnitude in cost. Limits
+          are daily and reset at midnight UTC.
+        </p>
+        <h3>Global ceiling</h3>
+        <p>
+          A separate daily ceiling protects capacity overall. The two are distinct
+          on purpose: clearing cookies resets the per-visitor count and cannot
+          touch the global one.
+        </p>
+      </div>
     </section>
 
-    <section class="doc-item">
+    <section class="doc-section" id="privacy">
+      <p class="doc-eyebrow">Operations <span>›</span> Privacy</p>
       <h2>Privacy</h2>
-      <p>
-        Google sign-in provides name, email and profile picture. No Google token
-        is kept after login. Collections, notes and reading progress are private
-        to the account; the paper corpus is shared. Anonymous sessions persist
-        nothing.
-      </p>
+      <div class="doc-prose">
+        <h3>What Google provides</h3>
+        <p>
+          Name, email address and profile picture. No Google token is retained
+          after login completes.
+        </p>
+        <h3>What stays private</h3>
+        <p>
+          Collections, notes and reading progress belong to the account; the paper
+          corpus is shared by everyone. Anonymous sessions persist nothing at all.
+        </p>
+      </div>
     </section>
 
-    <p class="doc-empty" id="doc-none" hidden>Nothing here matches that. Try fewer words.</p>
-  </div>
+    <p class="doc-none" id="doc-none" hidden>
+      Nothing in the documentation matches that. Try fewer words, or
+      <a href="{{ url_for('public.help_page') }}">ask in help &amp; support</a>.
+    </p>
+  </article>
+
+  {# Right: the current section's subheadings, rebuilt as you scroll. Listing
+     every heading on the page would only repeat the lefthand nav. #}
+  <aside class="doc-toc" id="doc-toc">
+    <h2 class="doc-toc-title">On this page</h2>
+    <ul class="doc-toc-list" id="doc-toc-list"></ul>
+  </aside>
+
 </div>
 {% endblock %}
-
-{% block extra_js %}<script src="{{ url_for('static', filename='js/docs.js') }}"></script>{% endblock %}
