@@ -3,6 +3,7 @@
 from flask import Blueprint, jsonify, render_template, request
 
 import llm_client
+import suggestions
 from middleware.capabilities import require_capability, require_quota
 from middleware.auth import current_user_id
 from routes.helpers import form_or_json
@@ -25,7 +26,12 @@ def search_page():
         else:
             results = search_service.keyword_search(query, page=page)
 
+    # Only for an empty box. Once there are results, a panel of other things to
+    # search is a distraction from the thing they just searched for.
+    hints = None if query else suggestions.search_suggestions(current_user_id())
+
     return render_template("search.html", query=query, mode=mode, results=results,
+                           suggestions=hints,
                            rag_available=llm_client.is_available())
 
 
