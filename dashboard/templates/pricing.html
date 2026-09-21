@@ -48,24 +48,30 @@
       </ul>
     </section>
 
-    {# Hidden entirely when DONATE_URL is unset: a support button that leads
-       nowhere is worse than no button at all. #}
-    {% if donate_url %}
-      <section class="plan plan-support">
-        <h2 class="plan-name">Support</h2>
-        <p class="plan-for">Best for keeping it free for everyone</p>
-        <p class="plan-price">Any amount<span class="plan-unit">one-off or monthly</span></p>
+    {# The card always renders; only the button changes. Without DONATE_URL it is
+       a disabled button rather than a live link, so the layout is complete and
+       honest at the same time - nothing here leads nowhere, and setting the
+       environment variable is the only thing needed to turn it on. #}
+    <section class="plan plan-support">
+      <h2 class="plan-name">Support</h2>
+      <p class="plan-for">Best for keeping it free for everyone</p>
+      <p class="plan-price">Any amount<span class="plan-unit">one-off or monthly</span></p>
+      {% if donate_url %}
         <a class="btn btn-ghost plan-cta" href="{{ donate_url }}" rel="noopener noreferrer" target="_blank">
           {{ donate_label }}
         </a>
-        <ul class="plan-list">
-          <li>Keeps the corpus ingesting and indexing</li>
-          <li>Raises the daily ceiling for everyone</li>
-          <li>Funds more open-access full-text coverage</li>
-          <li class="plan-no">Buys no extra features — the product stays the same for all</li>
-        </ul>
-      </section>
-    {% endif %}
+      {% else %}
+        <button type="button" class="btn btn-ghost plan-cta" disabled
+                title="Donations are not open yet">{{ donate_label }}</button>
+        <p class="plan-pending">Not open yet — the page will link here when it is.</p>
+      {% endif %}
+      <ul class="plan-list">
+        <li>Keeps the corpus ingesting and indexing</li>
+        <li>Raises the daily ceiling for everyone</li>
+        <li>Funds more open-access full-text coverage</li>
+        <li class="plan-no">Buys no extra features — the product stays the same for all</li>
+      </ul>
+    </section>
   </div>
 
   <section class="public-note">
