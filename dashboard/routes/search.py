@@ -5,9 +5,9 @@ from flask import Blueprint, jsonify, render_template, request
 import llm_client
 import suggestions
 from middleware.capabilities import require_capability, require_quota
-from middleware.auth import current_user_id
+from middleware.auth import current_tier, current_user_id
 from routes.helpers import form_or_json
-from services import search_service
+from services import quota_service, search_service, telemetry_service
 
 bp = Blueprint("search", __name__)
 
@@ -41,7 +41,11 @@ def semantic_json():
     """JSON semantic results — used for the live 'search as you type' panel."""
     query = (request.args.get("q") or "").strip()
     top_k = request.args.get("top_k", 10, type=int)
-    return jsonify(search_service.semantic_search(query, top_k=top_k))
+    # Measured beside the quota decorator, so the metered event and the measured
+    # event are the same event. One embedding call: the query vector.
+    with telemetry_service.measure(quota_service.SEMANTIC_SEARCH, current_tier(),
+                                   current_user_id(), embedding_calls=1):
+        return jsonify(search_service.semantic_search(query, top_k=top_k))
 
 
 @bp.post("/search/ask")
@@ -49,7 +53,13 @@ def semantic_json():
 def rag_ask():
     """JSON RAG answer — vector retrieval + cited LLM synthesis."""
     data = form_or_json("question")
-    return jsonify(search_service.rag_answer(data["question"]))
+    # One embedding (the question) and one LLM turn (the synthesis). These are
+    # the cheap baseline Phase 3.6 compares agent runs against, so they have to
+    # be collected even while the agent does not exist.
+    with telemetry_service.measure(quota_service.RAG_QUERY, current_tier(),
+                                   current_user_id(),
+                                   embedding_calls=1, llm_turns=1):
+        return jsonify(search_service.rag_answer(data["question"]))
 
 
 @bp.get("/paper/<paper_id>")
@@ -62,7 +72,9 @@ def paper_detail(paper_id: str):
 @require_quota("semantic_search")
 def paper_related(paper_id: str):
     """JSON — vector-similar papers, fetched by the detail page after it renders."""
-    papers = search_service.get_related_papers(paper_id)
+    with telemetry_service.measure(quota_service.SEMANTIC_SEARCH, current_tier(),
+                                   current_user_id(), embedding_calls=1):
+        papers = search_service.get_related_papers(paper_id)
     return jsonify({"related": [
         {
             "paper_id": str(p["paper_id"]),
