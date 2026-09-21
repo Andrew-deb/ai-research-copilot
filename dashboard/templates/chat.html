@@ -7,7 +7,9 @@
    the switch lives in the header: persistent chrome, not page content that
    scrolls away with the conversation. #}
 {% block topbar_center %}
-  {% with active_mode = 'agent' %}{% include "_mode_switch.html" %}{% endwith %}
+  {% if is_workspace_shell %}
+    {% with active_mode = 'agent' %}{% include "_mode_switch.html" %}{% endwith %}
+  {% endif %}
 {% endblock %}
 
 {% block content %}
@@ -65,13 +67,12 @@
 
       {# Stated up front rather than on refusal. Discovering a limit by hitting it
          reads as the product breaking; knowing it in advance reads as a free tier. #}
-      <p class="chat-note">
-        {% if agent_daily_limit %}
+      {% if agent_daily_limit %}
+        <p class="chat-note">
           {{ agent_daily_limit }} question{{ '' if agent_daily_limit == 1 else 's' }} a day
-          {%- if not is_authenticated %} — <a href="{{ url_for('auth.login') }}">sign in</a> for more{% endif %}.
-        {% endif %}
-        The assistant is still being wired up; search and cited answers work today.
-      </p>
+          {%- if not is_authenticated %} — <a href="{{ url_for('auth.signup') }}">sign up</a> for more{% endif %}.
+        </p>
+      {% endif %}
     {% else %}
       <p class="chat-note">
         <a href="{{ url_for('auth.login') }}">Sign in</a> to ask research questions.
