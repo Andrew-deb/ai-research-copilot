@@ -91,3 +91,51 @@
   .chat-msg-user { max-width: 92%; }
   .chat-starters .prompt-chip { white-space: normal; }
 }
+
+/* ---------- Phase 3.3: rendering one turn ----------
+   The envelope /chat/ask returns can carry an answer, citations, or a reason
+   there is neither. All three are rendered in the thread rather than as a
+   toast: a toast disappears after six seconds and takes the explanation with
+   it, which is the wrong behaviour for the one message that says why nothing
+   happened. */
+
+/* Quieter than an answer, and marked as coming from the product rather than
+   from the assistant — a refusal or an outage is not something "it said". */
+.chat-msg-system {
+  align-self: stretch;
+  border: 1px dashed var(--border-strong);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 13.5px;
+}
+
+.chat-citations {
+  align-self: stretch;
+  margin: -4px 0 0;
+  padding: 0 0 0 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.chat-citations a { color: var(--text); }
+.chat-citation-meta { color: var(--text-subtle); }
+
+/* The composer goes flat while a turn is in flight, so a second Enter cannot
+   queue a question the first one has not answered yet. */
+.composer-input:disabled,
+.composer-send:disabled { opacity: .6; cursor: default; }
+
+/* The landing page grows a thread the moment a question is asked, and its hero
+   is centred — so the thread has to align left or the answer reads as a
+   caption under the heading. `flex: none` because /chat's thread fills a
+   height-constrained column while this one simply grows with the page. */
+.landing-main .chat-thread {
+  width: 100%;
+  flex: none;
+  overflow: visible;
+  text-align: left;
+  margin-bottom: 16px;
+}
