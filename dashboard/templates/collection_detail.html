@@ -28,7 +28,7 @@
       {% if can(CAP.library_write) %}
         Create your own collection to save and reorder papers.
       {% else %}
-        <a href="{{ url_for('auth.login') }}">Sign in</a> to build your own.
+        <a href="{{ url_for('auth.login') }}">Log in</a> to build your own.
       {% endif %}
     </p>
   {% endif %}
