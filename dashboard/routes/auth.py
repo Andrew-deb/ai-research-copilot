@@ -68,20 +68,51 @@ def safe_next(raw: str | None) -> str:
     return raw
 
 
+def _auth_page(mode: str, **extra):
+    """
+    Both entry points render the same template with different copy.
+
+    Sign-up and log-in are the same Google flow — we cannot know whether an
+    account exists until Google tells us who this is. The split is for the
+    *visitor*, who does know, and it is what lets the product greet a newcomer
+    differently from someone returning.
+
+    Which onboarding a person sees is decided by whether a row was created, not
+    by which button they pressed: a returning user who clicks "Sign up" should
+    not be walked through onboarding again.
+    """
+    copy = {
+        "login": ("Log in to Research Copilot",
+                  "Your library, notes and reading progress are private to your account."),
+        "signup": ("Create your account",
+                   "Save papers, keep notes, and get discoveries picked for your field."),
+    }[mode]
+    return render_template(
+        "login.html",
+        mode=mode,
+        heading=copy[0],
+        lead=copy[1],
+        next_url=safe_next(request.args.get("next")),
+        **extra,
+    )
+
+
 @bp.get("/login")
 def login():
-    return render_template("login.html", next_url=safe_next(request.args.get("next")))
+    return _auth_page("login")
+
+
+@bp.get("/signup")
+def signup():
+    return _auth_page("signup")
 
 
 @bp.get("/auth/google")
 def google():
     """Send the user to Google. Authlib generates and stores state + nonce."""
     if "google" not in _oauth._clients:
-        return render_template(
-            "login.html",
-            next_url=url_for("home.index"),
-            error="Google sign-in is not configured on this deployment.",
-        ), 503
+        return _auth_page("login",
+                          error="Google sign-in is not configured on this deployment."), 503
 
     # Survives the round trip in the session rather than the URL, so it cannot be
     # tampered with between here and the callback.
@@ -101,31 +132,22 @@ def google_callback():
         token = _oauth.google.authorize_access_token()
     except Exception as exc:  # noqa: BLE001 - any failure here means "not signed in"
         logger.warning("Google callback rejected: %s: %s", type(exc).__name__, exc)
-        return render_template(
-            "login.html",
-            next_url=url_for("home.index"),
-            error="Sign-in could not be completed. Please try again.",
-        ), 400
+        return _auth_page("login",
+                          error="Sign-in could not be completed. Please try again."), 400
 
     claims = token.get("userinfo") or {}
     subject, email = claims.get("sub"), claims.get("email")
 
     if not subject or not email:
         logger.warning("Google returned no subject/email; claims present: %s", sorted(claims))
-        return render_template(
-            "login.html",
-            next_url=url_for("home.index"),
-            error="Google did not share an email address with us.",
-        ), 400
+        return _auth_page("login",
+                          error="Google did not share an email address with us."), 400
 
     if claims.get("email_verified") is False:
         # An unverified Google email is not proof of controlling that address, and
         # accounts are keyed on it for linking.
-        return render_template(
-            "login.html",
-            next_url=url_for("home.index"),
-            error="Please verify your email address with Google first.",
-        ), 400
+        return _auth_page("login",
+                          error="Please verify your email address with Google first."), 400
 
     user = auth_service.resolve_or_create_user(
         provider="google",
