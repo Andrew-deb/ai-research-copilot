@@ -1,11 +1,13 @@
 {% extends "base.html" %}
 {% block title %}About — Research Copilot{% endblock %}
 {% block topbar_title %}About{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{{ url_for('static', filename='css/public.css') }}">{% endblock %}
 
 {% block content %}
-<article class="prose">
-  <h1 class="page-title">About Research Copilot</h1>
-  <p class="page-lead">
+<div class="public-page">
+  <article class="doc-item" style="border-bottom:0">
+  <h1 class="public-title" style="text-align:left">About Research Copilot</h1>
+  <p class="public-lead" style="margin-left:0;text-align:left">
     A research workspace with an assistant at the centre, rather than a search
     engine with a chatbot attached.
   </p>
@@ -43,9 +45,10 @@
     ingestion, and an MCP server exposing the research tools to the assistant.
   </p>
 
-  <p class="prose-cta">
+  <p style="display:flex;gap:10px;margin-top:22px">
     <a class="btn btn-primary" href="{{ url_for('home.dashboard') }}">Try the demo</a>
     <a class="btn btn-ghost" href="{{ url_for('public.pricing') }}">See plans</a>
   </p>
-</article>
+  </article>
+</div>
 {% endblock %}
