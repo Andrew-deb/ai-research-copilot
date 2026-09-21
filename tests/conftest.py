@@ -66,6 +66,8 @@ class FakeDB:
         self.notes: dict[str, dict] = {}
         # (scope, scope_id, metric) -> count. No day key: a test never spans one.
         self.usage: dict[tuple[str, str, str], int] = {}
+        # One dict per ai_operations row, in the order they were written.
+        self.ai_operations: list[dict] = []
 
     # ---------- test helpers (not part of the repo surface) ----------
     def seed_paper(self, **overrides) -> dict:
@@ -273,6 +275,9 @@ class FakeDB:
         key = (scope, scope_id, metric)
         self.usage[key] = self.usage.get(key, 0) + 1
         return self.usage[key]
+
+    def record_ai_operation(self, **fields):
+        self.ai_operations.append(dict(fields))
 
     def get_usage_counts(self, scope, scope_id):
         return {m: n for (s, sid, m), n in self.usage.items()
