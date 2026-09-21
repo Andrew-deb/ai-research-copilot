@@ -1,13 +1,11 @@
 {% extends "base.html" %}
-{% block title %}Sign in — Research Copilot{% endblock %}
-{% block topbar_title %}Sign in{% endblock %}
+{% block title %}{{ heading }} — Research Copilot{% endblock %}
+{% block topbar_title %}{{ heading }}{% endblock %}
 
 {% block content %}
 <div class="auth-panel">
-  <h1 class="page-title">Sign in to Research Copilot</h1>
-  <p class="page-lead">
-    Your library, notes and reading progress are private to your account.
-  </p>
+  <h1 class="page-title">{{ heading }}</h1>
+  <p class="page-lead">{{ lead }}</p>
 
   {% if error %}
     <p class="empty-state" role="alert">{{ error }}</p>
@@ -18,9 +16,13 @@
     Continue with Google
   </a>
 
-  <p class="auth-note">
-    We ask Google only for your name, email address and profile picture. We never
-    see your password, and we don't keep a Google token after you sign in.
+  <p class="auth-alt">
+    {% if mode == 'signup' %}
+      Already have an account? <a href="{{ url_for('auth.login') }}">Log in</a>
+    {% else %}
+      New here? <a href="{{ url_for('auth.signup') }}">Create an account</a>
+    {% endif %}
   </p>
+
 </div>
 {% endblock %}
