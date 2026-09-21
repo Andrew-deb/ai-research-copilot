@@ -47,6 +47,7 @@ from repositories import lakebase
 from routes import register_routes
 from routes.auth import init_oauth
 from routes.chat import register_chat_context
+from routes.public import register_shell_context
 
 logging.basicConfig(
     level=logging.INFO,
@@ -81,6 +82,7 @@ def create_app() -> Flask:
     register_auth(app)
     register_capabilities(app)
     register_chat_context(app)
+    register_shell_context(app)
     register_routes(app)
     register_error_handlers(app)
 
