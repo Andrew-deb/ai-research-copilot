@@ -22,6 +22,8 @@ from flask import Blueprint, render_template
 
 from config import (
     ANON_AGENT_PER_DAY,
+    DONATE_LABEL,
+    DONATE_URL,
     ANON_RAG_PER_DAY,
     ANON_SEARCH_PER_DAY,
     USER_AGENT_PER_DAY,
@@ -62,7 +64,21 @@ def about():
 
 @bp.get("/help")
 def help_page():
+    """Plain-language answers. Paired with /docs behind a tab switch."""
     return render_template("help.html")
+
+
+@bp.get("/docs")
+def docs():
+    """
+    The technical half.
+
+    Split from /help rather than merged into one long page: someone asking "why
+    is this paper missing its sections" and someone asking "what embedding model
+    is this" want different registers, and a single page serves whichever one it
+    is written for badly.
+    """
+    return render_template("docs.html")
 
 
 @bp.get("/pricing")
@@ -76,4 +92,6 @@ def pricing():
         "pricing.html",
         anonymous={"search": ANON_SEARCH_PER_DAY, "rag": ANON_RAG_PER_DAY, "agent": ANON_AGENT_PER_DAY},
         member={"search": USER_SEARCH_PER_DAY, "rag": USER_RAG_PER_DAY, "agent": USER_AGENT_PER_DAY},
+        donate_url=DONATE_URL,
+        donate_label=DONATE_LABEL,
     )
