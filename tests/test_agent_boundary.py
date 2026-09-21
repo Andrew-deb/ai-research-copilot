@@ -342,3 +342,59 @@ def test_the_fetch_helper_reads_message_too():
     source = io.open(js, encoding="utf-8").read()
     assert "body.message" in source
     assert "err.body = body" in source
+
+
+# ---------------------------------------------------------------------------
+# The layout switch when a conversation starts
+# ---------------------------------------------------------------------------
+
+def _chat_css() -> str:
+    import io, pathlib
+    path = (pathlib.Path(__file__).resolve().parents[1]
+            / "dashboard" / "static" / "css" / "chat.css")
+    return io.open(path, encoding="utf-8").read()
+
+
+def test_the_layout_switch_hides_nothing_imaginary(anon_client):
+    """
+    Every class the conversation state hides must actually be rendered by one of
+    the two composer pages. A hidden selector that matches nothing is a rule
+    that silently stopped working — which is how the introduction came to sit
+    above a growing thread in the first place.
+    """
+    import re
+
+    block = re.search(r"\.has-conversation .*?\{ display: none; \}", _chat_css(), re.S)
+    assert block, "the conversation layout switch is gone"
+    classes = re.findall(r"\.has-conversation \.([a-z-]+)", block.group(0))
+    assert classes
+
+    pages = (anon_client.get("/").get_data(as_text=True)
+             + anon_client.get("/chat").get_data(as_text=True))
+    for name in classes:
+        assert name in pages, f"{name} is hidden but never rendered"
+
+
+def test_both_pages_give_the_thread_somewhere_to_take_height(anon_client):
+    """
+    chat.js inserts the thread as a SIBLING of the composer's stage, not beside
+    the form. Inserting it next to the form put it inside .chat-stage, where
+    nothing gave it height and each reply pushed the page apart instead.
+    """
+    chat = anon_client.get("/chat").get_data(as_text=True)
+    landing = anon_client.get("/").get_data(as_text=True)
+    assert 'class="chat-stage"' in chat        # closest() finds this
+    assert 'class="chat-page' in chat          # the flex column it sits in
+    assert 'class="landing-main"' in landing   # no stage here; the form is direct
+    assert 'class="chat-stage"' not in landing
+
+
+def test_the_landing_page_adopts_the_chat_geometry(anon_client):
+    """
+    The hero is a centred stack that grows with the document — the behaviour
+    being corrected. Once a conversation exists it has to become the same
+    fixed-height column /chat uses, or the composer keeps sinking.
+    """
+    css = _chat_css()
+    assert ".landing-main.has-conversation" in css
+    assert "min-height" in css.split(".landing-main.has-conversation")[1][:300]
