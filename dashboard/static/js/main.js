@@ -147,8 +147,18 @@
     let body = null;
     try { body = await res.json(); } catch (_) { /* no body */ }
     if (!res.ok) {
-      const msg = (body && (body.detail || body.error)) || ("Request failed (" + res.status + ")");
-      throw new Error(msg);
+      // `message` as well as detail/error: an endpoint that answers with a full
+      // envelope puts its explanation there, and without this the caller shows
+      // "Request failed (503)" while the reason sits unread in the body.
+      const msg = (body && (body.detail || body.error || body.message))
+                  || ("Request failed (" + res.status + ")");
+      const err = new Error(msg);
+      // The parsed body travels with the error. A non-2xx response can still
+      // carry something worth rendering, and it is already gone by the time a
+      // caller could re-read it.
+      err.status = res.status;
+      err.body = body;
+      throw err;
     }
     return body;
   }
