@@ -86,8 +86,21 @@
     </div>
 
     {# The assistant sits above the workspace because it is meant to be the way
-       most work starts, not a tool filed alongside the others. #}
-    <a class="sidebar-cta {{ 'active' if ep == 'chat.new_chat' }}" href="{{ url_for('chat.new_chat') }}">
+       most work starts, not a tool filed alongside the others.
+
+       Where it goes depends on which shell you are in, because both shells have
+       a composer and they are not the same page. Inside the workspace it is
+       /chat; on the public pages it is the landing page, which runs the very
+       same composer. Sending a visitor reading About over to /chat would push
+       them into the workspace to do something the front page already does. #}
+    {% if is_workspace_shell %}
+      {% set chat_href = url_for('chat.new_chat') %}
+      {% set chat_active = ep.startswith('chat.') %}
+    {% else %}
+      {% set chat_href = url_for('home.index') %}
+      {% set chat_active = ep == 'home.index' %}
+    {% endif %}
+    <a class="sidebar-cta {{ 'active' if chat_active }}" href="{{ chat_href }}">
       <span class="cta-mark">{{ icon('plus') }}</span><span>New research chat</span>
     </a>
 
@@ -97,20 +110,6 @@
          my research do I want to go". The workspace is one click away behind
          Try demo rather than spread across a sidebar they have no stake in. #}
       <nav class="sidebar-nav">
-        {# Two weights, because they are not equal choices: returning visitors are
-           the common case and get the tinted button, new ones the outlined one.
-           Both are buttons rather than nav items - they are actions, not places. #}
-        <div class="nav-section nav-auth">
-          <a href="{{ url_for('auth.login') }}"
-             class="sidebar-btn sidebar-btn-primary {{ 'active' if ep == 'auth.login' }}">
-            {{ icon('login') }}<span>Log in</span>
-          </a>
-          <a href="{{ url_for('auth.signup') }}"
-             class="sidebar-btn {{ 'active' if ep == 'auth.signup' }}">
-            {{ icon('user-plus') }}<span>Sign up</span>
-          </a>
-        </div>
-
         <div class="nav-section">
           <h2 class="nav-label">Explore</h2>
           <a href="{{ url_for('home.dashboard') }}" class="nav-item">
@@ -199,15 +198,32 @@
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="btn btn-ghost btn-sm sidebar-signout">Log out</button>
         </form>
+      {% elif is_workspace_shell %}
+        {# Inside the demo the account actions are one prompt, not two: someone
+           already trying the product needs a reason before a pair of buttons. #}
+        <div class="guest-card">
+          <p class="guest-note">You're viewing the demo workspace.</p>
+          <a class="btn btn-primary btn-sm" href="{{ url_for('auth.signup') }}">Sign up to save work</a>
+        </div>
       {% else %}
-        {# Only shown inside the demo workspace: on the public pages the sidebar
-           already offers Log in and Sign up, and a third prompt would be nagging. #}
-        {% if is_workspace_shell %}
-          <div class="guest-card">
-            <p class="guest-note">You're viewing the demo workspace.</p>
-            <a class="btn btn-primary btn-sm" href="{{ url_for('auth.signup') }}">Sign up to save work</a>
-          </div>
-        {% endif %}
+        {# At the foot rather than the top of the nav, so that the account lives
+           in one fixed place whoever you are - this is exactly where the user
+           chip and Log out sit once you are signed in.
+
+           Two weights, because they are not equal choices: returning visitors
+           are the common case and get the tinted button, new ones the outlined
+           one. Both are buttons rather than nav items - they are actions, not
+           places. #}
+        <div class="nav-auth">
+          <a href="{{ url_for('auth.login') }}"
+             class="sidebar-btn sidebar-btn-primary {{ 'active' if ep == 'auth.login' }}">
+            {{ icon('login') }}<span>Log in</span>
+          </a>
+          <a href="{{ url_for('auth.signup') }}"
+             class="sidebar-btn {{ 'active' if ep == 'auth.signup' }}">
+            {{ icon('user-plus') }}<span>Sign up</span>
+          </a>
+        </div>
       {% endif %}
     </div>
   </aside>
