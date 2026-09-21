@@ -13,10 +13,26 @@ import uuid
 
 # Must be set before app.py is imported — its module body calls create_app(),
 # which would otherwise spawn the real SentenceTransformer warmup thread.
+# ---------------------------------------------------------------------------
+# Pin the environment BEFORE config is imported.
+#
+# config.py calls load_dotenv(), so without this the suite reads the developer's
+# .env and its results depend on an untracked local file. That is how a test
+# passes on one machine, fails on another, and does something third in CI.
+#
+# load_dotenv() does not override variables that already exist, so setting them
+# here wins. Fixtures still monkeypatch individual values per test; these are the
+# baseline those fixtures assume.
+# ---------------------------------------------------------------------------
 os.environ["EMBEDDING_PRELOAD"] = "false"
-# Resolve every test request to the dev identity unless a test signs in explicitly.
-os.environ.setdefault("APP_ENV", "local")
-os.environ.setdefault("ALLOW_DEV_USER_BYPASS", "true")
+os.environ["APP_ENV"] = "local"
+# Every request resolves to the dev identity unless a test signs in or uses one
+# of the anonymous fixtures.
+os.environ["ALLOW_DEV_USER_BYPASS"] = "true"
+os.environ["ALLOW_ANONYMOUS_DEMO"] = "false"
+# Metering must be ON: the capability tests assert what happens when an allowance
+# runs out, which is unobservable if a local .env has switched quotas off.
+os.environ["QUOTAS_ENABLED"] = "true"
 
 import pytest
 
