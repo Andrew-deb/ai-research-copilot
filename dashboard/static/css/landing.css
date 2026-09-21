@@ -1,41 +1,17 @@
 /* landing.css — the chat-first page an anonymous visitor arrives on.
-   No sidebar: navigation is for people who already have somewhere to go. */
 
-.landing-body {
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  background: var(--bg);
-}
-
-.landing-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 16px 24px;
-}
-
-.landing-brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 9px;
-  font-weight: 600;
-  font-size: 15px;
-  color: var(--text);
-  text-decoration: none;
-}
-
-.landing-top-actions { display: flex; align-items: center; gap: 8px; }
+   The page now lives inside the standard shell, so the header, sidebar, footer
+   and theme toggle all come from base.css. What remains here is only the hero:
+   the measure it is read at, and the fact that everything in it is centred,
+   which is true of no other page in the app. */
 
 /* The composer sits slightly above centre: optical centring, and it leaves room
    for the value row to peek in and invite a scroll. */
 .landing-main {
-  flex: 1;
   width: 100%;
   max-width: 720px;
   margin: 0 auto;
-  padding: 6vh 24px 48px;
+  padding: 5vh 0 8px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -57,7 +33,6 @@
   font-size: 14.5px;
   line-height: 1.55;
 }
-
 
 /* Landing-specific: the chips centre under the composer here, but flow left on
    the chat page, so only the alignment lives in this file. */
@@ -84,15 +59,7 @@
   line-height: 1.5;
 }
 
-.landing-foot {
-  padding: 22px 24px 30px;
-  text-align: center;
-  color: var(--text-muted);
-  font-size: 12.5px;
-}
-.landing-foot .dot { margin: 0 8px; opacity: .55; }
-
 @media (max-width: 560px) {
-  .landing-main { padding-top: 4vh; }
+  .landing-main { padding-top: 3vh; }
   .landing-value { margin-top: 40px; gap: 20px; }
 }
