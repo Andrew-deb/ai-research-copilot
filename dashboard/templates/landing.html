@@ -1,77 +1,25 @@
-{# The first thing a new visitor sees. Deliberately NOT base.html: the sidebar is
-   a workspace navigator, and showing it to someone with no workspace yet asks
-   them to navigate before they know what this is. #}
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Research Copilot — read the literature faster</title>
+{# The first thing a new visitor sees — and a working agent surface, not a
+   picture of one.
 
-  <script>
-    (function () {
-      var t = "light";
-      try {
-        var saved = localStorage.getItem('rc-theme');
-        if (saved === 'dark' || saved === 'light') { t = saved; }
-        else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) { t = 'dark'; }
-      } catch (e) {}
-      document.documentElement.setAttribute('data-theme', t);
-    })();
-  </script>
+   The composer here is the same partial /chat uses, so asking a question is
+   something you do on this page rather than something this page sends you
+   elsewhere to do. Routing to /chat made the box a decoration and put a
+   navigation step between a visitor and the one thing the page is for. #}
+{% extends "base.html" %}
+{% block title %}Research Copilot — read the literature faster{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{{ url_for('static', filename='css/landing.css') }}">{% endblock %}
 
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet"
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/landing.css') }}">
-  <meta name="csrf-token" content="{{ csrf_token() }}">
-</head>
-<body class="landing-body">
-
-<header class="landing-top">
-  <a class="landing-brand" href="{{ url_for('home.index') }}">
-    <span class="brand-leaf">🌿</span>
-    <span class="brand-name">Research Copilot</span>
-  </a>
-  <div class="landing-top-actions">
-    <a class="btn btn-ghost btn-sm" href="{{ url_for('home.dashboard') }}">Try demo</a>
-    <a class="btn btn-sm" href="{{ url_for('auth.login') }}">Log in</a>
-  </div>
-</header>
-
-<main class="landing-main">
+{% block content %}
+<div class="landing-main">
   <h1 class="landing-title">What are you researching?</h1>
   <p class="landing-sub">
     Ask about papers, methods or findings. Answers cite the papers they came from.
   </p>
 
-  {# Posts to semantic search, which returns a real cited answer today. Pointing
-     it at /chat would be the eventual home but currently dead-ends, and a landing
-     page whose main input does nothing is worse than one that does something
-     smaller. #}
-  <form class="composer" action="{{ url_for('search.search_page') }}" method="get">
-    <input type="hidden" name="mode" value="semantic">
-    <textarea class="composer-input" name="q" rows="1" autofocus
-              placeholder="Ask about papers, methods, topics…"
-              aria-label="Ask a research question"></textarea>
-    <button class="composer-send" type="submit" aria-label="Search">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M12 19V5M5 12l7-7 7 7"/>
-      </svg>
-    </button>
-  </form>
-
-  <ul class="chip-row landing-prompts">
-    {% for prompt in prompts %}
-      <li>
-        <a class="prompt-chip"
-           href="{{ url_for('search.search_page', q=prompt, mode='semantic') }}">{{ prompt }}</a>
-      </li>
-    {% endfor %}
-  </ul>
+  {% with starter_class = 'landing-prompts',
+          composer_placeholder = 'Ask about papers, methods, topics…' %}
+    {% include "_chat_composer.html" %}
+  {% endwith %}
 
   <section class="landing-value">
     <div class="value-item">
@@ -84,17 +32,10 @@
     </div>
     <div class="value-item">
       <h2>Keep what you find</h2>
-      <p>Collections, notes and reading progress — <a href="{{ url_for('auth.login') }}">once you sign in</a>.</p>
+      <p>Collections, notes and reading progress — <a href="{{ url_for('auth.login') }}">once you log in</a>.</p>
     </div>
   </section>
-</main>
+</div>
+{% endblock %}
 
-<footer class="landing-foot">
-  <a href="{{ url_for('home.dashboard') }}">Browse the demo workspace</a>
-  <span class="dot">·</span>
-  <span>No account needed to look around</span>
-</footer>
-
-<script src="{{ url_for('static', filename='js/main.js') }}"></script>
-</body>
-</html>
+{% block extra_js %}<script src="{{ url_for('static', filename='js/chat.js') }}"></script>{% endblock %}
