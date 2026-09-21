@@ -1,109 +1,197 @@
-{% extends "base.html" %}
+{% extends "docs_base.html" %}
 {% block title %}Help &amp; support — Research Copilot{% endblock %}
-{% block topbar_title %}Help{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="{{ url_for('static', filename='css/public.css') }}">{% endblock %}
-
-{% block content %}
-<div class="public-page">
-  <header class="public-head">
-    <h1 class="public-title">Help &amp; support</h1>
-    <p class="public-lead">Plain answers to what comes up first.</p>
-  </header>
-
-  {% with tabs = [('public.help_page', 'Help & support'), ('public.docs', 'Documentation')],
-          active = 'public.help_page' %}
-    {% include "_tab_switch.html" %}
-  {% endwith %}
-
-  {# Filters the articles below as you type. A search box that does nothing is
-     the same broken promise as a button that goes nowhere. #}
-  <div class="doc-search">
-    {{ icon('search') }}
-    <input type="text" id="doc-filter" autocomplete="off"
-           placeholder="Search help…" aria-label="Search help">
-  </div>
-
-  <div class="doc-body" id="doc-body">
-    <section class="doc-item">
-      <h2>Do I need an account to try it?</h2>
-      <p>
-        No. You can browse the corpus, open any paper, run semantic search and ask
-        a limited number of questions without signing in. An account is what lets
-        you <em>keep</em> things: collections, notes and reading progress.
-      </p>
-    </section>
-
-    <section class="doc-item">
-      <h2>Keyword search or semantic search?</h2>
-      <p>
-        Keyword search matches the words you typed. Semantic search matches
-        meaning, so a question about models inventing facts finds papers on
-        hallucination and grounding even when none of those words appear in your
-        query. Semantic is the better default for a question; keyword is better
-        when you already know the title.
-      </p>
-    </section>
-
-    <section class="doc-item">
-      <h2>What does the percentage next to a result mean?</h2>
-      <p>
-        How closely your question matches the best passage in that paper. Higher
-        is closer. A badge reading <em>from the conclusion</em> means the match
-        came from that section rather than the abstract — usually a sign the paper
-        addresses your question rather than merely mentioning the topic.
-      </p>
-    </section>
-
-    <section class="doc-item">
-      <h2>Why do some papers have no sections?</h2>
-      <p>
-        Because no readable open-access copy exists: there is no free copy, the
-        publisher declines automated access, or the PDF is a scan with no text
-        layer. Those papers stay searchable by abstract — nothing is lost, there
-        is simply less to search.
-      </p>
-    </section>
-
-    <section class="doc-item">
-      <h2>Can I trust the answers?</h2>
-      <p>
-        Every answer cites the papers it drew from, and you can open each one to
-        check. The assistant answers from the indexed corpus only; when the corpus
-        cannot answer a question it says so rather than filling the gap.
-      </p>
-    </section>
-
-    <section class="doc-item">
-      <h2>What happens when I hit a daily limit?</h2>
-      <p>
-        Search and answers pause until the next day; browsing, collections and
-        notes keep working. Logging in raises the allowance — see
-        <a href="{{ url_for('public.pricing') }}">plans</a>.
-      </p>
-    </section>
-
-    <section class="doc-item">
-      <h2>How do I build a reading list?</h2>
-      <p>
-        Add papers to a collection from any paper page, then open the collection
-        and choose <em>Generate reading plan</em>. It sequences them oldest first,
-        weighted by citation impact, so foundations come before the variants that
-        build on them. You can drag to reorder afterwards.
-      </p>
-    </section>
-
-    <section class="doc-item">
-      <h2>Something looks wrong or missing</h2>
-      <p>
-        The corpus is deliberately narrow and still growing, so a missing paper is
-        more likely to be out of scope than a bug. If an answer looks wrong, open
-        its citations — that usually shows what the assistant actually read.
-      </p>
-    </section>
-
-    <p class="doc-empty" id="doc-none" hidden>Nothing here matches that. Try fewer words.</p>
-  </div>
-</div>
+{% block doc_badge %}Support{% endblock %}
+{% block doc_switch %}
+  {% with active_doc = 'help' %}{% include "_doc_switch.html" %}{% endwith %}
 {% endblock %}
 
-{% block extra_js %}<script src="{{ url_for('static', filename='js/docs.js') }}"></script>{% endblock %}
+{% block doc_body %}
+{# Plain language, questions first. The documentation next door is organised by
+   how the system is built; this page is organised by what goes wrong, which is
+   the only structure that helps someone who is stuck. #}
+<section class="help-hero">
+  <h1 class="help-title">How can we help?</h1>
+  <p class="help-lead">Search the answers below, or browse by topic.</p>
+
+  <div class="help-search">
+    {{ icon('search') }}
+    <input type="text" id="help-filter" autocomplete="off"
+           placeholder="Search help articles…" aria-label="Search help articles">
+  </div>
+
+  <div class="help-chips">
+    <span class="help-chips-label">Common questions:</span>
+    <button type="button" class="help-chip" data-query="account">Accounts</button>
+    <button type="button" class="help-chip" data-query="limit">Daily limits</button>
+    <button type="button" class="help-chip" data-query="sections">Missing sections</button>
+    <button type="button" class="help-chip" data-query="collection">Collections</button>
+  </div>
+</section>
+
+<main class="help-main">
+
+  <div class="help-cards" id="help-cards">
+    <a class="help-card" href="#faq-accounts">
+      <span class="help-card-icon">{{ icon('spark') }}</span>
+      <h2>Getting started</h2>
+      <p>What you can do without an account, and what an account adds.</p>
+    </a>
+    <a class="help-card" href="#faq-search">
+      <span class="help-card-icon">{{ icon('search') }}</span>
+      <h2>Searching &amp; answers</h2>
+      <p>Keyword versus meaning, match scores, and how far to trust a citation.</p>
+    </a>
+    <a class="help-card" href="#faq-library">
+      <span class="help-card-icon">{{ icon('folder') }}</span>
+      <h2>Collections &amp; reading</h2>
+      <p>Building a reading list and letting the plan order it for you.</p>
+    </a>
+    <a class="help-card" href="#faq-limits">
+      <span class="help-card-icon">{{ icon('target') }}</span>
+      <h2>Limits &amp; the corpus</h2>
+      <p>Why there are daily limits, and why a paper might be missing.</p>
+    </a>
+  </div>
+
+  {# <details> rather than scripted panels: it opens with JavaScript disabled, it
+     is keyboard operable for free, and the browser's own find-in-page can search
+     inside a closed one. #}
+  <div class="help-faq" id="help-faq">
+
+    <h2 class="help-faq-head" id="faq-accounts">Getting started</h2>
+
+    <details class="faq-item" open>
+      <summary>Do I need an account to try it?</summary>
+      <div class="faq-body">
+        <p>
+          No. You can browse the corpus, open any paper, run semantic search and
+          ask a limited number of questions without logging in. An account is what
+          lets you <em>keep</em> things: collections, notes and reading progress.
+        </p>
+      </div>
+    </details>
+
+    <details class="faq-item">
+      <summary>What happens to my work if I never sign up?</summary>
+      <div class="faq-body">
+        <p>
+          Nothing is stored. An anonymous session persists no conversations, no
+          collections and no history — which is also why the demo workspace shows
+          no recent chats. Logging in is what makes anything survive a refresh.
+        </p>
+      </div>
+    </details>
+
+    <h2 class="help-faq-head" id="faq-search">Searching &amp; answers</h2>
+
+    <details class="faq-item">
+      <summary>Keyword search or semantic search?</summary>
+      <div class="faq-body">
+        <p>
+          Keyword search matches the words you typed. Semantic search matches
+          meaning, so a question about models inventing facts finds papers on
+          hallucination and grounding even when none of those words appear in your
+          query. Semantic is the better default for a question; keyword is better
+          when you already know the title.
+        </p>
+      </div>
+    </details>
+
+    <details class="faq-item">
+      <summary>What does the percentage next to a result mean?</summary>
+      <div class="faq-body">
+        <p>
+          How closely your question matches the best passage in that paper. Higher
+          is closer. A badge reading <em>from the conclusion</em> means the match
+          came from that section rather than the abstract — usually a sign the
+          paper addresses your question rather than merely mentioning the topic.
+        </p>
+      </div>
+    </details>
+
+    <details class="faq-item">
+      <summary>Can I trust the answers?</summary>
+      <div class="faq-body">
+        <p>
+          Every answer cites the papers it drew from, and you can open each one to
+          check. The assistant answers from the indexed corpus only; when the
+          corpus cannot answer a question it says so rather than filling the gap.
+        </p>
+      </div>
+    </details>
+
+    <h2 class="help-faq-head" id="faq-library">Collections &amp; reading</h2>
+
+    <details class="faq-item">
+      <summary>How do I build a reading list?</summary>
+      <div class="faq-body">
+        <p>
+          Add papers to a collection from any paper page, then open the collection
+          and choose <em>Generate reading plan</em>. It sequences them oldest
+          first, weighted by citation impact, so foundations come before the
+          variants that build on them. You can drag to reorder afterwards.
+        </p>
+      </div>
+    </details>
+
+    <h2 class="help-faq-head" id="faq-limits">Limits &amp; the corpus</h2>
+
+    <details class="faq-item">
+      <summary>What happens when I hit a daily limit?</summary>
+      <div class="faq-body">
+        <p>
+          Search and answers pause until the next day; browsing, collections and
+          notes keep working. Logging in raises the allowance — see
+          <a href="{{ url_for('public.pricing') }}">plans &amp; pricing</a>.
+        </p>
+      </div>
+    </details>
+
+    <details class="faq-item">
+      <summary>Why do some papers have no sections?</summary>
+      <div class="faq-body">
+        <p>
+          Because no readable open-access copy exists: there is no free copy, the
+          publisher declines automated access, or the PDF is a scan with no text
+          layer. Those papers stay searchable by abstract — nothing is lost, there
+          is simply less to search.
+        </p>
+      </div>
+    </details>
+
+    <details class="faq-item">
+      <summary>Something looks wrong or missing</summary>
+      <div class="faq-body">
+        <p>
+          The corpus is deliberately narrow and still growing, so a missing paper
+          is more likely to be out of scope than a bug. If an answer looks wrong,
+          open its citations — that usually shows what the assistant actually
+          read.
+        </p>
+      </div>
+    </details>
+
+    <p class="doc-none" id="help-none" hidden>
+      No help article matches that. Try fewer words, or
+      <a href="{{ url_for('public.docs') }}">check the documentation</a>.
+    </p>
+  </div>
+
+  <section class="help-contact">
+    <div class="help-contact-text">
+      <h2>Still stuck?</h2>
+      <p>
+        If something is broken rather than merely confusing, that is worth
+        knowing about. Include the question you asked and what you expected —
+        with a research question, the citations it returned are usually enough to
+        explain the rest.
+      </p>
+    </div>
+    <div class="help-contact-actions">
+      <a class="btn btn-primary" href="{{ url_for('public.docs') }}">Read the documentation</a>
+      <span class="help-contact-note">{{ icon('mail') }} A contact route is being set up.</span>
+    </div>
+  </section>
+
+</main>
+{% endblock %}
