@@ -82,6 +82,23 @@ def require_capability(capability: str):
     return decorator
 
 
+def consume_quota(metric: str) -> dict:
+    """
+    Consume one unit of `metric`, or raise QuotaExceededError.
+
+    Exposed as a function as well as a decorator for the one case the decorator
+    cannot express: a route that must decide whether there is any work to do
+    before charging for it. The agent endpoint is that case while it is not yet
+    connected - see agent_service.is_connected. It is still called before the
+    work, never after, which is the property that makes a limit a limit.
+    """
+    scope, scope_id = current_quota_scope()
+    g.quota = quota_service.check_and_consume(
+        metric=metric, tier=current_tier(), scope=scope, scope_id=scope_id
+    )
+    return g.quota
+
+
 def require_quota(metric: str):
     """
     Consume one unit of `metric`, or refuse.
@@ -93,10 +110,7 @@ def require_quota(metric: str):
     def decorator(view):
         @functools.wraps(view)
         def wrapper(*args, **kwargs):
-            scope, scope_id = current_quota_scope()
-            g.quota = quota_service.check_and_consume(
-                metric=metric, tier=current_tier(), scope=scope, scope_id=scope_id
-            )
+            consume_quota(metric)
             return view(*args, **kwargs)
         return wrapper
     return decorator
