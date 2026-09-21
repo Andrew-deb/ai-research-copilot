@@ -1,0 +1,15 @@
+{# Underline tabs, for switching between two views of the same subject.
+
+   Distinct from the pill used for Agent | Search on purpose: that one switches
+   between two *modes of working* and lives in the chrome, so it needs to read as
+   a control. These switch between two *readings of one page* and belong to the
+   content, where an underline is quieter and does not compete with the heading.
+
+   Pass `tabs` as a list of (endpoint, label) and `active` as the current endpoint. #}
+<nav class="tab-switch" role="tablist">
+  {% for endpoint, label in tabs %}
+    <a class="tab {{ 'is-active' if active == endpoint }}" role="tab"
+       aria-selected="{{ 'true' if active == endpoint else 'false' }}"
+       href="{{ url_for(endpoint) }}">{{ label }}</a>
+  {% endfor %}
+</nav>
