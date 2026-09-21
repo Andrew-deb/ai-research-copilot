@@ -7,7 +7,13 @@
    navigation step between a visitor and the one thing the page is for. #}
 {% extends "base.html" %}
 {% block title %}Research Copilot — read the literature faster{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="{{ url_for('static', filename='css/landing.css') }}">{% endblock %}
+{# chat.css as well as landing.css: this page runs the same composer as /chat and
+   grows the same thread, so it needs the styles for a rendered turn. Without it
+   the answer and its citations arrive as unstyled text. #}
+{% block extra_css %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/chat.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/landing.css') }}">
+{% endblock %}
 
 {% block content %}
 <div class="landing-main">
