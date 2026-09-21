@@ -1,6 +1,7 @@
-/* public.css — pricing, help, documentation.
+/* public.css — pricing and about.
    Reading pages rather than working pages, so they get a narrower measure and
-   more air than the workspace. */
+   more air than the workspace. Help and documentation have their own shell and
+   live in docs.css. */
 
 .public-page {
   max-width: 940px;
@@ -82,6 +83,16 @@
 
 .plan-cta { width: 100%; justify-content: center; text-align: center; }
 
+/* Sits under a disabled support button, so the card reads as "not yet" rather
+   than "broken". */
+.plan-pending {
+  margin: 8px 0 0;
+  text-align: center;
+  color: var(--text-subtle);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .plan-inherits {
   margin: 20px 0 8px;
   font-size: 12.5px;
@@ -137,62 +148,16 @@
 .public-note h2 { margin: 0 0 8px; font-size: 15px; }
 .public-note p { margin: 0; color: var(--text-muted); font-size: 13.5px; line-height: 1.6; }
 
-/* ---------- Tabs, search, articles ---------- */
+/* ---------- Article blocks ---------- */
 
-/* Underline rather than the pill used for Agent | Search: that one switches
-   modes of working and lives in the chrome, so it reads as a control. This
-   switches between two readings of one page and belongs to the content, where a
-   quieter treatment does not compete with the heading above it. */
-.tab-switch {
-  display: flex;
-  gap: 22px;
-  margin: 0 0 20px;
-  border-bottom: 1px solid var(--border);
-}
-
-.tab {
-  padding: 9px 1px 11px;
-  margin-bottom: -1px;
-  border-bottom: 2px solid transparent;
-  color: var(--text-muted);
-  font-size: 13.5px;
-  font-weight: 500;
-  text-decoration: none;
-  transition: color .15s ease, border-color .15s ease;
-}
-.tab:hover { color: var(--text); text-decoration: none; }
-.tab.is-active { color: var(--text); border-bottom-color: var(--brand); }
-
-.doc-search {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  margin: 0 0 22px;
-  padding: 9px 13px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface);
-}
-.doc-search svg { width: 16px; height: 16px; color: var(--text-muted); flex: none; }
-.doc-search input {
-  flex: 1;
-  border: 0;
-  outline: 0;
-  background: transparent;
-  color: var(--text);
-  font: inherit;
-  font-size: 14px;
-}
-.doc-search input::placeholder { color: var(--text-muted); }
-
-.doc-body { display: flex; flex-direction: column; }
+/* Used by About. The tab switch, doc search and code block that used to live
+   here moved to docs.css when /help and /docs got their own shell. */
 
 .doc-item {
   padding: 20px 0;
   border-bottom: 1px solid var(--border);
   max-width: 68ch;
 }
-.doc-item[hidden] { display: none; }
 .doc-item h2 { margin: 0 0 8px; font-size: 16px; }
 .doc-item p { margin: 0 0 10px; color: var(--text-muted); font-size: 14px; line-height: 1.65; }
 .doc-item p:last-child { margin-bottom: 0; }
@@ -205,26 +170,6 @@
   color: var(--text);
 }
 
-.doc-pre {
-  margin: 0 0 12px;
-  padding: 14px 16px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface-2);
-  color: var(--text-muted);
-  font-family: var(--mono);
-  font-size: 12.5px;
-  line-height: 1.6;
-  overflow-x: auto;
-}
-
-.doc-empty {
-  padding: 28px 0;
-  color: var(--text-muted);
-  font-size: 13.5px;
-}
-
 @media (max-width: 640px) {
   .plan-for { min-height: 0; }
-  .tab-switch { gap: 16px; }
 }
