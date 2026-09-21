@@ -46,7 +46,12 @@
     'menu': '<path d="M4 12h16M4 6h16M4 18h16"/>',
     'chat': '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2Z"/>',
     'plus': '<path d="M12 5v14M5 12h14"/>',
-    'panel': '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/>'
+    'panel': '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/>',
+    'login': '<path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="m10 17 5-5-5-5M15 12H3"/>',
+    'user-plus': '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/>',
+    'info': '<circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/>',
+    'book': '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"/>',
+    'spark': '<path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/><circle cx="12" cy="12" r="3"/>'
   } -%}
   <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
        stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{ paths[name] | safe }}</svg>
@@ -62,10 +67,15 @@
         <span class="brand-name">Research Copilot</span>
       </a>
       <div class="sidebar-head-actions">
-        <button type="button" class="icon-btn" id="chat-search-open"
-                aria-label="Search chats" title="Search chats">
-          {{ icon('search') }}
-        </button>
+        {# Chat-history search is a workspace tool. A visitor with no history has
+           nothing to search, so offering it would be a control that can only
+           disappoint. #}
+        {% if is_workspace_shell %}
+          <button type="button" class="icon-btn" id="chat-search-open"
+                  aria-label="Search chats" title="Search chats">
+            {{ icon('search') }}
+          </button>
+        {% endif %}
         <button type="button" class="icon-btn sidebar-collapse" id="sidebar-collapse"
                 aria-label="Collapse navigation" title="Collapse navigation">
           {{ icon('panel') }}
@@ -79,6 +89,42 @@
       <span class="cta-mark">{{ icon('plus') }}</span><span>New research chat</span>
     </a>
 
+    {% if not is_workspace_shell %}
+      {# Public shell. Someone who has not signed in is still deciding, so the
+         navigation answers "what is this and what does it cost", not "where in
+         my research do I want to go". The workspace is one click away behind
+         Try demo rather than spread across a sidebar they have no stake in. #}
+      <nav class="sidebar-nav">
+        <div class="nav-section">
+          <a href="{{ url_for('auth.login') }}" class="nav-item {{ 'active' if ep == 'auth.login' }}">
+            {{ icon('login') }}<span>Log in</span>
+          </a>
+          <a href="{{ url_for('auth.signup') }}" class="nav-item {{ 'active' if ep == 'auth.signup' }}">
+            {{ icon('user-plus') }}<span>Sign up</span>
+          </a>
+        </div>
+
+        <div class="nav-section">
+          <h2 class="nav-label">Explore</h2>
+          <a href="{{ url_for('home.dashboard') }}" class="nav-item">
+            {{ icon('spark') }}<span>Try the demo</span>
+          </a>
+          <a href="{{ url_for('public.pricing') }}" class="nav-item {{ 'active' if ep == 'public.pricing' }}">
+            {{ icon('target') }}<span>Plans &amp; pricing</span>
+          </a>
+        </div>
+
+        <div class="nav-section">
+          <h2 class="nav-label">Learn more</h2>
+          <a href="{{ url_for('public.about') }}" class="nav-item {{ 'active' if ep == 'public.about' }}">
+            {{ icon('info') }}<span>About</span>
+          </a>
+          <a href="{{ url_for('public.help_page') }}" class="nav-item {{ 'active' if ep == 'public.help_page' }}">
+            {{ icon('book') }}<span>Help &amp; docs</span>
+          </a>
+        </div>
+      </nav>
+    {% else %}
     {# Workspace above recent chats: the workspace is a fixed five items, while
        chat history grows without limit. Putting the growing list first would push
        the stable navigation off-screen as soon as it filled up. #}
@@ -119,6 +165,7 @@
         {% endif %}
       </div>
     </nav>
+    {% endif %}
 
     <div class="sidebar-footer">
       {% if is_authenticated %}
@@ -131,12 +178,14 @@
           <button type="submit" class="btn btn-ghost btn-sm sidebar-signout">Sign out</button>
         </form>
       {% else %}
-        {# Viewing the demo. Says what signing in would add, rather than just
-           demanding it. #}
-        <div class="guest-card">
-          <p class="guest-note">You're viewing the demo workspace.</p>
-          <a class="btn btn-primary btn-sm" href="{{ url_for('auth.login') }}">Sign in to save work</a>
-        </div>
+        {# Only shown inside the demo workspace: on the public pages the sidebar
+           already offers Log in and Sign up, and a third prompt would be nagging. #}
+        {% if is_workspace_shell %}
+          <div class="guest-card">
+            <p class="guest-note">You're viewing the demo workspace.</p>
+            <a class="btn btn-primary btn-sm" href="{{ url_for('auth.signup') }}">Sign up to save work</a>
+          </div>
+        {% endif %}
       {% endif %}
     </div>
   </aside>
@@ -191,6 +240,9 @@
       <div class="topbar-center">{% block topbar_center %}{% endblock %}</div>
       <div class="topbar-actions">
         {% if not is_authenticated %}
+          {% if not is_workspace_shell %}
+            <a class="btn btn-ghost btn-sm" href="{{ url_for('home.dashboard') }}">Try demo</a>
+          {% endif %}
           <a class="btn btn-sm" href="{{ url_for('auth.login') }}">Sign in</a>
         {% endif %}
         <button type="button" class="icon-btn theme-toggle" id="theme-toggle"
