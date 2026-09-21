@@ -15,7 +15,7 @@ calls and citations an agent actually produces, and none exist yet. The empty
 state is honest and costs nothing to replace.
 """
 
-from flask import Blueprint, render_template
+from flask import Blueprint, render_template, request
 
 from middleware.auth import current_tier
 from middleware.capabilities import AGENT_QUERY, tier_can
@@ -23,14 +23,27 @@ from services import quota_service
 
 bp = Blueprint("chat", __name__)
 
+# A question carried in from elsewhere should not be longer than anything the
+# composer would accept, and a URL is the easiest place for someone to paste
+# something enormous.
+MAX_CARRIED_PROMPT = 500
+
 
 @bp.get("/chat")
 def new_chat():
-    """A fresh conversation. The default landing spot for the signed-in agent."""
+    """
+    A fresh conversation. The default landing spot for the signed-in agent.
+
+    `?q=` prefills the composer, which is how the landing page hands a question
+    over. Prefilling rather than submitting: the agent is not connected yet, and
+    even once it is, arriving to find your question already running takes the
+    decision away from whoever typed it.
+    """
     return render_template(
         "chat.html",
         conversation=None,
         messages=[],
+        initial_prompt=(request.args.get("q") or "").strip()[:MAX_CARRIED_PROMPT],
         can_ask=tier_can(current_tier(), AGENT_QUERY),
     )
 
@@ -48,6 +61,7 @@ def conversation(conversation_id: str):
         "chat.html",
         conversation={"conversation_id": conversation_id},
         messages=[],
+        initial_prompt="",
         can_ask=tier_can(current_tier(), AGENT_QUERY),
     )
 
