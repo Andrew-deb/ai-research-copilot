@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Plans &amp; pricing — Research Copilot{% endblock %}
+{% block topbar_title %}Plans &amp; pricing{% endblock %}
+
+{% block content %}
+<article class="prose">
+  <h1 class="page-title">Plans &amp; pricing</h1>
+  <p class="page-lead">
+    One plan, free. Signing in raises the daily allowance and lets your work persist.
+  </p>
+
+  {# Numbers come from the running configuration, not from this template. A
+     pricing page that disagrees with what the server enforces is worse than none. #}
+  <div class="plan-grid">
+    <section class="plan-card">
+      <h2>Browsing</h2>
+      <p class="plan-price">No account</p>
+      <ul class="plan-list">
+        <li>Browse the full corpus</li>
+        <li>Open any paper and its sections</li>
+        <li>{{ anonymous.search }} semantic searches a day</li>
+        <li>{{ anonymous.rag }} cited answers a day</li>
+        <li>{{ anonymous.agent }} research question{{ '' if anonymous.agent == 1 else 's' }} a day</li>
+        <li class="plan-no">Nothing is saved between visits</li>
+      </ul>
+      <a class="btn btn-ghost" href="{{ url_for('home.dashboard') }}">Try the demo</a>
+    </section>
+
+    <section class="plan-card plan-card-primary">
+      <h2>Free account</h2>
+      <p class="plan-price">Also free</p>
+      <ul class="plan-list">
+        <li>Everything in browsing</li>
+        <li>{{ member.search }} semantic searches a day</li>
+        <li>{{ member.rag }} cited answers a day</li>
+        <li>{{ member.agent }} research questions a day</li>
+        <li>Collections, notes and reading progress</li>
+        <li>Discoveries picked for your research fields</li>
+      </ul>
+      <a class="btn btn-primary" href="{{ url_for('auth.signup') }}">Create an account</a>
+    </section>
+  </div>
+
+  <p class="plan-note">
+    Daily allowances exist because search and answers cost real compute. They
+    keep the service available for everyone rather than letting one visitor
+    exhaust it, and they are reviewed as capacity changes.
+  </p>
+</article>
+{% endblock %}
