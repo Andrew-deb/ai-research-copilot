@@ -20,6 +20,26 @@
   <button type="submit" class="btn btn-primary">Search</button>
 </form>
 
+{# Only under an empty box, and directly under it so they read as things to put
+   in it. The heading names what they actually are: "Your recent searches" over
+   a curated list would be a small lie nobody could act on, so the source
+   decides the wording rather than the tier does. #}
+{% if suggestions %}
+  <section class="suggest">
+    <h2 class="suggest-title">
+      {% if suggestions.source == 'history' %}Your recent searches{% else %}Try a search{% endif %}
+    </h2>
+    <ul class="chip-row suggest-row">
+      {% for item in suggestions['items'] %}
+        <li>
+          <a class="prompt-chip"
+             href="{{ url_for('search.search_page', q=item, mode='semantic') }}">{{ item }}</a>
+        </li>
+      {% endfor %}
+    </ul>
+  </section>
+{% endif %}
+
 {% if rag_available %}
 <section class="panel rag-box">
   <h2>Ask a research question</h2>
