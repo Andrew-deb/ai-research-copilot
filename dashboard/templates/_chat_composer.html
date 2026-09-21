@@ -1,0 +1,60 @@
+{# The agent composer, shared by the landing page and /chat.
+
+   One partial because the landing page *is* the chat interface rather than an
+   advertisement for it. Sending a visitor to another route to do the thing the
+   box in front of them already looks capable of doing is a detour they did not
+   ask for, and it made the landing composer a decoration.
+
+   It also means Phase 3.3 wires orchestration in one file and both surfaces get
+   it at once, instead of one of them being forgotten and quietly rotting.
+
+   Context it expects:
+     can_ask            may this tier use the agent at all (context processor)
+     agent_daily_limit  their allowance, or None (context processor)
+     starters           [{label, prompt}] - chips that fill the box
+     starter_class      extra class on the chip row, for per-page alignment
+     initial_prompt     prefill, from ?q= #}
+
+{% if can_ask %}
+  {# The textarea's content is kept on one line deliberately: a textarea
+     preserves its own whitespace, so indenting it would arrive as blanks in
+     front of the question. #}
+  <form class="composer" id="chat-composer" autocomplete="off">
+    <textarea class="composer-input" id="chat-input" rows="1"
+              placeholder="{{ composer_placeholder | default('Ask a research question…') }}"
+              aria-label="Ask a research question">{{ initial_prompt | default('') }}</textarea>
+    <button class="composer-send" type="submit" aria-label="Ask">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 19V5M5 12l7-7 7 7"/>
+      </svg>
+    </button>
+  </form>
+
+  {# Below the composer, not above it: these are suggestions for an empty input,
+     and putting them first made them read as the primary control. Hidden once
+     the box is already full, for the same reason. #}
+  {% if starters and not initial_prompt and not messages %}
+    <ul class="chip-row {{ starter_class | default('chat-starters') }}">
+      {% for starter in starters %}
+        <li>
+          <button type="button" class="prompt-chip"
+                  data-prompt="{{ starter.prompt }}">{{ starter.label }}</button>
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+
+  {# Stated up front rather than on refusal. Discovering a limit by hitting it
+     reads as the product breaking; knowing it in advance reads as a free tier. #}
+  {% if agent_daily_limit %}
+    <p class="chat-note">
+      {{ agent_daily_limit }} question{{ '' if agent_daily_limit == 1 else 's' }} a day
+      {%- if not is_authenticated %} — <a href="{{ url_for('auth.signup') }}">sign up</a> for more{% endif %}.
+    </p>
+  {% endif %}
+{% else %}
+  <p class="chat-note">
+    <a href="{{ url_for('auth.login') }}">Log in</a> to ask research questions.
+  </p>
+{% endif %}
