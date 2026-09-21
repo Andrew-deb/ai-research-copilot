@@ -14,6 +14,8 @@ Collapsing them tells a signed-in user who ran out of allowance to sign in, whic
 is advice they cannot act on.
 """
 
+import re
+
 import pytest
 
 from middleware import capabilities
@@ -316,7 +318,7 @@ def test_anonymous_sees_no_note_form(anon_client, db):
     paper = db.seed_paper(title="Some Paper")
     body = anon_client.get(f"/paper/{paper['paper_id']}").get_data(as_text=True)
     assert 'id="note-form"' not in body
-    assert "Sign in" in body
+    assert "Log in" in body
 
 
 def test_anonymous_sees_no_reading_status_buttons(anon_client, db):
@@ -382,7 +384,196 @@ def test_a_new_visitor_lands_on_the_chat_first_page(anon_client):
     body = anon_client.get("/").get_data(as_text=True)
     assert "What are you researching?" in body
     assert "Try demo" in body
-    assert 'class="sidebar"' not in body
+    # The hero is what must not be the workspace - the *sidebar* is fine, and is
+    # now the public one. This used to assert no sidebar at all, which made `/`
+    # the only page in the app with its own chrome.
+    assert "<span>Collections</span>" not in body
+    assert "<span>Dashboard</span>" not in body
+
+
+def test_the_landing_page_wears_the_same_shell_as_every_other_public_page(anon_client):
+    """
+    Regression guard. The landing page was a standalone document: no sidebar and
+    no theme toggle, so moving between it and About or Pricing felt like crossing
+    between two products, and the theme control disappeared on arrival.
+    """
+    body = anon_client.get("/").get_data(as_text=True)
+    assert 'class="sidebar"' in body
+    assert 'id="theme-toggle"' in body
+    assert "<span>Plans &amp; pricing</span>" in body
+
+
+def test_the_landing_page_is_the_chat_interface(anon_client):
+    """
+    Not a picture of one, and not a link to one.
+
+    The landing page runs the same composer /chat runs, so asking is something
+    you do here. It previously posted to /search and then to /chat; both made
+    the box a decoration and put a navigation step between a visitor and the one
+    thing the page is for.
+    """
+    body = anon_client.get("/").get_data(as_text=True)
+    assert 'id="chat-composer"' in body
+    assert 'id="chat-input"' in body
+    assert "js/chat.js" in body
+    # No action attribute: the form is handled in the page, so it cannot
+    # navigate anywhere, to search or to the agent.
+    assert 'class="composer" action=' not in body
+
+
+def test_the_landing_suggestions_fill_the_box_rather_than_navigating(anon_client):
+    """
+    Chips are buttons carrying the question, not links. A suggestion that took
+    you to another page would teach the wrong thing about the control above it.
+    """
+    body = anon_client.get("/").get_data(as_text=True)
+    chips = re.findall(r'<button type="button" class="prompt-chip"\s+data-prompt="([^"]+)"', body)
+    assert len(chips) == 4
+    assert 'class="prompt-chip" href=' not in body
+
+
+def test_both_agent_surfaces_share_one_composer(anon_client):
+    """
+    The landing page and /chat must not drift apart: whatever is true of the
+    composer has to be true in both, which is why there is one partial and one
+    script rather than two copies.
+    """
+    landing = anon_client.get("/").get_data(as_text=True)
+    chat = anon_client.get("/chat").get_data(as_text=True)
+    for marker in ('id="chat-composer"', 'id="chat-input"', "js/chat.js"):
+        assert marker in landing, marker
+        assert marker in chat, marker
+
+
+def test_the_landing_suggestions_are_questions_search_cannot_answer(anon_client):
+    """
+    The distinction only lands if the prompts need several papers read and set
+    against each other. "What is RAG?" is a search; "compare these and say where
+    they disagree" is not.
+    """
+    body = anon_client.get("/").get_data(as_text=True)
+    assert "Compare the main approaches" in body
+    assert "Trace how" in body
+    assert "Build me a reading path" in body
+
+
+def test_a_question_survives_the_hop_into_the_agent(anon_client):
+    """The landing page hands the question over; /chat must not drop it."""
+    body = anon_client.get("/chat?q=Compare+two+retrieval+methods").get_data(as_text=True)
+    assert ">Compare two retrieval methods</textarea>" in body
+    # No leading whitespace: a textarea preserves its own indentation, and an
+    # indented template would arrive as blanks in front of the question.
+    assert 'aria-label="Ask a research question">Compare' in body
+
+
+def test_the_landing_page_takes_a_carried_question_too(anon_client):
+    """
+    Both agent surfaces read `?q=` the same way, because they run the same
+    composer. Two length caps is how one of them ends up not being a cap.
+    """
+    body = anon_client.get("/?q=Compare+two+retrieval+methods").get_data(as_text=True)
+    assert ">Compare two retrieval methods</textarea>" in body
+
+
+def test_a_carried_question_is_capped(anon_client):
+    """A URL is the easiest place for someone to paste something enormous."""
+    from routes.chat import MAX_CARRIED_PROMPT
+
+    body = anon_client.get("/chat?q=" + ("x" * 2000)).get_data(as_text=True)
+    carried = re.search(r'aria-label="Ask a research question">(x*)</textarea>', body)
+    assert carried and len(carried.group(1)) == MAX_CARRIED_PROMPT
+
+
+# ---------------------------------------------------------------------------
+# Which shell a page wears
+# ---------------------------------------------------------------------------
+
+def test_the_agent_keeps_the_workspace_shell_for_a_demo_visitor(anon_client):
+    """
+    Regression guard for a real bug. `chat.` was missing from the workspace
+    endpoints, so an anonymous visitor in the demo who clicked "New research
+    chat" stayed on /chat but watched the sidebar swap to marketing navigation
+    underneath them - the same URL wearing the wrong chrome, which reads as
+    having been thrown back out to the landing page.
+    """
+    body = anon_client.get("/chat").get_data(as_text=True)
+    assert "<span>Collections</span>" in body
+    assert "<span>Dashboard</span>" in body
+    # And not the public navigation it was wrongly getting.
+    assert "<span>Plans &amp; pricing</span>" not in body
+
+
+def test_new_research_chat_leads_to_the_composer_you_are_near(anon_client):
+    """
+    Both shells have a composer, and they are not the same page. On the public
+    pages the button means the landing page; inside the workspace it means
+    /chat. Sending someone reading About over to /chat would push them into the
+    workspace to do what the front page already does.
+    """
+    public = anon_client.get("/about").get_data(as_text=True)
+    workspace = anon_client.get("/dashboard").get_data(as_text=True)
+
+    def cta_target(body):
+        return re.search(r'<a class="sidebar-cta[^"]*" href="([^"]+)"', body).group(1)
+
+    assert cta_target(public) == "/"
+    assert cta_target(workspace) == "/chat"
+
+
+# ---------------------------------------------------------------------------
+# Suggestions under an empty search box
+# ---------------------------------------------------------------------------
+
+def test_an_empty_search_box_offers_somewhere_to_start(anon_client):
+    body = anon_client.get("/search").get_data(as_text=True)
+    assert "suggest-row" in body
+    assert "retrieval-augmented generation" in body
+
+
+def test_search_suggestions_run_semantic_search(anon_client):
+    """
+    Keyword search rewards a phrase you already know; these are for the case
+    where you do not know one yet.
+    """
+    body = anon_client.get("/search").get_data(as_text=True)
+    chips = re.findall(r'class="prompt-chip"\s+href="(/search\?[^"]+)"', body)
+    assert chips
+    assert all("mode=semantic" in c for c in chips)
+
+
+def test_suggestions_disappear_once_something_is_searched(anon_client):
+    """Other things to search are a distraction from what was just searched."""
+    body = anon_client.get("/search?q=transformer&mode=keyword").get_data(as_text=True)
+    assert "suggest-row" not in body
+
+
+def test_suggestions_are_labelled_by_what_they_actually_are(anon_client):
+    """
+    'Your recent searches' over a curated list would be a small lie nobody could
+    act on. History does not exist yet, so the heading must not claim it.
+    """
+    body = anon_client.get("/search").get_data(as_text=True)
+    assert "Your recent searches" not in body
+    assert "Try a search" in body
+
+
+def test_an_empty_agent_page_still_shows_its_own_starters(anon_client):
+    """Suggestions are for an empty input, so a prefilled one hides them."""
+    plain = anon_client.get("/chat").get_data(as_text=True)
+    carried = anon_client.get("/chat?q=something").get_data(as_text=True)
+    assert "chat-starters" in plain
+    assert "chat-starters" not in carried
+
+
+def test_the_login_prompt_uses_one_word_for_the_action(anon_client, client):
+    """
+    'Sign in' and 'Sign up' differ by one letter and get misread. The whole app
+    says Log in / Log out / Sign up, including the prompts inside pages, which
+    is where the inconsistency survived longest.
+    """
+    for path in ("/collections", "/goals"):
+        body = anon_client.get(path).get_data(as_text=True)
+        assert ">Sign in</a>" not in body
 
 
 def test_a_signed_in_user_lands_on_their_workspace(client):
