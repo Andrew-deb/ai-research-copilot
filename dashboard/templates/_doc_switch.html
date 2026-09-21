@@ -1,0 +1,18 @@
+{# Help & support | Documentation, centred in the docs header.
+
+   The same pill as Agent | Search, for the same reason: it switches between two
+   modes of reading and lives in the chrome, so it has to read as a control
+   rather than as part of the page. It carries heavier, larger type than the
+   workspace pill because here it is the only navigation in the header - there is
+   no page title beside it competing for the eye, and it is the thing a visitor
+   is most likely to want.
+
+   Set `active_doc` to 'help' or 'docs' before including. #}
+<div class="mode-switch mode-switch-lg" role="tablist" aria-label="Documentation section">
+  <a class="mode-tab {{ 'is-active' if active_doc == 'help' }}" role="tab"
+     aria-selected="{{ 'true' if active_doc == 'help' else 'false' }}"
+     href="{{ url_for('public.help_page') }}">Help &amp; support</a>
+  <a class="mode-tab {{ 'is-active' if active_doc == 'docs' }}" role="tab"
+     aria-selected="{{ 'true' if active_doc == 'docs' else 'false' }}"
+     href="{{ url_for('public.docs') }}">Documentation</a>
+</div>
