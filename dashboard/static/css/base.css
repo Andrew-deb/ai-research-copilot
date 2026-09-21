@@ -930,7 +930,9 @@ h1, h2, h3,
    Public sidebar — auth actions, and the way back out of the demo
    ========================================================================= */
 
-.nav-auth { gap: 6px; margin-bottom: 4px; }
+/* Lives in the sidebar footer, so it carries its own layout rather than
+   borrowing .nav-section's. */
+.nav-auth { display: flex; flex-direction: column; gap: 6px; }
 
 /* Buttons, not nav items: these do something rather than go somewhere. */
 .sidebar-btn {
