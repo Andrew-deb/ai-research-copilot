@@ -23,11 +23,18 @@ bp = Blueprint("home", __name__)
 # Shown on the landing page under the composer. Deliberately concrete: "ask me
 # anything" tells a visitor nothing about what this corpus can answer, while a
 # real question shows both the subject matter and the depth available.
+#
+# These are agent questions, not search queries, and the difference is the point
+# of the landing page. Every one of them needs several papers read and set
+# against each other - compare, trace, sequence - which is precisely what a
+# single retrieval pass cannot do. Suggesting searches here would advertise the
+# one capability the demo workspace already hands to anonymous visitors, so the
+# page would be selling something nobody needs to be sold.
 SUGGESTED_PROMPTS = [
-    "What are the main approaches to retrieval-augmented generation?",
-    "How do researchers evaluate reinforcement learning from human feedback?",
-    "What limitations do authors report with LLM agents and tool use?",
-    "Compare methods for indexing dense vectors at scale",
+    "Compare the main approaches to retrieval-augmented generation and where they disagree",
+    "What limitations do authors repeatedly report with LLM agents and tool use?",
+    "Trace how the evaluation of human feedback has changed over time",
+    "Build me a reading path into indexing dense vectors at scale",
 ]
 
 
