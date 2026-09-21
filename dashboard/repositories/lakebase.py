@@ -383,6 +383,32 @@ def increment_usage(scope: str, scope_id: str, metric: str) -> int:
     return int(row["count"]) if row else 1
 
 
+def record_ai_operation(**fields) -> None:
+    """
+    Append one row to ai_operations — what a single AI operation cost.
+
+    Distinct from increment_usage, which counts allowance spent. This records
+    what was spent ON, and Phase 3.6 reads it to turn placeholder quota numbers
+    into measured ones.
+
+    Unknown keys are dropped rather than raising: a caller adding a field before
+    the migration is applied should not take down the request it was measuring.
+    """
+    allowed = (
+        "metric", "tier", "user_id", "provider", "model",
+        "input_tokens", "output_tokens", "estimated_cost_usd", "latency_ms",
+        "llm_turns", "tool_calls", "embedding_calls", "ok", "error",
+    )
+    cols = [k for k in allowed if k in fields]
+    if not cols:
+        return
+    run_write(
+        f"INSERT INTO ai_operations ({', '.join(cols)}) "
+        f"VALUES ({', '.join(['%s'] * len(cols))});",
+        tuple(fields[c] for c in cols),
+    )
+
+
 def get_usage_counts(scope: str, scope_id: str) -> dict[str, int]:
     """Today's consumption per metric — read-only, consumes nothing."""
     rows = run_query(
