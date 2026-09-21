@@ -1,46 +1,109 @@
 {% extends "base.html" %}
-{% block title %}Help &amp; docs — Research Copilot{% endblock %}
-{% block topbar_title %}Help &amp; docs{% endblock %}
+{% block title %}Help &amp; support — Research Copilot{% endblock %}
+{% block topbar_title %}Help{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{{ url_for('static', filename='css/public.css') }}">{% endblock %}
 
 {% block content %}
-<article class="prose">
-  <h1 class="page-title">Help &amp; docs</h1>
-  <p class="page-lead">Short answers to the questions that come up first.</p>
+<div class="public-page">
+  <header class="public-head">
+    <h1 class="public-title">Help &amp; support</h1>
+    <p class="public-lead">Plain answers to what comes up first.</p>
+  </header>
 
-  <h2>Do I need an account to try it?</h2>
-  <p>
-    No. You can browse the corpus, open any paper, run semantic search and ask a
-    limited number of questions without signing in. An account is what lets you
-    keep things: collections, notes and reading progress.
-  </p>
+  {% with tabs = [('public.help_page', 'Help & support'), ('public.docs', 'Documentation')],
+          active = 'public.help_page' %}
+    {% include "_tab_switch.html" %}
+  {% endwith %}
 
-  <h2>Keyword search or semantic search?</h2>
-  <p>
-    Keyword search matches the words you typed. Semantic search matches meaning,
-    so <em>"how do models avoid making things up"</em> finds papers about
-    hallucination and grounding without those words appearing in your query. It
-    is the better default for a question; keyword is better for a known title.
-  </p>
+  {# Filters the articles below as you type. A search box that does nothing is
+     the same broken promise as a button that goes nowhere. #}
+  <div class="doc-search">
+    {{ icon('search') }}
+    <input type="text" id="doc-filter" autocomplete="off"
+           placeholder="Search help…" aria-label="Search help">
+  </div>
 
-  <h2>What does the percentage next to a result mean?</h2>
-  <p>
-    Cosine similarity between your question and the best-matching passage in that
-    paper. Higher is closer. A badge reading <em>from the conclusion</em> means
-    the match came from that section rather than the abstract.
-  </p>
+  <div class="doc-body" id="doc-body">
+    <section class="doc-item">
+      <h2>Do I need an account to try it?</h2>
+      <p>
+        No. You can browse the corpus, open any paper, run semantic search and ask
+        a limited number of questions without signing in. An account is what lets
+        you <em>keep</em> things: collections, notes and reading progress.
+      </p>
+    </section>
 
-  <h2>Why do some papers have no sections?</h2>
-  <p>
-    Because no open-access copy could be read — there is no free copy, the
-    publisher declines automated access, or the PDF is a scan with no text layer.
-    Those papers stay searchable by abstract.
-  </p>
+    <section class="doc-item">
+      <h2>Keyword search or semantic search?</h2>
+      <p>
+        Keyword search matches the words you typed. Semantic search matches
+        meaning, so a question about models inventing facts finds papers on
+        hallucination and grounding even when none of those words appear in your
+        query. Semantic is the better default for a question; keyword is better
+        when you already know the title.
+      </p>
+    </section>
 
-  <h2>What are the daily limits for?</h2>
-  <p>
-    Search and answers cost real compute. The limits keep the demo available for
-    everyone rather than letting one visitor exhaust it — see
-    <a href="{{ url_for('public.pricing') }}">plans</a>.
-  </p>
-</article>
+    <section class="doc-item">
+      <h2>What does the percentage next to a result mean?</h2>
+      <p>
+        How closely your question matches the best passage in that paper. Higher
+        is closer. A badge reading <em>from the conclusion</em> means the match
+        came from that section rather than the abstract — usually a sign the paper
+        addresses your question rather than merely mentioning the topic.
+      </p>
+    </section>
+
+    <section class="doc-item">
+      <h2>Why do some papers have no sections?</h2>
+      <p>
+        Because no readable open-access copy exists: there is no free copy, the
+        publisher declines automated access, or the PDF is a scan with no text
+        layer. Those papers stay searchable by abstract — nothing is lost, there
+        is simply less to search.
+      </p>
+    </section>
+
+    <section class="doc-item">
+      <h2>Can I trust the answers?</h2>
+      <p>
+        Every answer cites the papers it drew from, and you can open each one to
+        check. The assistant answers from the indexed corpus only; when the corpus
+        cannot answer a question it says so rather than filling the gap.
+      </p>
+    </section>
+
+    <section class="doc-item">
+      <h2>What happens when I hit a daily limit?</h2>
+      <p>
+        Search and answers pause until the next day; browsing, collections and
+        notes keep working. Logging in raises the allowance — see
+        <a href="{{ url_for('public.pricing') }}">plans</a>.
+      </p>
+    </section>
+
+    <section class="doc-item">
+      <h2>How do I build a reading list?</h2>
+      <p>
+        Add papers to a collection from any paper page, then open the collection
+        and choose <em>Generate reading plan</em>. It sequences them oldest first,
+        weighted by citation impact, so foundations come before the variants that
+        build on them. You can drag to reorder afterwards.
+      </p>
+    </section>
+
+    <section class="doc-item">
+      <h2>Something looks wrong or missing</h2>
+      <p>
+        The corpus is deliberately narrow and still growing, so a missing paper is
+        more likely to be out of scope than a bug. If an answer looks wrong, open
+        its citations — that usually shows what the assistant actually read.
+      </p>
+    </section>
+
+    <p class="doc-empty" id="doc-none" hidden>Nothing here matches that. Try fewer words.</p>
+  </div>
+</div>
 {% endblock %}
+
+{% block extra_js %}<script src="{{ url_for('static', filename='js/docs.js') }}"></script>{% endblock %}

@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}Documentation — Research Copilot{% endblock %}
+{% block topbar_title %}Documentation{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{{ url_for('static', filename='css/public.css') }}">{% endblock %}
+
+{% block content %}
+<div class="public-page">
+  <header class="public-head">
+    <h1 class="public-title">Documentation</h1>
+    <p class="public-lead">How the system is built, and what it does with a paper.</p>
+  </header>
+
+  {% with tabs = [('public.help_page', 'Help & support'), ('public.docs', 'Documentation')],
+          active = 'public.docs' %}
+    {% include "_tab_switch.html" %}
+  {% endwith %}
+
+  <div class="doc-search">
+    {{ icon('search') }}
+    <input type="text" id="doc-filter" autocomplete="off"
+           placeholder="Search the docs…" aria-label="Search the documentation">
+  </div>
+
+  <div class="doc-body" id="doc-body">
+    <section class="doc-item">
+      <h2>Architecture</h2>
+      <pre class="doc-pre">Browser
+  └─ Flask on Render — dashboard, search, RAG, library
+       ├─ Databricks Lakebase (Postgres 17 + pgvector)
+       └─ MCP server on Databricks — research tools for the assistant</pre>
+      <p>
+        The browser talks only to Flask. Databricks credentials stay server-side;
+        no token for it ever reaches a page.
+      </p>
+    </section>
+
+    <section class="doc-item">
+      <h2>Discovery</h2>
+      <p>
+        Papers come from OpenAlex, filtered to the configured research fields.
+        Discovery sits behind a single function so other providers — arXiv,
+        PubMed Central — can be added without changing anything downstream.
+      </p>
+      <p>
+        A topic is seeded by relevance the first time it is seen, then queried by
+        publication date from a per-topic watermark, so a scheduled run returns
+        what is new rather than what is most famous.
+      </p>
+    </section>
+
+    <section class="doc-item">
+      <h2>Relevance filtering</h2>
+      <p>
+        Two filters, because they catch different failures. A field filter removes
+        other disciplines; an embedding gate scores each candidate against the
+        topic and drops weak matches. The field filter alone lets through a
+        chemistry database that happens to be labelled Computer Science; the gate
+        alone lets through a bioinformatics paper that outranks real matches.
+      </p>
+    </section>
+
+    <section class="doc-item">
+      <h2>Full text and sections</h2>
+      <p>
+        Where an open-access copy exists, Conclusion, Discussion and Methods are
+        extracted and indexed alongside the abstract. Repository copies (arXiv,
+        PubMed Central, institutional archives) are tried before publisher copies,
+        because repositories are deposited to be fetched.
+      </p>
+      <p>
+        Every outcome is recorded — <code>ok</code>, <code>no_url</code>,
+        <code>access_denied</code>, <code>not_found</code>, <code>not_pdf</code>,
+        <code>parse_failed</code>, <code>no_sections</code> — split by whether
+        retrying could ever help.
+      </p>
+    </section>
+
+    <section class="doc-item">
+      <h2>Embeddings</h2>
+      <p>
+        <code>nomic-ai/modernbert-embed-base</code>, 768 dimensions, unit
+        normalised, asymmetric: documents are encoded with
+        <code>search_document:</code> and queries with <code>search_query:</code>.
+        A wrong prefix produces a perfectly valid vector in the wrong
+        neighbourhood, so the contract is validated before anything is written.
+      </p>
+    </section>
+
+    <section class="doc-item">
+      <h2>Retrieval</h2>
+      <p>
+        Cosine distance over pgvector with an HNSW index. Results arrive per chunk
+        and are folded to one row per paper, keeping the best-matching passage as
+        the displayed snippet — which is why a result can be labelled with the
+        section it came from.
+      </p>
+    </section>
+
+    <section class="doc-item">
+      <h2>Quotas</h2>
+      <p>
+        Per-visitor limits shape usage; a global daily ceiling protects capacity.
+        They are separate on purpose: clearing cookies resets the first and cannot
+        touch the second. Each capability is metered independently, because a
+        semantic search and an agent run differ by more than an order of magnitude
+        in cost.
+      </p>
+    </section>
+
+    <section class="doc-item">
+      <h2>Privacy</h2>
+      <p>
+        Google sign-in provides name, email and profile picture. No Google token
+        is kept after login. Collections, notes and reading progress are private
+        to the account; the paper corpus is shared. Anonymous sessions persist
+        nothing.
+      </p>
+    </section>
+
+    <p class="doc-empty" id="doc-none" hidden>Nothing here matches that. Try fewer words.</p>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}<script src="{{ url_for('static', filename='js/docs.js') }}"></script>{% endblock %}

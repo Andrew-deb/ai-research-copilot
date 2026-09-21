@@ -1,50 +1,81 @@
 {% extends "base.html" %}
 {% block title %}Plans &amp; pricing — Research Copilot{% endblock %}
 {% block topbar_title %}Plans &amp; pricing{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{{ url_for('static', filename='css/public.css') }}">{% endblock %}
 
 {% block content %}
-<article class="prose">
-  <h1 class="page-title">Plans &amp; pricing</h1>
-  <p class="page-lead">
-    One plan, free. Signing in raises the daily allowance and lets your work persist.
-  </p>
+<div class="public-page">
+  <header class="public-head">
+    <h1 class="public-title">Pricing</h1>
+    <p class="public-lead">
+      Research Copilot is free. An account raises the daily allowance and lets
+      your work persist between visits.
+    </p>
+  </header>
 
-  {# Numbers come from the running configuration, not from this template. A
-     pricing page that disagrees with what the server enforces is worse than none. #}
+  {# Every number below is read from the running configuration. A pricing page
+     that disagrees with what the server enforces is worse than none, and these
+     values change when quotas are calibrated. #}
   <div class="plan-grid">
-    <section class="plan-card">
-      <h2>Browsing</h2>
-      <p class="plan-price">No account</p>
+    <section class="plan">
+      <h2 class="plan-name">Browsing</h2>
+      <p class="plan-for">Best for looking around first</p>
+      <p class="plan-price">Free<span class="plan-unit">no account</span></p>
+      <a class="btn btn-ghost plan-cta" href="{{ url_for('home.dashboard') }}">Try the demo</a>
       <ul class="plan-list">
         <li>Browse the full corpus</li>
-        <li>Open any paper and its sections</li>
+        <li>Open any paper and its extracted sections</li>
         <li>{{ anonymous.search }} semantic searches a day</li>
         <li>{{ anonymous.rag }} cited answers a day</li>
         <li>{{ anonymous.agent }} research question{{ '' if anonymous.agent == 1 else 's' }} a day</li>
         <li class="plan-no">Nothing is saved between visits</li>
       </ul>
-      <a class="btn btn-ghost" href="{{ url_for('home.dashboard') }}">Try the demo</a>
     </section>
 
-    <section class="plan-card plan-card-primary">
-      <h2>Free account</h2>
-      <p class="plan-price">Also free</p>
+    <section class="plan plan-featured">
+      <h2 class="plan-name">Free account</h2>
+      <p class="plan-for">Best for actual research</p>
+      <p class="plan-price">Free<span class="plan-unit">forever</span></p>
+      <a class="btn btn-primary plan-cta" href="{{ url_for('auth.signup') }}">Create an account</a>
+      <p class="plan-inherits">Everything in Browsing, and:</p>
       <ul class="plan-list">
-        <li>Everything in browsing</li>
         <li>{{ member.search }} semantic searches a day</li>
         <li>{{ member.rag }} cited answers a day</li>
         <li>{{ member.agent }} research questions a day</li>
         <li>Collections, notes and reading progress</li>
         <li>Discoveries picked for your research fields</li>
+        <li>Your library follows you between devices</li>
       </ul>
-      <a class="btn btn-primary" href="{{ url_for('auth.signup') }}">Create an account</a>
     </section>
+
+    {# Hidden entirely when DONATE_URL is unset: a support button that leads
+       nowhere is worse than no button at all. #}
+    {% if donate_url %}
+      <section class="plan plan-support">
+        <h2 class="plan-name">Support</h2>
+        <p class="plan-for">Best for keeping it free for everyone</p>
+        <p class="plan-price">Any amount<span class="plan-unit">one-off or monthly</span></p>
+        <a class="btn btn-ghost plan-cta" href="{{ donate_url }}" rel="noopener noreferrer" target="_blank">
+          {{ donate_label }}
+        </a>
+        <ul class="plan-list">
+          <li>Keeps the corpus ingesting and indexing</li>
+          <li>Raises the daily ceiling for everyone</li>
+          <li>Funds more open-access full-text coverage</li>
+          <li class="plan-no">Buys no extra features — the product stays the same for all</li>
+        </ul>
+      </section>
+    {% endif %}
   </div>
 
-  <p class="plan-note">
-    Daily allowances exist because search and answers cost real compute. They
-    keep the service available for everyone rather than letting one visitor
-    exhaust it, and they are reviewed as capacity changes.
-  </p>
-</article>
+  <section class="public-note">
+    <h2>Why there are daily limits at all</h2>
+    <p>
+      Search and answers cost real compute: every question embeds your query,
+      searches a vector index and calls a language model. The limits exist so one
+      visitor cannot exhaust the day's capacity for everyone else, and they are
+      reviewed as capacity changes rather than set to sell an upgrade.
+    </p>
+  </section>
+</div>
 {% endblock %}
