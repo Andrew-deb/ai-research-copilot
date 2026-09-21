@@ -925,3 +925,52 @@ h1, h2, h3,
 @media (max-width: 420px) {
   .topbar-center { display: none; }
 }
+
+/* =========================================================================
+   Public sidebar — auth actions, and the way back out of the demo
+   ========================================================================= */
+
+.nav-auth { gap: 6px; margin-bottom: 4px; }
+
+/* Buttons, not nav items: these do something rather than go somewhere. */
+.sidebar-btn {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13.5px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: background .15s ease, border-color .15s ease, color .15s ease;
+}
+.sidebar-btn:hover {
+  background: var(--surface-2);
+  border-color: var(--border-strong);
+  text-decoration: none;
+}
+.sidebar-btn svg { width: 16px; height: 16px; flex: none; color: var(--text-muted); }
+.sidebar-btn:hover svg { color: var(--text); }
+.sidebar-btn.active { border-color: var(--brand); }
+
+/* Log in carries the tint because returning visitors are the common case; sign
+   up stays outlined, so the two read as primary and secondary rather than a pair
+   of equally weighted demands. */
+.sidebar-btn-primary {
+  background: var(--brand-tint);
+  border-color: transparent;
+  color: var(--brand-tint-fg);
+}
+.sidebar-btn-primary svg { color: var(--brand); }
+.sidebar-btn-primary:hover {
+  background: var(--brand-tint);
+  border-color: var(--brand);
+  color: var(--brand-tint-fg);
+}
+.sidebar-btn-primary:hover svg { color: var(--brand); }
+
+.nav-item-back { color: var(--text-muted); }
+.nav-item-back:hover { color: var(--text); }
