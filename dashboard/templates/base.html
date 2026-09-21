@@ -51,7 +51,9 @@
     'user-plus': '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/>',
     'info': '<circle cx="12" cy="12" r="9"/><path d="M12 16v-4M12 8h.01"/>',
     'book': '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"/>',
-    'spark': '<path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/><circle cx="12" cy="12" r="3"/>'
+    'spark': '<path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/><circle cx="12" cy="12" r="3"/>',
+    'arrow-left': '<path d="M19 12H5M12 19l-7-7 7-7"/>',
+    'heart': '<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>'
   } -%}
   <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"
        stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{ paths[name] | safe }}</svg>
@@ -67,10 +69,10 @@
         <span class="brand-name">Research Copilot</span>
       </a>
       <div class="sidebar-head-actions">
-        {# Chat-history search is a workspace tool. A visitor with no history has
-           nothing to search, so offering it would be a control that can only
-           disappoint. #}
-        {% if is_workspace_shell %}
+        {# Gated on the account, not the shell: anonymous conversations are never
+           persisted, so a demo visitor has no history to search and never will.
+           Showing the control would promise a feature that cannot exist for them. #}
+        {% if is_authenticated %}
           <button type="button" class="icon-btn" id="chat-search-open"
                   aria-label="Search chats" title="Search chats">
             {{ icon('search') }}
@@ -95,11 +97,16 @@
          my research do I want to go". The workspace is one click away behind
          Try demo rather than spread across a sidebar they have no stake in. #}
       <nav class="sidebar-nav">
-        <div class="nav-section">
-          <a href="{{ url_for('auth.login') }}" class="nav-item {{ 'active' if ep == 'auth.login' }}">
+        {# Two weights, because they are not equal choices: returning visitors are
+           the common case and get the tinted button, new ones the outlined one.
+           Both are buttons rather than nav items - they are actions, not places. #}
+        <div class="nav-section nav-auth">
+          <a href="{{ url_for('auth.login') }}"
+             class="sidebar-btn sidebar-btn-primary {{ 'active' if ep == 'auth.login' }}">
             {{ icon('login') }}<span>Log in</span>
           </a>
-          <a href="{{ url_for('auth.signup') }}" class="nav-item {{ 'active' if ep == 'auth.signup' }}">
+          <a href="{{ url_for('auth.signup') }}"
+             class="sidebar-btn {{ 'active' if ep == 'auth.signup' }}">
             {{ icon('user-plus') }}<span>Sign up</span>
           </a>
         </div>
@@ -119,7 +126,7 @@
           <a href="{{ url_for('public.about') }}" class="nav-item {{ 'active' if ep == 'public.about' }}">
             {{ icon('info') }}<span>About</span>
           </a>
-          <a href="{{ url_for('public.help_page') }}" class="nav-item {{ 'active' if ep == 'public.help_page' }}">
+          <a href="{{ url_for('public.help_page') }}" class="nav-item {{ 'active' if ep in ('public.help_page', 'public.docs') }}">
             {{ icon('book') }}<span>Help &amp; docs</span>
           </a>
         </div>
@@ -129,6 +136,17 @@
        chat history grows without limit. Putting the growing list first would push
        the stable navigation off-screen as soon as it filled up. #}
     <nav class="sidebar-nav">
+      {% if not is_authenticated %}
+        {# Without this the demo is a one-way door: the brand mark links home, but
+           nothing says so, and a visitor exploring the workspace has no obvious
+           route back to the page that explains what they are looking at. #}
+        <div class="nav-section">
+          <a href="{{ url_for('home.index') }}" class="nav-item nav-item-back">
+            {{ icon('arrow-left') }}<span>Back to home</span>
+          </a>
+        </div>
+      {% endif %}
+
       <div class="nav-section">
         <h2 class="nav-label">Workspace</h2>
         <a href="{{ url_for('home.dashboard') }}" class="nav-item {{ 'active' if ep in ('home.index', 'home.dashboard') }}">
@@ -148,7 +166,10 @@
         </a>
       </div>
 
-      {# Scrolls on its own so a long history never pushes the workspace away. #}
+      {# Same reason as the search control above: nothing is stored for an
+         anonymous visitor, so "Recent chats" would be a heading over a permanent
+         emptiness. #}
+      {% if is_authenticated %}
       <div class="nav-section nav-section-scroll">
         <h2 class="nav-label">Recent chats</h2>
         {% if recent_chats %}
@@ -164,6 +185,7 @@
           <p class="nav-empty">No recent chats yet</p>
         {% endif %}
       </div>
+      {% endif %}
     </nav>
     {% endif %}
 
@@ -175,7 +197,7 @@
         </div>
         <form method="post" action="{{ url_for('auth.logout') }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button type="submit" class="btn btn-ghost btn-sm sidebar-signout">Sign out</button>
+          <button type="submit" class="btn btn-ghost btn-sm sidebar-signout">Log out</button>
         </form>
       {% else %}
         {# Only shown inside the demo workspace: on the public pages the sidebar
@@ -243,7 +265,7 @@
           {% if not is_workspace_shell %}
             <a class="btn btn-ghost btn-sm" href="{{ url_for('home.dashboard') }}">Try demo</a>
           {% endif %}
-          <a class="btn btn-sm" href="{{ url_for('auth.login') }}">Sign in</a>
+          <a class="btn btn-sm" href="{{ url_for('auth.login') }}">Log in</a>
         {% endif %}
         <button type="button" class="icon-btn theme-toggle" id="theme-toggle"
                 aria-label="Toggle colour theme" title="Toggle theme">
