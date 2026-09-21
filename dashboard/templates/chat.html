@@ -42,83 +42,11 @@
       </p>
     {% endif %}
 
-    {% if can_ask %}
-      <form class="composer" id="chat-composer" autocomplete="off">
-        <textarea class="composer-input" id="chat-input" rows="1"
-                  placeholder="Ask a research question…"
-                  aria-label="Ask a research question"></textarea>
-        <button class="composer-send" type="submit" aria-label="Ask">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-               stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M12 19V5M5 12l7-7 7 7"/>
-          </svg>
-        </button>
-      </form>
-
-      {% if not messages %}
-        {# Below the composer, not above it: these are suggestions for an empty
-           input, and putting them first made them read as the primary control. #}
-        <ul class="chip-row chat-starters">
-          <li><button type="button" class="prompt-chip" data-prompt="What are the main approaches to retrieval-augmented generation?">Main approaches to RAG</button></li>
-          <li><button type="button" class="prompt-chip" data-prompt="What limitations do authors report with LLM agents?">Limitations of LLM agents</button></li>
-          <li><button type="button" class="prompt-chip" data-prompt="Compare how these papers evaluate human feedback">Comparing RLHF evaluations</button></li>
-        </ul>
-      {% endif %}
-
-      {# Stated up front rather than on refusal. Discovering a limit by hitting it
-         reads as the product breaking; knowing it in advance reads as a free tier. #}
-      {% if agent_daily_limit %}
-        <p class="chat-note">
-          {{ agent_daily_limit }} question{{ '' if agent_daily_limit == 1 else 's' }} a day
-          {%- if not is_authenticated %} — <a href="{{ url_for('auth.signup') }}">sign up</a> for more{% endif %}.
-        </p>
-      {% endif %}
-    {% else %}
-      <p class="chat-note">
-        <a href="{{ url_for('auth.login') }}">Sign in</a> to ask research questions.
-      </p>
-    {% endif %}
+    {# The same partial the landing page uses. Once the agent is wired, both
+       surfaces gain it together. #}
+    {% include "_chat_composer.html" %}
   </div>
 </div>
 {% endblock %}
 
-{% block extra_js %}
-<script>
-  // Placeholder behaviour only: there is no agent behind this yet, so it says so
-  // rather than pretending to think. Phase 3.3 replaces this wholesale.
-  (function () {
-    var form = document.getElementById("chat-composer");
-    var input = document.getElementById("chat-input");
-    if (!form || !input) { return; }
-
-    document.querySelectorAll(".prompt-chip[data-prompt]").forEach(function (chip) {
-      chip.addEventListener("click", function () {
-        input.value = chip.dataset.prompt;
-        input.focus();
-        input.dispatchEvent(new Event("input"));
-      });
-    });
-
-    input.addEventListener("input", function () {
-      input.style.height = "auto";
-      input.style.height = Math.min(input.scrollHeight, 200) + "px";
-    });
-
-    // Enter sends, Shift+Enter breaks the line — the convention everywhere else,
-    // and getting it backwards is the fastest way to lose a half-typed question.
-    input.addEventListener("keydown", function (e) {
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        form.requestSubmit();
-      }
-    });
-
-    form.addEventListener("submit", function (e) {
-      e.preventDefault();
-      if (!input.value.trim()) { return; }
-      window.RC.toast("The research assistant is not connected yet — " +
-                      "try semantic search or the answer box on /search.", "info");
-    });
-  })();
-</script>
-{% endblock %}
+{% block extra_js %}<script src="{{ url_for('static', filename='js/chat.js') }}"></script>{% endblock %}
