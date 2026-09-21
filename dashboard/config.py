@@ -58,6 +58,13 @@ EMBEDDING_PRELOAD: bool = os.getenv(
     "EMBEDDING_PRELOAD", "false" if os.getenv("FLASK_DEBUG", "false").lower() == "true" else "true"
 ).lower() == "true"
 
+# --- Support / donations ---
+# Where "Support the project" points: GitHub Sponsors, Ko-fi, Buy Me a Coffee.
+# Left blank the donate card is hidden entirely, because a button that leads
+# nowhere is worse than no button.
+DONATE_URL: str | None = os.getenv("DONATE_URL") or None
+DONATE_LABEL: str = os.getenv("DONATE_LABEL", "Support the project")
+
 # --- OpenRouter ---
 OPENROUTER_API_KEY: str | None = _get_secret("openrouter", "api-key", "OPENROUTER_API_KEY")
 OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
