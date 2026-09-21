@@ -15,12 +15,13 @@ calls and citations an agent actually produces, and none exist yet. The empty
 state is honest and costs nothing to replace.
 """
 
-from flask import Blueprint, render_template, request
+from flask import Blueprint, jsonify, render_template, request
 
 import suggestions
-from middleware.auth import current_tier
-from middleware.capabilities import AGENT_QUERY, tier_can
-from services import quota_service
+from middleware.auth import current_tier, current_user_id
+from middleware.capabilities import AGENT_QUERY, consume_quota, require_capability, tier_can
+from routes.helpers import form_or_json
+from services import agent_service, quota_service, telemetry_service
 
 bp = Blueprint("chat", __name__)
 
@@ -76,6 +77,54 @@ def conversation(conversation_id: str):
         starters=suggestions.AGENT_STARTERS,
         initial_prompt="",
     )
+
+
+@bp.post("/chat/ask")
+@require_capability(AGENT_QUERY)
+def ask():
+    """
+    One agent turn.
+
+    A real endpoint with real enforcement and no agent behind it yet. The order
+    of the three gates is the whole design:
+
+      1. capability   may this tier use the agent at all? 403, answered by
+                      logging in. Always checked, connected or not.
+      2. connected    is there anything to run? While there is not, the turn is
+                      refused with 503 and **no allowance is spent** - charging
+                      a daily question for "not connected" takes payment for
+                      work that did not happen, and on a free tier this small
+                      the next attempt would be refused until tomorrow.
+      3. quota        only once there is work. Consumed BEFORE it runs, so a
+                      visitor with nothing left never reaches an LLM call.
+
+    Phase 3.4 deletes branch 2, and 3 becomes unconditional - which is the
+    ordering `@require_quota` would have given it all along.
+    """
+    question = (form_or_json("question").get("question") or "")
+    tier = current_tier()
+    user_id = current_user_id()
+
+    if not agent_service.is_connected():
+        # Validates first, so a malformed question is still a 400 rather than
+        # being masked by the unavailability behind it.
+        agent_service.ask(question, tier=tier, user_id=user_id)
+        return jsonify(agent_service.envelope(
+            question.strip(),
+            status=agent_service.STATUS_NOT_CONNECTED,
+            message=("The research assistant connects in the next release. "
+                     "Semantic search answers with citations today."),
+        )), 503
+
+    consume_quota(quota_service.AGENT_QUERY)
+
+    with telemetry_service.measure(quota_service.AGENT_QUERY, tier, user_id) as op:
+        result = agent_service.ask(question, tier=tier, user_id=user_id)
+        op.llm_turns = result["usage"]["llm_turns"]
+        op.tool_calls = result["usage"]["tool_calls"]
+        op.embedding_calls = result["usage"]["embedding_calls"]
+
+    return jsonify(result)
 
 
 def recent_conversations(limit: int = 8) -> list[dict]:
