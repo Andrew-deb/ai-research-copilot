@@ -9,10 +9,11 @@ helpers live in `dashboard/routes/helpers.py`.
 
 from flask import Flask
 
-from routes import auth, chat, collections, goals, home, progress, search
+from routes import auth, chat, collections, goals, home, progress, public, search
 
 _BLUEPRINTS = (
     auth.bp,
+    public.bp,
     home.bp,
     chat.bp,
     goals.bp,
