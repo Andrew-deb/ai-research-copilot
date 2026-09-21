@@ -36,7 +36,14 @@ bp = Blueprint("public", __name__)
 
 # Endpoints that render the workspace shell even for an anonymous visitor —
 # these are what "Try demo" leads into.
-_WORKSPACE_ENDPOINTS = ("home.dashboard", "search.", "collections.", "progress.", "goals.")
+#
+# `chat.` belongs here and was missing. Without it, an anonymous visitor inside
+# the demo who clicked "New research chat" stayed on /chat but watched the
+# sidebar swap to the marketing navigation underneath them — the same URL
+# wearing the wrong chrome, which reads as having been thrown back out to the
+# landing page.
+_WORKSPACE_ENDPOINTS = ("home.dashboard", "search.", "collections.", "progress.",
+                        "goals.", "chat.")
 
 
 def shell_mode(endpoint: str | None, authenticated: bool) -> str:
