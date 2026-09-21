@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}About — Research Copilot{% endblock %}
+{% block topbar_title %}About{% endblock %}
+
+{% block content %}
+<article class="prose">
+  <h1 class="page-title">About Research Copilot</h1>
+  <p class="page-lead">
+    A research workspace with an assistant at the centre, rather than a search
+    engine with a chatbot attached.
+  </p>
+
+  <h2>What it does</h2>
+  <p>
+    It builds a focused corpus around the topics you care about, reads the papers
+    it can reach, and answers questions with citations back to the section the
+    claim came from — not just the title.
+  </p>
+
+  <h2>How papers get here</h2>
+  <p>
+    Papers are discovered through OpenAlex, filtered to the research fields you
+    choose, then scored for relevance against your topics before anything is
+    indexed. Where an open-access copy exists, the Conclusion, Discussion and
+    Methods sections are extracted and indexed alongside the abstract, so a
+    question about findings can be answered from findings.
+  </p>
+
+  <h2>What it will not do</h2>
+  <p>
+    It does not paywall-bypass. Where only a publisher copy exists and that
+    publisher declines automated access, the paper stays in the index with its
+    abstract and is honest about the rest.
+  </p>
+  <p>
+    It does not invent citations. Answers are drawn from the indexed corpus, and
+    when the corpus cannot answer a question the assistant says so.
+  </p>
+
+  <h2>Built on</h2>
+  <p>
+    Databricks Lakebase with pgvector for retrieval, a Spark pipeline for
+    ingestion, and an MCP server exposing the research tools to the assistant.
+  </p>
+
+  <p class="prose-cta">
+    <a class="btn btn-primary" href="{{ url_for('home.dashboard') }}">Try the demo</a>
+    <a class="btn btn-ghost" href="{{ url_for('public.pricing') }}">See plans</a>
+  </p>
+</article>
+{% endblock %}
