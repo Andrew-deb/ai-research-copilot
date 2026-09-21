@@ -17,6 +17,7 @@ state is honest and costs nothing to replace.
 
 from flask import Blueprint, render_template, request
 
+import suggestions
 from middleware.auth import current_tier
 from middleware.capabilities import AGENT_QUERY, tier_can
 from services import quota_service
@@ -27,6 +28,17 @@ bp = Blueprint("chat", __name__)
 # composer would accept, and a URL is the easiest place for someone to paste
 # something enormous.
 MAX_CARRIED_PROMPT = 500
+
+
+def carried_prompt() -> str:
+    """
+    A question handed over in `?q=`, trimmed and capped.
+
+    Shared with the landing page, which runs the same composer and so has to
+    treat the same parameter the same way. Two copies of a length cap is how one
+    of them ends up not being a cap at all.
+    """
+    return (request.args.get("q") or "").strip()[:MAX_CARRIED_PROMPT]
 
 
 @bp.get("/chat")
@@ -43,8 +55,8 @@ def new_chat():
         "chat.html",
         conversation=None,
         messages=[],
-        initial_prompt=(request.args.get("q") or "").strip()[:MAX_CARRIED_PROMPT],
-        can_ask=tier_can(current_tier(), AGENT_QUERY),
+        starters=suggestions.AGENT_STARTERS,
+        initial_prompt=carried_prompt(),
     )
 
 
@@ -61,8 +73,8 @@ def conversation(conversation_id: str):
         "chat.html",
         conversation={"conversation_id": conversation_id},
         messages=[],
+        starters=suggestions.AGENT_STARTERS,
         initial_prompt="",
-        can_ask=tier_can(current_tier(), AGENT_QUERY),
     )
 
 
@@ -82,10 +94,15 @@ def register_chat_context(app) -> None:
     @app.context_processor
     def inject_chat() -> dict:
         tier = current_tier()
+        can_ask = tier_can(tier, AGENT_QUERY)
         agent_quota = None
-        if tier_can(tier, AGENT_QUERY):
+        if can_ask:
             agent_quota = quota_service.limit_for(tier, quota_service.AGENT_QUERY)
         return {
             "recent_chats": recent_conversations(),
+            # Here rather than passed by each route: the composer is included by
+            # the landing page as well now, and a route that forgot to pass this
+            # would silently render a composer nobody is allowed to use.
+            "can_ask": can_ask,
             "agent_daily_limit": agent_quota,
         }
