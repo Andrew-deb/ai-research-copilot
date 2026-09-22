@@ -324,3 +324,132 @@ def test_a_real_transport_failure_still_reads_as_one():
         [FakeHTTP("Server error '503 Service Unavailable' for url ...")])
 
     assert "not running" in str(mcp_client._as_external(wrapped))
+
+
+# ---------------------------------------------------------------------------
+# A heading with nothing under it
+# ---------------------------------------------------------------------------
+
+def test_a_citations_heading_is_removed_with_its_block():
+    """
+    The model writes a heading above its mapping block. Stripping the block left
+    the heading behind, so answers ended with the word "Citations" and nothing
+    under it — which reads as a section that failed to load.
+    """
+    answer = ("Findings here [1].\n\n## Citations\n\n"
+              "```citations\n1 = aaa\n```")
+    prose, citations = agent_service.resolve_citations(answer, FOUND_FOR_HEADINGS)
+
+    assert "Citations" not in prose
+    assert prose.endswith("[1].")
+    assert len(citations) == 1
+
+
+def test_a_dangling_heading_goes_even_with_no_block():
+    """The worse case: a heading, no block, and so no citations either."""
+    answer = "A comparison table.\n\n### References"
+    prose, citations = agent_service.resolve_citations(answer, FOUND_FOR_HEADINGS)
+    assert prose == "A comparison table."
+    assert citations == []
+
+
+def test_a_heading_in_the_middle_is_left_alone():
+    """Only a TRAILING one is orphaned; a section with content under it is
+    part of the answer."""
+    answer = "## Sources\n\nWe used several.\n\nAnd then some more."
+    prose, _ = agent_service.resolve_citations(answer, FOUND_FOR_HEADINGS)
+    assert prose.startswith("## Sources")
+
+
+def test_the_prompt_forbids_writing_that_heading():
+    prompt = agent_service.build_system_prompt("anonymous")
+    assert "Do not write a heading called Citations" in prompt
+    # And says the requirement covers tables, which is where it was ignored.
+    assert "tables too" in prompt
+
+
+FOUND_FOR_HEADINGS = [
+    {"number": 0, "paper_id": "aaa", "title": "A Survey",
+     "publication_year": 2023, "venue": "arXiv", "citation_count": 1},
+]
+
+
+# ---------------------------------------------------------------------------
+# Steps that can be told apart
+# ---------------------------------------------------------------------------
+
+def test_a_step_label_names_what_was_read():
+    """
+    Four consecutive get_paper_details calls all read "Reading a paper", which
+    says the agent did something four times and nothing about what.
+    """
+    assert agent_service._result_label(
+        {"paper_id": "p1", "title": "A Survey of RAG"}) == "A Survey of RAG"
+    assert agent_service._result_label([{"title": "One Paper"}]) == "One Paper"
+
+
+def test_a_many_row_result_gets_no_label():
+    """A search returns ten papers; naming one of them would misrepresent it.
+    The count already says what happened."""
+    assert agent_service._result_label([{"title": "A"}, {"title": "B"}]) is None
+    assert agent_service._result_label("some text") is None
+
+
+def test_the_label_travels_on_the_tool_end_event(wired):
+    events = []
+    wired["tool_result"] = [dict(PAPER, title="Only One Paper")]
+    wired["turns"] = [
+        {"content": "", "tool_calls": [_tool_call("get_paper_details")]},
+        {"content": "Answer."},
+    ]
+    agent_service.ask("q", tier="anonymous", on_event=events.append)
+
+    ends = [e for e in events if e["type"] == "tool_end"]
+    assert ends and ends[0]["label"] == "Only One Paper"
+
+
+# ---------------------------------------------------------------------------
+# The rail opens and closes
+# ---------------------------------------------------------------------------
+
+def test_the_rail_can_be_collapsed_on_any_screen():
+    js = _chat_js()
+    css = (pathlib.Path(__file__).resolve().parents[1] / "dashboard" / "static"
+           / "css" / "chat.css").read_text(encoding="utf-8")
+
+    assert "setCollapsed" in js
+    assert "rc-rail-collapsed" in js            # remembered per viewer
+    assert ".chat-rail.is-collapsed" in css
+    # Not hidden behind a breakpoint any more.
+    desktop = css.split("@media (max-width: 1100px)")[0]
+    assert ".chat-rail.is-collapsed { flex-basis: 44px; }" in desktop
+
+
+def test_storage_failure_cannot_break_the_panel():
+    """localStorage throws in a private window and returns nothing after a
+    clear; a remembered preference is never worth a broken page."""
+    js = _chat_js()
+    collapse = js.split("function setCollapsed")[1][:800]
+    assert "try {" in collapse and "catch" in collapse
+
+
+def test_the_scrollbars_are_styled_down():
+    css = (pathlib.Path(__file__).resolve().parents[1] / "dashboard" / "static"
+           / "css" / "chat.css").read_text(encoding="utf-8")
+    assert "scrollbar-width: thin" in css
+    assert "::-webkit-scrollbar" in css
+
+
+def test_the_thread_scrolls_rather_than_the_document():
+    """
+    A long answer used to grow the page and push the composer below the fold,
+    so you had to scroll back down to ask the next question.
+    """
+    css = (pathlib.Path(__file__).resolve().parents[1] / "dashboard" / "static"
+           / "css" / "chat.css").read_text(encoding="utf-8")
+    wrapper = css.split(".chat-with-rail {")[1].split("}")[0]
+    assert "height: calc(100vh - 190px)" in wrapper
+
+    # min-height: 0 is what lets the flex child shrink so the thread can scroll.
+    column = css.split(".chat-with-rail > .chat-page,")[1].split("}")[0]
+    assert "min-height: 0" in column
