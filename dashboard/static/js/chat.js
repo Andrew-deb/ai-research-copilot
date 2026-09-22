@@ -38,11 +38,19 @@
       page.classList.remove("is-empty");
       page.classList.add("has-conversation");
     }
+    // Built now rather than when the first source arrives: the wrapper is what
+    // gives the column its fixed height, and without it an answer that used no
+    // tools would still grow the page and push the composer out of sight.
+    ensureRail();
     return thread;
   }
 
   function scrollToLatest() {
-    if (thread) { thread.scrollTop = thread.scrollHeight; }
+    if (!thread) { return; }
+    // The thread scrolls, not the document. When the page scrolled instead,
+    // a long answer pushed the composer below the fold and you had to scroll
+    // back down to type the next question.
+    thread.scrollTop = thread.scrollHeight;
   }
 
   // Markdown, sanitised. The answer is model-generated, so it is untrusted
@@ -127,16 +135,29 @@
         counts.tools += 1;
         current = document.createElement("li");
         current.className = "chat-step is-running";
-        var what = (args && (args.query || args.topic || args.paper_id)) || "";
+        current.dataset.tool = name;
+        // paper_id_or_doi included: without it, four consecutive
+        // get_paper_details calls all read "Reading a paper" and tell the
+        // reader nothing about which papers were read.
+        var what = (args && (args.query || args.topic || args.paper_id ||
+                             args.paper_id_or_doi)) || "";
         current.textContent = prettyTool(name) + (what ? " · " + what : "");
         steps.appendChild(current);
         setSummary(prettyTool(name) + "…");
         scrollToLatest();
       },
-      toolEnd: function (ok, found, error) {
+      toolEnd: function (ok, found, error, label) {
         if (!current) { return; }
         current.classList.remove("is-running");
         current.classList.add(ok ? "is-done" : "is-failed");
+        // The title, once the call has returned — better than an opaque id,
+        // and only knowable after the fact. The tool name stays as the prefix
+        // so the step still says what kind of work it was.
+        if (ok && label) {
+          current.textContent = current.dataset.tool
+            ? prettyTool(current.dataset.tool) + " · " + label
+            : label;
+        }
         if (ok && found) {
           counts.papers += found;
           var n = document.createElement("span");
@@ -200,24 +221,50 @@
     rail.className = "chat-rail";
     rail.setAttribute("aria-label", "Sources");
 
-    // Only ever shown on narrow screens, where the panel sits below the answer
-    // and a long list would otherwise push the composer off the screen.
+    // Opens and closes on every screen, not just narrow ones. Sources are
+    // worth having beside the answer and not worth a third of the width when
+    // you are reading rather than checking.
     var toggle = document.createElement("button");
     toggle.type = "button";
     toggle.className = "chat-rail-toggle";
-    toggle.textContent = "Sources";
     toggle.setAttribute("aria-expanded", "true");
-    toggle.addEventListener("click", function () {
-      var collapsed = rail.classList.toggle("is-collapsed");
+    toggle.setAttribute("aria-controls", "chat-rail-body");
+
+    var label = document.createElement("span");
+    label.className = "chat-rail-label";
+    label.textContent = "Sources";
+    toggle.appendChild(label);
+
+    function setCollapsed(collapsed) {
+      rail.classList.toggle("is-collapsed", collapsed);
+      wrapper.classList.toggle("rail-collapsed", collapsed);
       toggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+      toggle.title = collapsed ? "Show sources" : "Hide sources";
+      // Per-viewer convenience only, and never allowed to break the page:
+      // storage throws in a private window and returns nothing after a clear.
+      try { localStorage.setItem("rc-rail-collapsed", collapsed ? "1" : "0"); }
+      catch (e) { /* ignore */ }
+    }
+
+    toggle.addEventListener("click", function () {
+      setCollapsed(!rail.classList.contains("is-collapsed"));
     });
     rail.appendChild(toggle);
 
     var body = document.createElement("div");
     body.className = "chat-rail-body";
+    body.id = "chat-rail-body";
     rail.appendChild(body);
 
+    // Hidden until it has something to show. A "Sources" heading over an empty
+    // column is a promise the turn has not kept yet.
+    rail.classList.add("is-empty");
+
     wrapper.appendChild(rail);
+
+    var remembered = null;
+    try { remembered = localStorage.getItem("rc-rail-collapsed"); } catch (e) { /* ignore */ }
+    setCollapsed(remembered === "1");
     return rail;
   }
 
@@ -300,7 +347,9 @@
         "Read during the search, not cited.", consulted, false));
     }
 
-    railBody().appendChild(group);
+    var body = railBody();
+    body.appendChild(group);
+    rail.classList.remove("is-empty");
   }
 
   // Enough to judge a source without opening it: what it is, when, where, and
@@ -331,7 +380,7 @@
     } else if (event.type === "tool_start") {
       trace.toolStart(event.name, event.arguments);
     } else if (event.type === "tool_end") {
-      trace.toolEnd(event.ok, event.found, event.error);
+      trace.toolEnd(event.ok, event.found, event.error, event.label);
     } else if (event.type === "done") {
       done(event.result);
     } else if (event.type === "error") {
