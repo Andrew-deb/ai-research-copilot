@@ -136,11 +136,16 @@
         current = document.createElement("li");
         current.className = "chat-step is-running";
         current.dataset.tool = name;
-        // paper_id_or_doi included: without it, four consecutive
-        // get_paper_details calls all read "Reading a paper" and tell the
-        // reader nothing about which papers were read.
-        var what = (args && (args.query || args.topic || args.paper_id ||
-                             args.paper_id_or_doi)) || "";
+        // A query or a topic is worth showing. A raw identifier is not: a
+        // 36-character UUID told the reader nothing, wrapped onto four lines
+        // and dragged a horizontal scrollbar across the conversation. The
+        // title arrives on tool_end anyway, which is the part worth waiting
+        // for.
+        var what = (args && (args.query || args.topic)) || "";
+        if (!what && args) {
+          var id = args.paper_id || args.paper_id_or_doi || "";
+          if (id && !IDENTIFIER.test(id)) { what = id; }
+        }
         current.textContent = prettyTool(name) + (what ? " · " + what : "");
         steps.appendChild(current);
         setSummary(prettyTool(name) + "…");
@@ -166,7 +171,7 @@
           current.appendChild(n);
         } else if (!ok && error) {
           var e = document.createElement("span");
-          e.className = "chat-step-count";
+          e.className = "chat-step-error";
           e.textContent = error;
           current.appendChild(e);
         }
@@ -185,6 +190,9 @@
       },
     };
   }
+
+  // A UUID, or a DOI. Both are addresses, not names.
+  var IDENTIFIER = /^[0-9a-f-]{20,}$|^10\.\d{4,}\//i;
 
   function prettyTool(name) {
     return {

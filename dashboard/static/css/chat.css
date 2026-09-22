@@ -43,12 +43,25 @@
 
 .chat-thread {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  padding: 8px 0 16px;
+  /* Nothing in a conversation should ever scroll sideways. A single long
+     token — an error message, an identifier — used to drag a horizontal bar
+     across the whole interface. */
+  overflow-x: hidden;
+  padding: 8px 14px 20px 0;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 18px;
 }
+
+/* The scrollbar appears when there is something to scroll and the pointer is
+   near it. A permanent gutter on both the thread and the rail was most of what
+   made the conversation feel boxed in. */
+.chat-thread::-webkit-scrollbar-thumb,
+.chat-rail-body::-webkit-scrollbar-thumb { background: transparent; }
+.chat-thread:hover::-webkit-scrollbar-thumb,
+.chat-rail-body:hover::-webkit-scrollbar-thumb { background: var(--border-strong); }
 
 /* The question is a bubble; the answer is not.
    A bordered card around several hundred words of prose fights the reading
@@ -207,13 +220,14 @@
    to a one-line summary — kept rather than discarded, because what an answer
    was built from is worth being able to check. */
 
+/* Lighter than a card. It is a note about how the answer was produced, not a
+   second answer, and a filled box gave it the same weight as the reply. */
 .chat-trace {
   align-self: stretch;
   max-width: 72ch;
-  padding: 10px 13px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface-2);
+  padding: 2px 0 2px 2px;
+  border-left: 2px solid var(--border);
+  padding-left: 14px;
 }
 
 .chat-trace-summary {
@@ -265,14 +279,15 @@
 .chat-trace:not(.is-running):not(.is-open) .chat-trace-steps { display: none; }
 
 .chat-step {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
+  /* Flow, not flex. As a flex row the label and its count each became a column
+     and a UUID wrapped onto four lines beside a sprawling error message. */
+  display: block;
   padding-left: 15px;
   position: relative;
   color: var(--text-muted);
   font-size: 12.5px;
   line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 .chat-step::before {
   content: "";
@@ -287,7 +302,19 @@
 .chat-step.is-done::before { background: var(--brand); border-color: var(--brand); }
 .chat-step.is-failed::before { background: var(--danger); border-color: var(--danger); }
 
-.chat-step-count { color: var(--text-subtle); white-space: nowrap; }
+.chat-step-count { margin-left: 8px; color: var(--text-subtle); white-space: nowrap; }
+
+/* A failure is a sentence and gets its own line, clamped: the full text is a
+   stack trace's worth of detail that belongs in the log, not the thread. */
+.chat-step-error {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-top: 2px;
+  color: var(--text-subtle);
+  font-size: 12px;
+}
 
 /* ---------- Sources: a panel beside the answer ----------
 
@@ -306,11 +333,16 @@
 .chat-with-rail {
   display: flex;
   align-items: stretch;
-  gap: 28px;
+  /* Centred, not packed to the start. The answer column is capped at its own
+     measure, so without this it sat against the left edge of a 1180px row and
+     left a hole where the rail would eventually appear — the conversation
+     visibly shifted sideways the first time a turn produced sources. */
+  justify-content: center;
+  gap: 32px;
   width: 100%;
   max-width: 1180px;
   margin: 0 auto;
-  height: calc(100vh - 190px);
+  height: calc(100vh - 176px);
   min-height: 420px;
 }
 
@@ -333,7 +365,7 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
-  padding: 4px 0 4px 22px;
+  padding: 4px 0 4px 26px;
   border-left: 1px solid var(--border);
   transition: flex-basis .18s ease;
 }
