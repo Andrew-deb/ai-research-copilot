@@ -217,6 +217,24 @@
   // Built here rather than in the template because both surfaces that run the
   // composer need it, and neither should have to know about the other's markup.
   var rail = null;
+  var railLauncher = null;
+  var railScrim = null;
+  var sourceCount = 0;
+
+  function setDrawer(open) {
+    if (!rail) { return; }
+    rail.classList.toggle("is-open", open);
+    if (railScrim) { railScrim.hidden = !open; }
+    // Only while the drawer covers the page — a scroll lock left on would
+    // freeze the conversation behind it.
+    document.body.classList.toggle("rail-open", open);
+  }
+
+  function updateLauncher() {
+    if (!railLauncher) { return; }
+    railLauncher.hidden = sourceCount === 0;
+    railLauncher.textContent = "Sources" + (sourceCount ? " (" + sourceCount + ")" : "");
+  }
 
   function ensureRail() {
     if (rail) { return rail; }
@@ -256,7 +274,9 @@
     }
 
     toggle.addEventListener("click", function () {
-      setCollapsed(!rail.classList.contains("is-collapsed"));
+      // The same control means "close" in a drawer and "collapse" in a column.
+      if (rail.classList.contains("is-open")) { setDrawer(false); }
+      else { setCollapsed(!rail.classList.contains("is-collapsed")); }
     });
     rail.appendChild(toggle);
 
@@ -270,6 +290,31 @@
     rail.classList.add("is-empty");
 
     wrapper.appendChild(rail);
+
+    // Below the layout breakpoint the rail is a drawer rather than a column,
+    // opened the same way the navigation sidebar is. Stacked under the
+    // composer it was simply out of sight: nobody scrolls past the thing they
+    // are typing into to find the sources.
+    var scrim = document.createElement("div");
+    scrim.className = "chat-rail-scrim";
+    scrim.hidden = true;
+    document.body.appendChild(scrim);
+
+    var launcher = document.createElement("button");
+    launcher.type = "button";
+    launcher.className = "chat-rail-launcher";
+    launcher.hidden = true;                  // until there is something to show
+    launcher.setAttribute("aria-controls", "chat-rail-body");
+    launcher.addEventListener("click", function () { setDrawer(true); });
+    document.body.appendChild(launcher);
+
+    railLauncher = launcher;
+    railScrim = scrim;
+
+    scrim.addEventListener("click", function () { setDrawer(false); });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") { setDrawer(false); }
+    });
 
     var remembered = null;
     try { remembered = localStorage.getItem("rc-rail-collapsed"); } catch (e) { /* ignore */ }
@@ -361,6 +406,8 @@
     var body = railBody();
     body.appendChild(group);
     rail.classList.remove("is-empty");
+    sourceCount += cited.length || consulted.length;
+    updateLauncher();
   }
 
   // Enough to judge a source without opening it: what it is, when, where, and
