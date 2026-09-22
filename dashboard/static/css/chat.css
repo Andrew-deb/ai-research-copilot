@@ -289,42 +289,99 @@
 
 .chat-step-count { color: var(--text-subtle); white-space: nowrap; }
 
-/* ---------- Sources ---------- */
+/* ---------- Sources: a panel beside the answer ----------
 
-.chat-sources {
-  align-self: stretch;
-  max-width: 72ch;
-  margin-top: -4px;
-  padding-top: 12px;
+   Inline, the source list interrupted the reading — twenty papers between one
+   answer and the next question is a wall the eye has to climb to follow the
+   conversation. Beside it, they are available without being in the way.
+
+   The left sidebar is navigation and belongs to the app shell; this rail
+   belongs to the conversation. They are deliberately different things and never
+   share a column. */
+
+.chat-with-rail {
+  display: flex;
+  align-items: flex-start;
+  gap: 28px;
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+/* The answer column keeps its own measure; the rail takes a fixed share rather
+   than a percentage, so the prose does not reflow as sources arrive. */
+.chat-with-rail > .chat-page,
+.chat-with-rail > .landing-main {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+
+.chat-rail {
+  flex: 0 0 290px;
+  position: sticky;
+  top: calc(var(--topbar-h) + 16px);
+  max-height: calc(100vh - var(--topbar-h) - 48px);
+  overflow-y: auto;
+  padding: 16px 0 16px 22px;
+  border-left: 1px solid var(--border);
+}
+
+/* The collapse control is for narrow screens only; on desktop the panel is
+   simply there, and a button to hide a column that costs nothing is clutter. */
+.chat-rail-toggle { display: none; }
+
+.chat-rail-group + .chat-rail-group {
+  margin-top: 22px;
+  padding-top: 18px;
   border-top: 1px solid var(--border);
 }
 
-.chat-sources-title {
-  margin: 0 0 8px;
+/* Which question these sources belong to — without it a second turn's papers
+   simply appear beneath the first's with nothing to tell them apart. */
+.chat-rail-question {
+  margin: 0 0 14px;
   color: var(--text-subtle);
-  font-size: 11px;
+  font-size: 12px;
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.chat-rail-section + .chat-rail-section { margin-top: 18px; }
+
+.chat-rail-heading {
+  margin: 0 0 3px;
+  color: var(--text);
+  font-size: 11.5px;
   font-weight: 600;
-  letter-spacing: .07em;
+  letter-spacing: .05em;
   text-transform: uppercase;
 }
 
-.chat-sources-more {
-  margin: 8px 0 0;
+/* The distinction in one line, so nobody has to infer it from the heading. */
+.chat-rail-note {
+  margin: 0 0 10px;
   color: var(--text-subtle);
-  font-size: 12px;
+  font-size: 11.5px;
+  line-height: 1.4;
 }
 
 .chat-citations {
-  align-self: stretch;
-  margin: -4px 0 0;
+  margin: 0;
   padding: 0 0 0 20px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 10px;
   color: var(--text-muted);
-  font-size: 13px;
-  line-height: 1.5;
+  font-size: 12.5px;
+  line-height: 1.45;
 }
+/* Sources consulted are not numbered: a number implies the answer points at
+   it, and these are precisely the ones it does not. */
+.chat-citations.is-plain { list-style: none; padding-left: 0; }
 .chat-citations a { color: var(--text); }
 
 /* On its own line under the title: year, venue and citation count together run
@@ -383,4 +440,56 @@
 
 @media (max-width: 720px) {
   .landing-main.has-conversation { min-height: calc(100vh - 160px); }
+}
+
+
+/* ---------- The rail on smaller screens ----------
+   Below the answer rather than beside it, and collapsible: a long source list
+   above the composer would push the thing you type into off the screen. */
+
+@media (max-width: 1100px) {
+  .chat-with-rail {
+    display: block;
+    max-width: 740px;
+  }
+
+  .chat-rail {
+    position: static;
+    max-height: none;
+    overflow: visible;
+    margin-top: 20px;
+    padding: 16px 0 0;
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+
+  .chat-rail-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 4px 0;
+    border: 0;
+    background: none;
+    color: var(--text);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+  }
+  .chat-rail-toggle::after {
+    content: "";
+    width: 7px;
+    height: 7px;
+    margin-left: auto;
+    border-right: 1.6px solid var(--text-subtle);
+    border-bottom: 1.6px solid var(--text-subtle);
+    transform: rotate(-135deg);
+    transition: transform .18s ease;
+  }
+  .chat-rail.is-collapsed .chat-rail-toggle::after { transform: rotate(45deg); }
+
+  .chat-rail-body { padding-top: 14px; }
+  .chat-rail.is-collapsed .chat-rail-body { display: none; }
 }

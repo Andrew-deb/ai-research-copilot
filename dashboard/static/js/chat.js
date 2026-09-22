@@ -177,32 +177,60 @@
     }[name] || name;
   }
 
-  /* ------------------------------------------------------------- sources */
+  /* --------------------------------------------------------------- rail */
 
-  // Citations when the answer points at papers; otherwise what it read. After a
-  // real search an empty panel is its own kind of lie, and the two are labelled
-  // differently because they are different claims.
-  function addSources(result) {
-    var cited = result.citations || [];
-    var consulted = result.sources || [];
-    var list = cited.length ? cited : consulted;
-    if (!list.length) { return; }
+  // Sources live in a panel beside the answer, not underneath it. Inline, they
+  // interrupted the reading: a list of twenty papers between one answer and the
+  // next question is a wall the eye has to climb over to follow the
+  // conversation. Beside it, they are there when wanted and quiet when not.
+  //
+  // Built here rather than in the template because both surfaces that run the
+  // composer need it, and neither should have to know about the other's markup.
+  var rail = null;
 
-    var box = document.createElement("div");
-    box.className = "chat-sources";
+  function ensureRail() {
+    if (rail) { return rail; }
 
-    var head = document.createElement("h3");
-    head.className = "chat-sources-title";
-    head.textContent = cited.length
-      ? (cited.length === 1 ? "1 citation" : cited.length + " citations")
-      : (consulted.length === 1 ? "1 source consulted" : consulted.length + " sources consulted");
-    box.appendChild(head);
+    var wrapper = document.createElement("div");
+    wrapper.className = "chat-with-rail";
+    page.parentNode.insertBefore(wrapper, page);
+    wrapper.appendChild(page);
 
+    rail = document.createElement("aside");
+    rail.className = "chat-rail";
+    rail.setAttribute("aria-label", "Sources");
+
+    // Only ever shown on narrow screens, where the panel sits below the answer
+    // and a long list would otherwise push the composer off the screen.
+    var toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "chat-rail-toggle";
+    toggle.textContent = "Sources";
+    toggle.setAttribute("aria-expanded", "true");
+    toggle.addEventListener("click", function () {
+      var collapsed = rail.classList.toggle("is-collapsed");
+      toggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+    });
+    rail.appendChild(toggle);
+
+    var body = document.createElement("div");
+    body.className = "chat-rail-body";
+    rail.appendChild(body);
+
+    wrapper.appendChild(rail);
+    return rail;
+  }
+
+  function railBody() {
+    return ensureRail().querySelector(".chat-rail-body");
+  }
+
+  function sourceList(items, numbered) {
     var ol = document.createElement("ol");
-    ol.className = "chat-citations";
-    list.slice(0, 12).forEach(function (c) {
+    ol.className = "chat-citations" + (numbered ? "" : " is-plain");
+    items.forEach(function (c) {
       var li = document.createElement("li");
-      if (cited.length && c.number) { li.value = c.number; }
+      if (numbered && c.number) { li.value = c.number; }
 
       var a = document.createElement("a");
       a.href = "/paper/" + c.paper_id;
@@ -218,20 +246,64 @@
       }
       ol.appendChild(li);
     });
-    box.appendChild(ol);
-
-    if (!cited.length && consulted.length > 12) {
-      var more = document.createElement("p");
-      more.className = "chat-sources-more";
-      more.textContent = "and " + (consulted.length - 12) + " more";
-      box.appendChild(more);
-    }
-
-    ensureThread().appendChild(box);
-    scrollToLatest();
+    return ol;
   }
 
-  // Enough to judge a citation without opening it: what it is, when, where, and
+  function section(title, note, items, numbered) {
+    var box = document.createElement("section");
+    box.className = "chat-rail-section";
+
+    var h = document.createElement("h3");
+    h.className = "chat-rail-heading";
+    h.textContent = title + " (" + items.length + ")";
+    box.appendChild(h);
+
+    if (note) {
+      var p = document.createElement("p");
+      p.className = "chat-rail-note";
+      p.textContent = note;
+      box.appendChild(p);
+    }
+
+    box.appendChild(sourceList(items, numbered));
+    return box;
+  }
+
+  // Two different claims, kept apart on purpose. A citation is a paper the
+  // answer points at through the verified mapping; a source is one the agent
+  // read on the way. Merging them would either inflate the citation list with
+  // papers the prose never used, or hide the work behind an answer.
+  function addSources(result, question) {
+    var cited = result.citations || [];
+    var citedIds = {};
+    cited.forEach(function (c) { citedIds[c.paper_id] = true; });
+
+    var consulted = (result.sources || []).filter(function (s) {
+      return !citedIds[s.paper_id];
+    });
+    if (!cited.length && !consulted.length) { return; }
+
+    var group = document.createElement("div");
+    group.className = "chat-rail-group";
+
+    var label = document.createElement("p");
+    label.className = "chat-rail-question";
+    label.textContent = question;
+    group.appendChild(label);
+
+    if (cited.length) {
+      group.appendChild(section("Citations",
+        "Referenced by the answer.", cited, true));
+    }
+    if (consulted.length) {
+      group.appendChild(section("Sources consulted",
+        "Read during the search, not cited.", consulted, false));
+    }
+
+    railBody().appendChild(group);
+  }
+
+  // Enough to judge a source without opening it: what it is, when, where, and
   // how much it has been taken up.
   function citationMeta(c) {
     var bits = [];
@@ -288,7 +360,7 @@
       try { body = await res.json(); } catch (e) { /* no body */ }
       trace.finish();
       if (body && body.status) {
-        finishTurn(body, trace);
+        finishTurn(body, trace, question);
       } else {
         addNotice((body && (body.detail || body.error || body.message)) ||
                   "Request failed (" + res.status + ")");
@@ -315,16 +387,16 @@
         if (!line) { return; }
         var event;
         try { event = JSON.parse(line.slice(5).trim()); } catch (e) { return; }
-        handle(event, trace, function (result) { finishTurn(result, trace); });
+        handle(event, trace, function (result) { finishTurn(result, trace, question); });
       });
     }
   }
 
-  function finishTurn(result, trace) {
+  function finishTurn(result, trace, question) {
     trace.finish();
     if (result.answer) {
       addAnswer(result.answer);
-      addSources(result);
+      addSources(result, question);
     }
     if (result.message) { addNotice(result.message); }
     if (!result.answer && !result.message) {
