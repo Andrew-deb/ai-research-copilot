@@ -1,5 +1,4 @@
 /* chat.css — the research chat page.
-   Shell only: the composer has no agent behind it until Phase 3.3.
 
    Two layouts, switched by .is-empty on .chat-page:
 
@@ -51,25 +50,118 @@
   gap: 14px;
 }
 
+/* The question is a bubble; the answer is not.
+   A bordered card around several hundred words of prose fights the reading
+   rather than helping it — the border draws a box the eye has to cross on
+   every line, and it makes the answer look like a quoted artefact instead of
+   the page talking back. Only code gets a box, because code needs one. */
 .chat-msg {
-  padding: 12px 15px;
-  border-radius: var(--radius);
   font-size: 14px;
   line-height: 1.6;
-  white-space: pre-wrap;
 }
+
 .chat-msg-user {
   align-self: flex-end;
   max-width: 80%;
+  padding: 11px 15px;
+  border-radius: var(--radius);
   background: var(--brand-tint);
   color: var(--brand-tint-fg);
+  white-space: pre-wrap;
 }
+
 .chat-msg-assistant {
   align-self: stretch;
-  background: var(--surface);
-  border: 1px solid var(--border);
   color: var(--text);
+  font-size: 15px;
+  line-height: 1.72;
+  max-width: 72ch;
 }
+
+/* ---------- Rendered markdown inside an answer ----------
+   The model writes headings, lists and emphasis. Before this they arrived as
+   literal ## and ** on screen. */
+
+.chat-msg-assistant > *:first-child { margin-top: 0; }
+.chat-msg-assistant > *:last-child { margin-bottom: 0; }
+
+.chat-msg-assistant p { margin: 0 0 14px; }
+
+.chat-msg-assistant h1,
+.chat-msg-assistant h2,
+.chat-msg-assistant h3,
+.chat-msg-assistant h4 {
+  margin: 24px 0 10px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+}
+.chat-msg-assistant h1 { font-size: 20px; }
+.chat-msg-assistant h2 { font-size: 18px; }
+.chat-msg-assistant h3 { font-size: 15.5px; }
+.chat-msg-assistant h4 { font-size: 14.5px; color: var(--text-muted); }
+
+.chat-msg-assistant ul,
+.chat-msg-assistant ol { margin: 0 0 14px; padding-left: 22px; }
+.chat-msg-assistant li { margin-bottom: 6px; }
+.chat-msg-assistant li > ul,
+.chat-msg-assistant li > ol { margin: 6px 0 0; }
+
+.chat-msg-assistant strong { font-weight: 600; color: var(--text); }
+.chat-msg-assistant em { font-style: italic; }
+.chat-msg-assistant a { color: var(--brand-tint-fg); text-decoration: underline; }
+
+.chat-msg-assistant hr {
+  margin: 22px 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+.chat-msg-assistant blockquote {
+  margin: 0 0 14px;
+  padding: 2px 0 2px 14px;
+  border-left: 2px solid var(--border-strong);
+  color: var(--text-muted);
+}
+
+/* Code keeps its box — here the boundary is the point. */
+.chat-msg-assistant code {
+  padding: 1.5px 5px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+.chat-msg-assistant pre {
+  margin: 0 0 14px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  overflow-x: auto;
+}
+.chat-msg-assistant pre code {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.chat-msg-assistant table {
+  width: 100%;
+  margin: 0 0 14px;
+  border-collapse: collapse;
+  font-size: 13.5px;
+}
+.chat-msg-assistant th,
+.chat-msg-assistant td {
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  text-align: left;
+}
+.chat-msg-assistant th { background: var(--surface-2); font-weight: 600; }
 
 .chat-stage { padding: 4px 0 8px; }
 
@@ -107,6 +199,119 @@
   background: transparent;
   color: var(--text-muted);
   font-size: 13.5px;
+}
+
+/* ---------- What the agent is doing ----------
+   A research turn takes the better part of a minute. Silence for that long
+   reads as a hang, so the real steps are shown as they happen and then collapse
+   to a one-line summary — kept rather than discarded, because what an answer
+   was built from is worth being able to check. */
+
+.chat-trace {
+  align-self: stretch;
+  max-width: 72ch;
+  padding: 10px 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.chat-trace-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.chat-trace-summary::before {
+  content: "";
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-subtle);
+}
+/* Only while work is in flight — a finished trace that keeps pulsing says the
+   turn is still running when it is not. */
+.chat-trace.is-running .chat-trace-summary::before {
+  background: var(--brand);
+  animation: chat-pulse 1.1s ease-in-out infinite;
+}
+@keyframes chat-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: .35; transform: scale(.72); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-trace.is-running .chat-trace-summary::before { animation: none; }
+}
+
+.chat-trace-steps {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+/* Open while running, collapsed once done — unless the reader opens it. */
+.chat-trace:not(.is-running):not(.is-open) .chat-trace-steps { display: none; }
+
+.chat-step {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding-left: 15px;
+  position: relative;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.chat-step::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 6px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  border: 1px solid var(--border-strong);
+}
+.chat-step.is-done::before { background: var(--brand); border-color: var(--brand); }
+.chat-step.is-failed::before { background: var(--danger); border-color: var(--danger); }
+
+.chat-step-count { color: var(--text-subtle); white-space: nowrap; }
+
+/* ---------- Sources ---------- */
+
+.chat-sources {
+  align-self: stretch;
+  max-width: 72ch;
+  margin-top: -4px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.chat-sources-title {
+  margin: 0 0 8px;
+  color: var(--text-subtle);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+}
+
+.chat-sources-more {
+  margin: 8px 0 0;
+  color: var(--text-subtle);
+  font-size: 12px;
 }
 
 .chat-citations {

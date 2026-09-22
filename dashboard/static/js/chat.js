@@ -1,15 +1,15 @@
-/* chat.js — behaviour for the agent composer.
+/* chat.js — the agent composer and the conversation it produces.
 
    Loaded by both the landing page and /chat, because they are the same
    interface: the landing page does not advertise the assistant, it is the
    assistant. Whatever is true of the composer has to be true in both places,
    and two copies of this is how one of them ends up subtly different.
 
-   The form posts to /chat/ask and renders whatever envelope comes back. There
-   is no agent behind that endpoint until Phase 3.4, so today every answer is
-   the honest "not connected" one — but the request, the capability check, the
-   error handling and the rendering are all real, which means 3.4 changes the
-   server and not this file. */
+   The turn is streamed. /chat/ask answers Server-Sent Events when asked to, and
+   the steps below are the agent's real ones — the tool it called, the query it
+   used, how many papers came back. A research turn takes the better part of a
+   minute, and a silent minute reads as a hang. Inventing plausible-looking
+   phases would have been easier and would have been fiction. */
 
 (function () {
   "use strict";
@@ -19,20 +19,13 @@
   if (!form || !input) { return; }
 
   var page = document.querySelector(".chat-page") || document.querySelector(".landing-main");
-  // Everything that travels WITH the composer — on /chat the composer, chips and
-  // allowance note share a .chat-stage; on the landing page the form is a direct
-  // child. The thread goes before whichever it is, as a sibling, so it can take
-  // the height and leave the composer pinned beneath it. Inserting it next to the
-  // form instead put it *inside* the stage, where nothing gave it any height and
-  // every reply simply pushed the page apart.
   var stage = form.closest(".chat-stage") || form;
   var thread = document.getElementById("chat-thread");
   var pending = false;
 
-  // A conversation may also arrive server-rendered once persistence lands.
   if (thread && page) { page.classList.add("has-conversation"); }
 
-  /* ---------------------------------------------------------------- render */
+  /* ------------------------------------------------------------ rendering */
 
   function ensureThread() {
     if (thread) { return thread; }
@@ -42,9 +35,6 @@
     thread.setAttribute("aria-live", "polite");
     stage.parentNode.insertBefore(thread, stage);
     if (page) {
-      // The introduction has done its job the moment a question is asked, and
-      // the layout switches from "centred stack" to "thread above a pinned
-      // composer". Both are CSS; this just says which state the page is in.
       page.classList.remove("is-empty");
       page.classList.add("has-conversation");
     }
@@ -55,39 +45,165 @@
     if (thread) { thread.scrollTop = thread.scrollHeight; }
   }
 
-  function addMessage(role, text) {
+  // Markdown, sanitised. The answer is model-generated, so it is untrusted
+  // input no matter how it reads — DOMPurify does the escaping, because
+  // hand-rolling that is how cross-site scripting gets written. If either
+  // library failed to load the text still shows, just without formatting.
+  function renderMarkdown(el, text) {
+    if (window.marked && window.DOMPurify) {
+      el.innerHTML = window.DOMPurify.sanitize(
+        window.marked.parse(text, { breaks: true, gfm: true })
+      );
+    } else {
+      el.textContent = text;
+    }
+  }
+
+  function addUserMessage(text) {
     var el = document.createElement("article");
-    el.className = "chat-msg chat-msg-" + role;
+    el.className = "chat-msg chat-msg-user";
     el.textContent = text;
+    ensureThread().appendChild(el);
+    scrollToLatest();
+  }
+
+  function addAnswer(text) {
+    var el = document.createElement("article");
+    el.className = "chat-msg chat-msg-assistant";
+    renderMarkdown(el, text);
     ensureThread().appendChild(el);
     scrollToLatest();
     return el;
   }
 
-  // Enough to judge a citation without opening it: what it is, when, where, and
-  // how much it has been taken up. A title and a year alone left the reader
-  // clicking through to find out whether a paper was seminal or ignored — and
-  // it meant the assistant had to write the same facts into its prose, because
-  // nothing else was showing them.
-  function citationMeta(c) {
-    var bits = [];
-    if (c.publication_year) { bits.push(String(c.publication_year)); }
-    if (c.venue) { bits.push(c.venue); }
-    if (typeof c.citation_count === "number") {
-      // Spelled out rather than a bare number: "747" beside a year reads as
-      // another date. Zero is a real, useful answer and is shown.
-      bits.push(c.citation_count.toLocaleString() +
-                (c.citation_count === 1 ? " citation" : " citations"));
-    }
-    return bits.join(" · ");
+  function addNotice(text) {
+    var el = document.createElement("article");
+    el.className = "chat-msg chat-msg-system";
+    el.textContent = text;
+    ensureThread().appendChild(el);
+    scrollToLatest();
   }
 
-  function addCitations(citations) {
-    if (!citations || !citations.length) { return; }
+  /* ---------------------------------------------------------------- steps */
+
+  // One live panel per turn: the agent's steps as they happen, collapsed to a
+  // one-line summary once the answer arrives. Keeping the trace rather than
+  // discarding it means a reader can still see what the answer was built from.
+  function createTrace() {
+    var box = document.createElement("div");
+    box.className = "chat-trace is-running";
+
+    var summary = document.createElement("button");
+    summary.type = "button";
+    summary.className = "chat-trace-summary";
+    summary.setAttribute("aria-expanded", "true");
+
+    var steps = document.createElement("ol");
+    steps.className = "chat-trace-steps";
+
+    summary.addEventListener("click", function () {
+      var open = box.classList.toggle("is-open");
+      summary.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+
+    box.appendChild(summary);
+    box.appendChild(steps);
+    ensureThread().appendChild(box);
+
+    var started = Date.now();
+    var counts = { tools: 0, papers: 0 };
+    var current = null;
+
+    function setSummary(text) { summary.textContent = text; }
+    setSummary("Thinking…");
+
+    return {
+      status: function (phase) {
+        var label = { thinking: "Thinking…", reading: "Reading results…",
+                      writing: "Writing the answer…" }[phase];
+        if (label) { setSummary(label); }
+      },
+      toolStart: function (name, args) {
+        counts.tools += 1;
+        current = document.createElement("li");
+        current.className = "chat-step is-running";
+        var what = (args && (args.query || args.topic || args.paper_id)) || "";
+        current.textContent = prettyTool(name) + (what ? " · " + what : "");
+        steps.appendChild(current);
+        setSummary(prettyTool(name) + "…");
+        scrollToLatest();
+      },
+      toolEnd: function (ok, found, error) {
+        if (!current) { return; }
+        current.classList.remove("is-running");
+        current.classList.add(ok ? "is-done" : "is-failed");
+        if (ok && found) {
+          counts.papers += found;
+          var n = document.createElement("span");
+          n.className = "chat-step-count";
+          n.textContent = found + (found === 1 ? " paper" : " papers");
+          current.appendChild(n);
+        } else if (!ok && error) {
+          var e = document.createElement("span");
+          e.className = "chat-step-count";
+          e.textContent = error;
+          current.appendChild(e);
+        }
+        current = null;
+      },
+      finish: function () {
+        box.classList.remove("is-running");
+        var seconds = Math.round((Date.now() - started) / 1000);
+        var bits = [];
+        if (counts.tools) {
+          bits.push(counts.tools + (counts.tools === 1 ? " step" : " steps"));
+        }
+        if (counts.papers) { bits.push(counts.papers + " papers"); }
+        bits.push(seconds + "s");
+        setSummary(bits.join(" · "));
+      },
+    };
+  }
+
+  function prettyTool(name) {
+    return {
+      search_papers: "Searching papers",
+      get_paper_details: "Reading a paper",
+      get_similar_papers: "Finding related work",
+      compare_papers: "Comparing papers",
+      explain_topic: "Looking up background",
+      list_collections: "Checking collections",
+      get_collection_details: "Opening a collection",
+    }[name] || name;
+  }
+
+  /* ------------------------------------------------------------- sources */
+
+  // Citations when the answer points at papers; otherwise what it read. After a
+  // real search an empty panel is its own kind of lie, and the two are labelled
+  // differently because they are different claims.
+  function addSources(result) {
+    var cited = result.citations || [];
+    var consulted = result.sources || [];
+    var list = cited.length ? cited : consulted;
+    if (!list.length) { return; }
+
+    var box = document.createElement("div");
+    box.className = "chat-sources";
+
+    var head = document.createElement("h3");
+    head.className = "chat-sources-title";
+    head.textContent = cited.length
+      ? (cited.length === 1 ? "1 citation" : cited.length + " citations")
+      : (consulted.length === 1 ? "1 source consulted" : consulted.length + " sources consulted");
+    box.appendChild(head);
+
     var ol = document.createElement("ol");
     ol.className = "chat-citations";
-    citations.forEach(function (c) {
+    list.slice(0, 12).forEach(function (c) {
       var li = document.createElement("li");
+      if (cited.length && c.number) { li.value = c.number; }
+
       var a = document.createElement("a");
       a.href = "/paper/" + c.paper_id;
       a.textContent = c.title;
@@ -102,23 +218,33 @@
       }
       ol.appendChild(li);
     });
-    ensureThread().appendChild(ol);
+    box.appendChild(ol);
+
+    if (!cited.length && consulted.length > 12) {
+      var more = document.createElement("p");
+      more.className = "chat-sources-more";
+      more.textContent = "and " + (consulted.length - 12) + " more";
+      box.appendChild(more);
+    }
+
+    ensureThread().appendChild(box);
     scrollToLatest();
   }
 
-  function render(result) {
-    if (result.answer) {
-      addMessage("assistant", result.answer);
-      addCitations(result.citations);
-    } else if (result.message) {
-      // No answer and a reason: say the reason in the thread rather than only
-      // in a toast, which disappears after six seconds and takes the
-      // explanation with it.
-      addMessage("system", result.message);
+  // Enough to judge a citation without opening it: what it is, when, where, and
+  // how much it has been taken up.
+  function citationMeta(c) {
+    var bits = [];
+    if (c.publication_year) { bits.push(String(c.publication_year)); }
+    if (c.venue) { bits.push(c.venue); }
+    if (typeof c.citation_count === "number") {
+      bits.push(c.citation_count.toLocaleString() +
+                (c.citation_count === 1 ? " citation" : " citations"));
     }
+    return bits.join(" · ");
   }
 
-  /* ----------------------------------------------------------------- send */
+  /* ---------------------------------------------------------------- send */
 
   function setPending(on) {
     pending = on;
@@ -127,27 +253,97 @@
     if (send) { send.disabled = on; }
   }
 
+  function handle(event, trace, done) {
+    if (event.type === "status") {
+      trace.status(event.phase);
+    } else if (event.type === "tool_start") {
+      trace.toolStart(event.name, event.arguments);
+    } else if (event.type === "tool_end") {
+      trace.toolEnd(event.ok, event.found, event.error);
+    } else if (event.type === "done") {
+      done(event.result);
+    } else if (event.type === "error") {
+      trace.finish();
+      addNotice(event.message);
+    }
+  }
+
+  async function streamTurn(question, trace) {
+    var res = await fetch("/chat/ask", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "X-Requested-With": "XMLHttpRequest",
+        "X-CSRFToken": (document.querySelector('meta[name="csrf-token"]') || {})
+          .content || "",
+      },
+      body: JSON.stringify({ question: question }),
+    });
+
+    // Refusals (403 capability, 429 quota, 503 unavailable) answer JSON even
+    // when a stream was asked for, because there is nothing to stream.
+    if (!res.ok || (res.headers.get("Content-Type") || "").indexOf("event-stream") === -1) {
+      var body = null;
+      try { body = await res.json(); } catch (e) { /* no body */ }
+      trace.finish();
+      if (body && body.status) {
+        finishTurn(body, trace);
+      } else {
+        addNotice((body && (body.detail || body.error || body.message)) ||
+                  "Request failed (" + res.status + ")");
+      }
+      return;
+    }
+
+    var reader = res.body.getReader();
+    var decoder = new TextDecoder();
+    var buffer = "";
+
+    while (true) {
+      var chunk = await reader.read();
+      if (chunk.done) { break; }
+      buffer += decoder.decode(chunk.value, { stream: true });
+
+      // SSE frames are separated by a blank line. A frame can arrive split
+      // across chunks, so only whole ones are taken and the remainder is kept.
+      var frames = buffer.split("\n\n");
+      buffer = frames.pop();
+
+      frames.forEach(function (frame) {
+        var line = frame.split("\n").find(function (l) { return l.indexOf("data:") === 0; });
+        if (!line) { return; }
+        var event;
+        try { event = JSON.parse(line.slice(5).trim()); } catch (e) { return; }
+        handle(event, trace, function (result) { finishTurn(result, trace); });
+      });
+    }
+  }
+
+  function finishTurn(result, trace) {
+    trace.finish();
+    if (result.answer) {
+      addAnswer(result.answer);
+      addSources(result);
+    }
+    if (result.message) { addNotice(result.message); }
+    if (!result.answer && !result.message) {
+      addNotice("The assistant returned nothing for that question.");
+    }
+  }
+
   async function send(question) {
     setPending(true);
-    addMessage("user", question);
+    addUserMessage(question);
     input.value = "";
     autosize();
 
+    var trace = createTrace();
     try {
-      var result = await window.RC.postJSON("/chat/ask", { question: question });
-      render(result);
+      await streamTurn(question, trace);
     } catch (err) {
-      // RC.request throws on any non-2xx, which includes the 503 returned while
-      // the agent is not connected and the 403/429 from the capability and
-      // quota gates. All three are things the person needs told, so none are
-      // swallowed — and a refusal that still carries a full envelope is
-      // rendered as one, so a partial answer or its citations are not thrown
-      // away along with the status code.
-      if (err.body && err.body.status) {
-        render(err.body);
-      } else {
-        addMessage("system", err.message);
-      }
+      trace.finish();
+      addNotice(err.message || "Something went wrong.");
     } finally {
       setPending(false);
       input.focus();
