@@ -5,6 +5,7 @@ Orchestrates multi-source search (OpenAlex + Semantic Scholar + Lakebase vector 
 paper details retrieval, neural recommendations, paper comparison, and Wikipedia topic caching.
 """
 
+import uuid
 import logging
 from typing import List, Optional
 
@@ -69,9 +70,23 @@ def get_paper_details(paper_id_or_doi: str) -> dict:
         raise ValidationError("Paper identifier cannot be empty.")
 
     identifier = paper_id_or_doi.strip()
-    
-    # 1. Try local database by UUID, DOI, or OpenAlex ID
-    paper = lakebase.get_paper(identifier)
+
+    # 1. Try local database by UUID, DOI, or OpenAlex ID.
+    #
+    # The UUID lookup is attempted ONLY for something shaped like a UUID.
+    # `papers.paper_id` is a uuid column, so passing a DOI made Postgres raise
+    # `invalid input syntax for type uuid` — an exception, not an empty result,
+    # so it escaped before either fallback below could run. The chain read as
+    # "try three things" and was really "try one thing and crash".
+    paper = None
+    try:
+        uuid.UUID(identifier)
+        is_uuid = True
+    except (ValueError, AttributeError, TypeError):
+        is_uuid = False
+
+    if is_uuid:
+        paper = lakebase.get_paper(identifier)
     if not paper:
         paper = lakebase.get_paper_by_doi(identifier)
     if not paper:
