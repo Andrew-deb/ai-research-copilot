@@ -10,6 +10,18 @@
     }
   });
 
+  // ---------- Confirm before something irreversible ----------
+  // Delegated and attribute-driven, so a form only has to say what it is about
+  // to do. Without JavaScript the form still submits — the confirmation is a
+  // courtesy, not the safeguard; the safeguard is that it is a POST scoped to
+  // the owner.
+  document.addEventListener("submit", function (e) {
+    const form = e.target.closest("[data-confirm]");
+    if (form && !window.confirm(form.getAttribute("data-confirm"))) {
+      e.preventDefault();
+    }
+  });
+
   // ---------- Theme toggle ----------
   const themeToggle = document.getElementById("theme-toggle");
   if (themeToggle) {
