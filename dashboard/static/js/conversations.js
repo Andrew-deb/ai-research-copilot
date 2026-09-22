@@ -75,18 +75,41 @@
 
   // Edited in place. A dialog for one short string is a heavier interaction
   // than the change deserves, and the row is where the name is read.
+  //
+  // The input is a SIBLING of the link, never inside it. Nested, every click
+  // and every keystroke bubbled to the anchor and navigated away — which is
+  // why renaming appeared to "refresh the page" and could not be completed.
   function startRename(row) {
+    var link = row.querySelector(".nav-item-chat");
     var titleEl = row.querySelector(".nav-chat-title");
-    if (!titleEl || row.querySelector(".nav-chat-rename")) { return; }
+    if (!link || !titleEl || row.querySelector(".nav-chat-edit")) { return; }
 
     var original = titleEl.textContent;
+
+    // The row keeps its shape: same icon, same position, same type — only the
+    // title becomes editable. A bordered box dropped into the row read as a
+    // form bolted on beside the name rather than the name itself being edited.
+    var edit = document.createElement("span");
+    edit.className = "nav-chat-edit";
+
+    var icon = link.querySelector("svg");
+    if (icon) { edit.appendChild(icon.cloneNode(true)); }
+
     var input = document.createElement("input");
     input.type = "text";
     input.className = "nav-chat-rename";
     input.value = original;
     input.maxLength = 60;
+    input.setAttribute("aria-label", "Conversation name");
+    edit.appendChild(input);
 
-    titleEl.replaceWith(input);
+    // A class, not the `hidden` attribute: `.nav-item` declares `display: flex`,
+    // which beats the browser's own `[hidden] { display: none }` — so the old
+    // title stayed on screen beside the field being typed into.
+    link.classList.add("is-editing");
+    row.classList.add("is-editing");
+    row.insertBefore(edit, link.nextSibling);
+
     input.focus();
     input.select();
 
@@ -95,10 +118,10 @@
     function restore(text) {
       if (settled) { return; }
       settled = true;
-      var span = document.createElement("span");
-      span.className = "nav-chat-title";
-      span.textContent = text;
-      input.replaceWith(span);
+      titleEl.textContent = text;
+      edit.remove();
+      link.classList.remove("is-editing");
+      row.classList.remove("is-editing");
     }
 
     function commit() {
@@ -110,13 +133,11 @@
       restore(next);
       post("/chat/" + row.dataset.conversation + "/rename", { title: next })
         .then(function (data) {
-          var span = row.querySelector(".nav-chat-title");
           // The server trims and caps, so the stored name is the truth.
-          if (span && data && data.title) { span.textContent = data.title; }
+          if (data && data.title) { titleEl.textContent = data.title; }
         })
         .catch(function () {
-          var span = row.querySelector(".nav-chat-title");
-          if (span) { span.textContent = original; }
+          titleEl.textContent = original;
           if (window.RC) { window.RC.toast("Could not rename that conversation.", "danger"); }
         });
     }
@@ -130,12 +151,12 @@
 
   /* -------------------------------------------------------------- actions */
 
-  function togglePin(row) {
-    var wanted = row.dataset.pinned !== "1";
+  function setPinned(row, wanted) {
     post("/chat/" + row.dataset.conversation + "/pin", { pinned: wanted })
       .then(function () {
         row.dataset.pinned = wanted ? "1" : "0";
         row.classList.toggle("pinned", wanted);
+        renderPinMarker(row, wanted);
         // The list is ordered by the server, so the new position only shows on
         // the next render. Saying so beats silently doing nothing visible.
         if (window.RC) {
@@ -146,6 +167,28 @@
       .catch(function () {
         if (window.RC) { window.RC.toast("Could not pin that conversation.", "danger"); }
       });
+  }
+
+  // The marker is a button, because the obvious thing to do with a pin icon is
+  // click it to take the pin out.
+  function renderPinMarker(row, pinned) {
+    var existing = row.querySelector(".nav-chat-pin");
+    if (!pinned) {
+      if (existing) { existing.remove(); }
+      return;
+    }
+    if (existing) { return; }
+
+    var button = document.createElement("button");
+    button.type = "button";
+    button.className = "nav-chat-pin";
+    button.dataset.action = "unpin";
+    button.title = "Unpin";
+    button.setAttribute("aria-label", "Unpin conversation");
+    var template = document.querySelector('#chat-menu [data-action="pin"] svg');
+    if (template) { button.appendChild(template.cloneNode(true)); }
+
+    row.insertBefore(button, row.querySelector(".nav-chat-menu"));
   }
 
   function remove(row) {
@@ -165,6 +208,13 @@
   /* --------------------------------------------------------------- wiring */
 
   list.addEventListener("click", function (e) {
+    var pin = e.target.closest(".nav-chat-pin");
+    if (pin) {
+      e.preventDefault();
+      setPinned(pin.closest(".nav-chat-row"), false);
+      return;
+    }
+
     var button = e.target.closest(".nav-chat-menu");
     if (!button) { return; }
     e.preventDefault();
@@ -172,12 +222,40 @@
     if (openFor === row) { closeMenu(); } else { closeMenu(); openMenu(row, button); }
   });
 
-  // Double-click the name to rename, the shortcut for the common case.
-  list.addEventListener("dblclick", function (e) {
-    var title = e.target.closest(".nav-chat-title");
-    if (!title) { return; }
+  // Double-click the name to rename.
+  //
+  // A link navigates on the FIRST click, so by the time a dblclick handler runs
+  // the page is already leaving — which is what made renaming impossible. The
+  // only way to have both is to hold the navigation briefly and cancel it if a
+  // second click arrives. The delay is the cost of the feature; it is short
+  // enough to pass for the browser's own latency, and the menu's Rename has no
+  // delay at all for anyone who would rather not wait.
+  var DOUBLE_CLICK_GRACE = 200;
+  var pendingOpen = null;
+
+  list.addEventListener("click", function (e) {
+    var link = e.target.closest(".nav-item-chat");
+    if (!link) { return; }
+
+    if (e.detail > 1) {
+      // Second click of a double click: the first one is already held.
+      e.preventDefault();
+      return;
+    }
+
     e.preventDefault();
-    startRename(title.closest(".nav-chat-row"));
+    var href = link.getAttribute("href");
+    clearTimeout(pendingOpen);
+    pendingOpen = setTimeout(function () { window.location.href = href; },
+                             DOUBLE_CLICK_GRACE);
+  });
+
+  list.addEventListener("dblclick", function (e) {
+    var link = e.target.closest(".nav-item-chat");
+    if (!link) { return; }
+    e.preventDefault();
+    clearTimeout(pendingOpen);      // cancel the navigation we were holding
+    startRename(link.closest(".nav-chat-row"));
   });
 
   menu.addEventListener("click", function (e) {
@@ -186,7 +264,7 @@
     var row = openFor;
     closeMenu();
 
-    if (item.dataset.action === "pin") { togglePin(row); }
+    if (item.dataset.action === "pin") { setPinned(row, row.dataset.pinned !== "1"); }
     else if (item.dataset.action === "rename") { startRename(row); }
     else if (item.dataset.action === "delete") { remove(row); }
   });
