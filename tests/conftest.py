@@ -83,6 +83,8 @@ class FakeDB:
         self.usage: dict[tuple[str, str, str], int] = {}
         # One dict per ai_operations row, in the order they were written.
         self.ai_operations: list[dict] = []
+        self.conversations: dict[str, dict] = {}
+        self.conversation_messages: dict[str, list[dict]] = {}
 
     # ---------- test helpers (not part of the repo surface) ----------
     def seed_paper(self, **overrides) -> dict:
@@ -293,6 +295,67 @@ class FakeDB:
 
     def record_ai_operation(self, **fields):
         self.ai_operations.append(dict(fields))
+
+    # ---------- conversations ----------
+    def create_conversation(self, user_id, title):
+        cid = str(uuid.uuid4())
+        row = {"conversation_id": cid, "user_id": user_id, "title": title,
+               "pinned": False, "created_at": _now(), "updated_at": _now()}
+        self.conversations[cid] = row
+        self.conversation_messages[cid] = []
+        return dict(row)
+
+    def get_conversation(self, user_id, conversation_id):
+        row = self.conversations.get(str(conversation_id))
+        # Ownership is part of the lookup, exactly as it is in SQL.
+        if not row or str(row["user_id"]) != str(user_id):
+            return None
+        return dict(row)
+
+    def list_conversations(self, user_id, limit=12):
+        rows = [c for c in self.conversations.values()
+                if str(c["user_id"]) == str(user_id)]
+        # Pinned first, then most recent — the same ordering as the SQL index.
+        rows.sort(key=lambda c: (bool(c.get("pinned")), c["updated_at"]), reverse=True)
+        return [dict(c) for c in rows[:limit]]
+
+    def rename_conversation(self, user_id, conversation_id, title):
+        row = self.conversations.get(str(conversation_id))
+        if not row or str(row["user_id"]) != str(user_id):
+            return None
+        row["title"] = title          # updated_at untouched: renaming is not activity
+        return {"conversation_id": str(conversation_id), "title": title,
+                "pinned": bool(row.get("pinned"))}
+
+    def set_conversation_pinned(self, user_id, conversation_id, pinned):
+        row = self.conversations.get(str(conversation_id))
+        if not row or str(row["user_id"]) != str(user_id):
+            return None
+        row["pinned"] = bool(pinned)
+        return {"conversation_id": str(conversation_id), "title": row["title"],
+                "pinned": row["pinned"]}
+
+    def get_conversation_messages(self, conversation_id):
+        return [dict(m) for m in
+                sorted(self.conversation_messages.get(str(conversation_id), []),
+                       key=lambda m: m["seq"])]
+
+    def append_message(self, conversation_id, role, content, citations=None,
+                       sources=None, tool_calls=None, usage=None):
+        thread = self.conversation_messages.setdefault(str(conversation_id), [])
+        row = {"message_id": str(uuid.uuid4()), "seq": len(thread) + 1,
+               "role": role, "content": content,
+               "citations": citations or [], "sources": sources or [],
+               "tool_calls": tool_calls or [], "usage": usage or {}}
+        thread.append(row)
+        return {"message_id": row["message_id"], "seq": row["seq"]}
+
+    def delete_conversation(self, user_id, conversation_id):
+        if not self.get_conversation(user_id, conversation_id):
+            return False
+        self.conversations.pop(str(conversation_id), None)
+        self.conversation_messages.pop(str(conversation_id), None)
+        return True
 
     def get_usage_counts(self, scope, scope_id):
         return {m: n for (s, sid, m), n in self.usage.items()

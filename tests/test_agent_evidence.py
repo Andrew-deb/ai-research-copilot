@@ -231,11 +231,19 @@ def test_the_panel_renders_the_metadata_we_carry():
 
 
 def test_the_rail_is_separate_from_the_app_sidebar():
-    """Navigation and provenance are different things and never share a
-    column."""
+    """
+    Navigation and provenance are different things and never share a column.
+
+    Asserted on where sources are *put*, not on whether the word "sidebar"
+    appears anywhere in the file — the first version of this forbade the word
+    and then failed on a legitimate function that adds a conversation to the
+    nav list, which is a different concern entirely.
+    """
     js = _chat_js()
-    assert "chat-rail" in js
-    assert "sidebar" not in js
+    sources = js.split("function addSources")[1].split("function citationMeta")[0]
+    assert "railBody()" in sources
+    assert "sidebar" not in sources
+    assert ".sidebar" not in js.split("function ensureRail")[1][:1200]
 
 
 # ---------------------------------------------------------------------------
