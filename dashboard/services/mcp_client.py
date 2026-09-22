@@ -31,6 +31,7 @@ I/O regardless.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import threading
 from contextlib import asynccontextmanager
@@ -78,6 +79,16 @@ def _as_external(exc: BaseException) -> ExternalAPIError:
     break the page.
     """
     cause = _root_cause(exc)
+
+    # A failure raised by a TOOL is not a failure of the transport, and saying
+    # so throws away the only useful part. Observed live: OpenAlex rate-limited
+    # a search, and because the error travelled up inside an anyio
+    # ExceptionGroup rather than as itself, it was relabelled "Could not reach
+    # the research service" — which was both wrong and the opposite of a lead.
+    if isinstance(cause, ResearchCopilotError):
+        logger.error("MCP tool failure: %s", cause)
+        return cause if isinstance(cause, ExternalAPIError) else ExternalAPIError(str(cause))
+
     detail = f"{type(cause).__name__}: {cause}"
     logger.error("MCP transport failure: %s", detail)
 
@@ -202,7 +213,16 @@ async def _call(session, name: str, arguments: dict) -> Any:
         if isinstance(structured, dict) and set(structured) == {"result"}:
             return structured["result"]
         return structured
-    return _text(result)
+
+    # No structured content: the payload arrived as text. Several tools answer
+    # this way — get_paper_details among them — and handing the caller a JSON
+    # string means nothing downstream can read a field out of it, so a paper
+    # fetched that way never became a source.
+    text = _text(result)
+    try:
+        return json.loads(text)
+    except (ValueError, TypeError):
+        return text
 
 
 def _text(result) -> str:
