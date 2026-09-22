@@ -108,13 +108,8 @@ def ask():
     if not agent_service.is_connected():
         # Validates first, so a malformed question is still a 400 rather than
         # being masked by the unavailability behind it.
-        agent_service.ask(question, tier=tier, user_id=user_id)
-        return jsonify(agent_service.envelope(
-            question.strip(),
-            status=agent_service.STATUS_NOT_CONNECTED,
-            message=("The research assistant connects in the next release. "
-                     "Semantic search answers with citations today."),
-        )), 503
+        result = agent_service.ask(question, tier=tier, user_id=user_id)
+        return jsonify(result), 503
 
     consume_quota(quota_service.AGENT_QUERY)
 

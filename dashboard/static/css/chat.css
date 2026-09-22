@@ -121,7 +121,16 @@
   line-height: 1.5;
 }
 .chat-citations a { color: var(--text); }
-.chat-citation-meta { color: var(--text-subtle); }
+
+/* On its own line under the title: year, venue and citation count together run
+   longer than most titles, and trailing them inline pushed the interesting part
+   — what the paper is — off the edge on a narrow screen. */
+.chat-citation-meta {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-subtle);
+  font-size: 12px;
+}
 
 /* The composer goes flat while a turn is in flight, so a second Enter cannot
    queue a question the first one has not answered yet. */
