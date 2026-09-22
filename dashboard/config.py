@@ -109,6 +109,12 @@ MCP_TIMEOUT_SECONDS: int = int(os.getenv("MCP_TIMEOUT_SECONDS", "30"))
 AGENT_MAX_TOOL_CALLS: int = int(os.getenv("AGENT_MAX_TOOL_CALLS", "6"))
 AGENT_DEADLINE_SECONDS: int = int(os.getenv("AGENT_DEADLINE_SECONDS", "75"))
 
+# Raised from the 1024 default after a live answer was cut off mid-sentence:
+# "...it is difficult to systematically characterize *when* and *why* agents
+# fail" and then nothing. A truncated research answer is worse than a short one,
+# because the reader cannot tell which it is.
+AGENT_MAX_TOKENS: int = int(os.getenv("AGENT_MAX_TOKENS", "2400"))
+
 
 def mcp_is_configured() -> bool:
     """True when every value the agent needs to reach the MCP server is present."""

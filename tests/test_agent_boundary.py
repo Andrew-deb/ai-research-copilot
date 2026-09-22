@@ -25,7 +25,9 @@ XHR = {"X-Requested-With": "XMLHttpRequest"}
 
 def test_the_envelope_has_every_key_a_caller_depends_on():
     env = agent_service.envelope("why?")
-    assert set(env) == {"status", "question", "answer", "citations",
+    # `citations` and `sources` are separate claims: what the prose points at,
+    # and what the agent read. See envelope()'s docstring.
+    assert set(env) == {"status", "question", "answer", "citations", "sources",
                         "tool_calls", "usage", "message"}
     assert set(env["usage"]) == {"llm_turns", "tool_calls", "embedding_calls"}
 
