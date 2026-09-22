@@ -22,6 +22,7 @@
   var stage = form.closest(".chat-stage") || form;
   var thread = document.getElementById("chat-thread");
   var pending = false;
+  var conversationId = (page && page.dataset.conversation) || null;
 
   if (thread && page) { page.classList.add("has-conversation"); }
 
@@ -341,10 +342,12 @@
     var group = document.createElement("div");
     group.className = "chat-rail-group";
 
-    var label = document.createElement("p");
-    label.className = "chat-rail-question";
-    label.textContent = question;
-    group.appendChild(label);
+    if (question) {
+      var label = document.createElement("p");
+      label.className = "chat-rail-question";
+      label.textContent = question;
+      group.appendChild(label);
+    }
 
     if (cited.length) {
       group.appendChild(section("Citations",
@@ -407,7 +410,9 @@
         "X-CSRFToken": (document.querySelector('meta[name="csrf-token"]') || {})
           .content || "",
       },
-      body: JSON.stringify({ question: question }),
+      // The id travels with every turn so the second question lands in the same
+      // conversation as the first, rather than starting a new one each time.
+      body: JSON.stringify({ question: question, conversation_id: conversationId }),
     });
 
     // Refusals (403 capability, 429 quota, 503 unavailable) answer JSON even
@@ -449,8 +454,51 @@
     }
   }
 
+  function rememberConversation(result, question) {
+    if (!result || !result.conversation_id) { return; }
+    var isNew = !conversationId;
+    conversationId = result.conversation_id;
+
+    // Replace rather than push: the question has already been asked, so a back
+    // button that returned to the empty page would undo nothing and confuse.
+    try {
+      window.history.replaceState({}, "", "/chat/" + conversationId);
+    } catch (e) { /* ignore */ }
+
+    if (isNew) { addToSidebar(conversationId, question); }
+  }
+
+  // The sidebar is rendered server-side, so a conversation started in this tab
+  // would otherwise not appear until the next full page load.
+  function addToSidebar(id, question) {
+    var section = document.querySelector(".nav-section-scroll");
+    if (!section) { return; }
+
+    var empty = section.querySelector(".nav-empty");
+    if (empty) { empty.remove(); }
+
+    var link = document.createElement("a");
+    link.href = "/chat/" + id;
+    link.className = "nav-item nav-item-chat active";
+    var icon = section.querySelector(".nav-item-chat svg");
+    if (icon) { link.appendChild(icon.cloneNode(true)); }
+    var label = document.createElement("span");
+    label.textContent = question.length > 60
+      ? question.slice(0, 60).replace(/\s+\S*$/, "") + "…"
+      : question;
+    link.appendChild(label);
+
+    var heading = section.querySelector(".nav-label");
+    if (heading && heading.nextSibling) {
+      section.insertBefore(link, heading.nextSibling);
+    } else {
+      section.appendChild(link);
+    }
+  }
+
   function finishTurn(result, trace, question) {
     trace.finish();
+    rememberConversation(result, question);
     if (result.answer) {
       addAnswer(result.answer);
       addSources(result, question);
@@ -516,6 +564,73 @@
     if (!question || pending) { return; }
     send(question);
   });
+
+  /* -------------------------------------------------------------- replay */
+
+  // A stored turn is drawn by the same functions a live one uses. That is the
+  // whole design: one renderer means a reopened answer cannot drift from the
+  // answer that was originally given.
+  function replayTrace(message) {
+    var calls = message.tool_calls || [];
+    var usage = message.usage || {};
+    if (!calls.length) { return; }
+
+    var box = document.createElement("div");
+    box.className = "chat-trace";
+
+    var summary = document.createElement("button");
+    summary.type = "button";
+    summary.className = "chat-trace-summary";
+    summary.setAttribute("aria-expanded", "false");
+    var bits = [calls.length + (calls.length === 1 ? " step" : " steps")];
+    if (usage.llm_turns) {
+      bits.push(usage.llm_turns + (usage.llm_turns === 1 ? " turn" : " turns"));
+    }
+    summary.textContent = bits.join(" · ");
+
+    var steps = document.createElement("ol");
+    steps.className = "chat-trace-steps";
+    calls.forEach(function (call) {
+      var li = document.createElement("li");
+      li.className = "chat-step " + (call.ok ? "is-done" : "is-failed");
+      var args = call.arguments || {};
+      var what = args.query || args.topic || "";
+      li.textContent = prettyTool(call.name) + (what ? " · " + what : "");
+      steps.appendChild(li);
+    });
+
+    summary.addEventListener("click", function () {
+      var open = box.classList.toggle("is-open");
+      summary.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+
+    box.appendChild(summary);
+    box.appendChild(steps);
+    ensureThread().appendChild(box);
+  }
+
+  function replay() {
+    var tag = document.getElementById("chat-history");
+    if (!tag) { return; }
+
+    var history;
+    try { history = JSON.parse(tag.textContent); } catch (e) { return; }
+    if (!history || !history.length) { return; }
+
+    history.forEach(function (message) {
+      if (message.role === "user") {
+        addUserMessage(message.content || "");
+      } else if (message.role === "assistant") {
+        replayTrace(message);
+        if (message.content) { addAnswer(message.content); }
+        addSources(message, "");
+      } else {
+        addNotice(message.content || "");
+      }
+    });
+  }
+
+  replay();
 
   // A question may arrive already in the box via ?q=. Size it to what it holds
   // and put the caret at the end, so it reads as something to edit rather than

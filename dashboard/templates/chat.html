@@ -23,14 +23,15 @@
                    composer is the page's subject, so it gets the focal position.
      conversation  the thread takes the space and the composer pins to the
                    bottom, because now the subject is what was said. #}
-<div class="chat-page {{ 'is-empty' if not messages }}">
+<div class="chat-page {{ 'is-empty' if not messages }}"
+     {% if conversation %}data-conversation="{{ conversation.conversation_id }}"{% endif %}>
 
+  {# Stored turns are handed over as data and drawn by chat.js, through the very
+     same functions a live turn uses. Rendering them here in Jinja would mean a
+     second renderer to keep in step — and the first time the two disagreed, a
+     reopened answer would quietly stop matching the one that was given. #}
   {% if messages %}
-    <div class="chat-thread" id="chat-thread" aria-live="polite">
-      {% for message in messages %}
-        <article class="chat-msg chat-msg-{{ message.role }}">{{ message.content }}</article>
-      {% endfor %}
-    </div>
+    <script type="application/json" id="chat-history">{{ messages | tojson }}</script>
   {% endif %}
 
   <div class="chat-stage">
