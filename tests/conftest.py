@@ -34,6 +34,21 @@ os.environ["ALLOW_ANONYMOUS_DEMO"] = "false"
 # runs out, which is unobservable if a local .env has switched quotas off.
 os.environ["QUOTAS_ENABLED"] = "true"
 
+# The agent is DISCONNECTED by default, and this is not a preference.
+#
+# Once real Databricks credentials existed in .env, agent_service.is_connected()
+# became true during the suite and three tests started making live calls to the
+# deployed MCP server — one of which came back 503 and failed a test that has
+# nothing to do with that server being awake. A test suite that reaches the
+# internet is not testing the thing it claims to test.
+#
+# Tests that need a connected agent fake the transport (see the `wired` fixture
+# in test_agent_loop.py); nothing in the suite should ever open a socket.
+os.environ["DATABRICKS_HOST"] = ""
+os.environ["DATABRICKS_CLIENT_ID"] = ""
+os.environ["DATABRICKS_CLIENT_SECRET"] = ""
+os.environ["MCP_SERVER_URL"] = ""
+
 import pytest
 
 import embedding as embedding_module
