@@ -64,6 +64,24 @@
     return el;
   }
 
+  // Enough to judge a citation without opening it: what it is, when, where, and
+  // how much it has been taken up. A title and a year alone left the reader
+  // clicking through to find out whether a paper was seminal or ignored — and
+  // it meant the assistant had to write the same facts into its prose, because
+  // nothing else was showing them.
+  function citationMeta(c) {
+    var bits = [];
+    if (c.publication_year) { bits.push(String(c.publication_year)); }
+    if (c.venue) { bits.push(c.venue); }
+    if (typeof c.citation_count === "number") {
+      // Spelled out rather than a bare number: "747" beside a year reads as
+      // another date. Zero is a real, useful answer and is shown.
+      bits.push(c.citation_count.toLocaleString() +
+                (c.citation_count === 1 ? " citation" : " citations"));
+    }
+    return bits.join(" · ");
+  }
+
   function addCitations(citations) {
     if (!citations || !citations.length) { return; }
     var ol = document.createElement("ol");
@@ -74,11 +92,13 @@
       a.href = "/paper/" + c.paper_id;
       a.textContent = c.title;
       li.appendChild(a);
-      if (c.publication_year) {
-        var year = document.createElement("span");
-        year.className = "chat-citation-meta";
-        year.textContent = " (" + c.publication_year + ")";
-        li.appendChild(year);
+
+      var meta = citationMeta(c);
+      if (meta) {
+        var span = document.createElement("span");
+        span.className = "chat-citation-meta";
+        span.textContent = meta;
+        li.appendChild(span);
       }
       ol.appendChild(li);
     });
