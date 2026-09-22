@@ -755,3 +755,159 @@ def get_topic_context(topic_name: str) -> dict | None:
         (topic_name,),
     )
     return rows[0] if rows else None
+
+
+# =============================================================================
+# Conversations (Phase 3.4)
+# =============================================================================
+
+def create_conversation(user_id: str, title: str) -> dict:
+    """Start a conversation. The title comes from the first question."""
+    return run_write(
+        """
+        INSERT INTO conversations (user_id, title)
+        VALUES (%s, %s)
+        RETURNING conversation_id, user_id, title, created_at, updated_at;
+        """,
+        (user_id, title),
+        returning=True,
+    )
+
+
+def get_conversation(user_id: str, conversation_id: str) -> dict | None:
+    """
+    One conversation, scoped to its owner.
+
+    Ownership is in the WHERE clause rather than checked afterwards: a query
+    that can return someone else's row and is then filtered in Python is one
+    forgotten `if` away from leaking it.
+    """
+    rows = run_query(
+        """
+        SELECT conversation_id, user_id, title, created_at, updated_at
+          FROM conversations
+         WHERE conversation_id = %s AND user_id = %s;
+        """,
+        (conversation_id, user_id),
+    )
+    return rows[0] if rows else None
+
+
+def list_conversations(user_id: str, limit: int = 12) -> list[dict]:
+    """
+    The sidebar's history: pinned first, then most recently used.
+
+    One ordering rather than two queries. A pin is a statement that something
+    matters more than recency, and this is exactly what the index is built on,
+    so the order is read off it rather than sorted afterwards.
+    """
+    return run_query(
+        """
+        SELECT conversation_id, title, pinned, created_at, updated_at
+          FROM conversations
+         WHERE user_id = %s
+         ORDER BY pinned DESC, updated_at DESC
+         LIMIT %s;
+        """,
+        (user_id, limit),
+    )
+
+
+def get_conversation_messages(conversation_id: str) -> list[dict]:
+    """
+    Every turn, in order.
+
+    Ordered by seq rather than created_at: a question and its answer are written
+    within the same second, and a timestamp tie would let them swap.
+    """
+    return run_query(
+        """
+        SELECT message_id, role, content, citations, sources, tool_calls, usage, seq
+          FROM conversation_messages
+         WHERE conversation_id = %s
+         ORDER BY seq;
+        """,
+        (conversation_id,),
+    )
+
+
+def append_message(conversation_id: str, role: str, content: str | None,
+                   citations: list | None = None, sources: list | None = None,
+                   tool_calls: list | None = None, usage: dict | None = None) -> dict:
+    """
+    Add one message and touch the conversation, in a single statement each.
+
+    `seq` is chosen by the database from what is already there rather than by
+    the caller, so two turns racing cannot both claim the same position - the
+    UNIQUE (conversation_id, seq) constraint would reject the loser rather than
+    silently interleave them.
+    """
+    row = run_write(
+        """
+        INSERT INTO conversation_messages
+            (conversation_id, seq, role, content, citations, sources, tool_calls, usage)
+        VALUES (
+            %s,
+            (SELECT coalesce(max(seq), 0) + 1 FROM conversation_messages WHERE conversation_id = %s),
+            %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb
+        )
+        RETURNING message_id, seq;
+        """,
+        (conversation_id, conversation_id, role, content,
+         json.dumps(citations or []), json.dumps(sources or []),
+         json.dumps(tool_calls or []), json.dumps(usage or {})),
+        returning=True,
+    )
+    run_write(
+        "UPDATE conversations SET updated_at = now() WHERE conversation_id = %s;",
+        (conversation_id,),
+    )
+    return row
+
+
+def rename_conversation(user_id: str, conversation_id: str, title: str) -> dict | None:
+    """
+    Retitle a conversation. Scoped to its owner in the statement itself.
+
+    `updated_at` is deliberately NOT touched: renaming is housekeeping, and
+    letting it jump the conversation to the top of the sidebar would reorder
+    the list for something that is not new activity.
+    """
+    return run_write(
+        """
+        UPDATE conversations
+           SET title = %s
+         WHERE conversation_id = %s AND user_id = %s
+        RETURNING conversation_id, title, pinned;
+        """,
+        (title, conversation_id, user_id),
+        returning=True,
+    )
+
+
+def set_conversation_pinned(user_id: str, conversation_id: str, pinned: bool) -> dict | None:
+    """Pin or unpin. Leaves `updated_at` alone, for the same reason."""
+    return run_write(
+        """
+        UPDATE conversations
+           SET pinned = %s
+         WHERE conversation_id = %s AND user_id = %s
+        RETURNING conversation_id, title, pinned;
+        """,
+        (pinned, conversation_id, user_id),
+        returning=True,
+    )
+
+
+def delete_conversation(user_id: str, conversation_id: str) -> bool:
+    """
+    Remove a conversation and everything in it.
+
+    Scoped to the owner in the statement itself, so a wrong id deletes nothing
+    rather than someone else's history. Messages go with it by cascade.
+    """
+    deleted = run_write(
+        "DELETE FROM conversations WHERE conversation_id = %s AND user_id = %s;",
+        (conversation_id, user_id),
+    )
+    return bool(deleted)
