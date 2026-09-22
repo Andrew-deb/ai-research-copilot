@@ -190,7 +190,12 @@
                  class="nav-item nav-item-chat">
                 {{ icon('chat') }}<span class="nav-chat-title">{{ chat.title }}</span>
               </a>
-              {% if chat.pinned %}<span class="nav-chat-pin" title="Pinned">{{ icon('pin') }}</span>{% endif %}
+              {# A button, not a marker: the icon says the row is pinned, and the
+                 obvious thing to do with it is click it to unpin. #}
+              {% if chat.pinned %}
+                <button type="button" class="nav-chat-pin" data-action="unpin"
+                        title="Unpin" aria-label="Unpin conversation">{{ icon('pin') }}</button>
+              {% endif %}
               <button type="button" class="nav-chat-menu" aria-haspopup="menu"
                       aria-expanded="false" title="More" aria-label="Conversation actions">
                 {{ icon('dots') }}

@@ -976,3 +976,150 @@ h1, h2, h3,
 
 .nav-item-back { color: var(--text-muted); }
 .nav-item-back:hover { color: var(--text); }
+
+
+/* ---------- Recent conversations ----------
+   The delete control appears on hover and on keyboard focus. Always visible it
+   is a row of crosses down the sidebar; never visible it cannot be reached
+   without a mouse. */
+
+.nav-chat-row {
+  display: flex;
+  align-items: center;
+  border-radius: var(--radius-sm);
+}
+.nav-chat-row:hover { background: var(--surface-2); }
+.nav-chat-row.active { background: var(--surface-3); }
+.nav-chat-row .nav-item { flex: 1; min-width: 0; background: none; }
+.nav-chat-row .nav-item:hover { background: none; }
+.nav-chat-row .nav-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nav-chat-menu {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  margin-right: 5px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: var(--text-subtle);
+  cursor: pointer;
+  /* Revealed on hover and on keyboard focus. Always visible it is a column of
+     dots down the sidebar; never visible it cannot be reached without a
+     mouse. */
+  opacity: 0;
+  transition: opacity .12s ease, color .12s ease, background .12s ease;
+}
+.nav-chat-menu svg { width: 15px; height: 15px; }
+.nav-chat-row:hover .nav-chat-menu,
+.nav-chat-menu:focus-visible,
+.nav-chat-row.menu-open .nav-chat-menu { opacity: 1; }
+.nav-chat-menu:hover { background: var(--surface-3); color: var(--text); }
+
+/* The pin stays visible whatever the pointer is doing: it is the reason the row
+   is where it is, and it is also the control that undoes that. Hiding it on
+   hover meant the one moment you could click it was the one moment it left. */
+.nav-chat-pin {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: var(--text-subtle);
+  cursor: pointer;
+  transition: color .12s ease, background .12s ease;
+}
+.nav-chat-pin svg { width: 13px; height: 13px; }
+.nav-chat-pin:hover { background: var(--surface-3); color: var(--text); }
+
+/* Renaming happens in the row, where the name is read. A dialog for one short
+   string is a heavier interaction than the change deserves. */
+/* ---------- Renaming in place ----------
+   The name itself becomes editable: same icon, same position, same type, no
+   box. A bordered field dropped into the row read as a form bolted on beside
+   the name rather than the name being edited — and the row says which one is
+   in play, so the field does not have to. */
+
+/* A class rather than [hidden]: `.nav-item` sets `display: flex`, which beats
+   the browser's own `[hidden] { display: none }`, so the old title stayed
+   visible next to the field. */
+.nav-item.is-editing { display: none; }
+
+.nav-chat-edit {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+}
+.nav-chat-edit svg { width: 18px; height: 18px; flex: none; color: var(--text-muted); }
+
+.nav-chat-rename {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: inherit;
+}
+.nav-chat-rename:focus { outline: none; }
+.nav-chat-rename::selection { background: var(--brand-tint); color: var(--brand-tint-fg); }
+
+/* The row carries the state, so the text can stay plain. */
+.nav-chat-row.is-editing {
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--brand);
+}
+
+/* ---------- The shared conversation menu ----------
+   Fixed to the viewport rather than the sidebar, which scrolls: anchored inside
+   it the menu would drift away from the row that opened it. */
+.chat-menu {
+  position: fixed;
+  z-index: 70;
+  min-width: 172px;
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+.chat-menu button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 13.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.chat-menu button:hover,
+.chat-menu button:focus-visible { background: var(--surface-2); outline: none; }
+.chat-menu button svg { width: 15px; height: 15px; color: var(--text-muted); }
+
+/* Deletion is the one that cannot be undone, and it reads differently. */
+.chat-menu button.is-danger { color: var(--danger); }
+.chat-menu button.is-danger svg { color: var(--danger); }
+.chat-menu button.is-danger:hover { background: var(--danger-tint); }
