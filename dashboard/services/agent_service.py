@@ -302,6 +302,12 @@ def build_system_prompt(tier: str) -> str:
         "1 = <paper_id>\n"
         "2 = <paper_id>\n"
         "```\n\n"
+        "This applies to tables too: put the marker in the cell, next to the "
+        "claim it supports. A comparison with no markers is an answer the "
+        "reader cannot check.\n\n"
+        "Do not write a heading called Citations, References or Sources — the "
+        "interface renders the list. Write only the fenced block above, and "
+        "nothing after it.\n\n"
         "A number missing from that block will be deleted from your answer, and "
         "the reader will never see the source. If you cite nothing, write no "
         "markers and no block.\n\n"
@@ -345,6 +351,21 @@ _TOOL_XML = re.compile(r"<tool_call>.*?(?:</tool_call>|$)", re.DOTALL)
 _CITATION_BLOCK = re.compile(r"```citations\s*\n(.*?)(?:```|$)", re.DOTALL)
 _MAP_LINE = re.compile(r"^\s*\[?(\d+)\]?\s*=\s*(\S+?)[\s,]*$", re.MULTILINE)
 _MARKER = re.compile(r"\s*\[(\d+)\]")
+
+# A heading the model writes above its mapping block. Stripping the block left
+# the heading behind, so answers ended with the word "Citations" and nothing
+# under it — which reads as a section that failed to load.
+_TRAILING_HEADING = re.compile(
+    r"\n#{1,6}\s*(citations?|references?|sources?)\s*:?\s*$", re.IGNORECASE)
+
+
+def _drop_trailing_heading(text: str) -> str:
+    """Remove a heading left hanging once its content was taken away."""
+    previous = None
+    while previous != text:
+        previous = text
+        text = _TRAILING_HEADING.sub("", text).rstrip()
+    return text
 
 
 def _strip_markers(text: str, keep: set[int]) -> str:
@@ -393,9 +414,10 @@ def resolve_citations(answer: str, found: list[dict]) -> tuple[str, list[dict]]:
 
     match = _CITATION_BLOCK.search(answer)
     if not match:
-        return _strip_markers(answer, keep=set()), []
+        return _drop_trailing_heading(_strip_markers(answer, keep=set())), []
 
-    prose = (answer[:match.start()] + answer[match.end():]).strip()
+    prose = _drop_trailing_heading(
+        (answer[:match.start()] + answer[match.end():]).strip())
 
     by_paper = {c["paper_id"]: c for c in found}
     resolved: dict[int, dict] = {}
@@ -408,10 +430,10 @@ def resolve_citations(answer: str, found: list[dict]) -> tuple[str, list[dict]]:
     # the answer never mentions is not a citation, it is a search result.
     cited = {int(n) for n in _MARKER.findall(prose)} & set(resolved)
     if not cited:
-        return _strip_markers(prose, keep=set()), []
+        return _drop_trailing_heading(_strip_markers(prose, keep=set())), []
 
     citations = [dict(resolved[n], number=n) for n in sorted(cited)]
-    return _strip_markers(prose, keep=cited), citations
+    return _drop_trailing_heading(_strip_markers(prose, keep=cited)), citations
 
 
 def _clean(text: str) -> str:
@@ -467,6 +489,26 @@ ABSTRACT_CHARS = 900
 # Raised from 6,000 now that a result is a seventh of the size: ten trimmed
 # papers fit comfortably, which is the entire point of the trimming.
 MAX_TOOL_RESULT_CHARS = 14000
+
+
+def _result_label(result) -> str | None:
+    """
+    A short name for what a tool call actually produced.
+
+    Without it four consecutive `get_paper_details` calls all read "Reading a
+    paper", which tells the reader the agent did something four times and
+    nothing about what. The title is the one piece that distinguishes them.
+    """
+    row = result
+    if isinstance(result, list):
+        if len(result) != 1:
+            return None
+        row = result[0]
+    if isinstance(row, dict):
+        title = row.get("title") or row.get("topic")
+        if title:
+            return str(title)[:70]
+    return None
 
 
 def _evidence(result):
@@ -693,7 +735,7 @@ def ask(question: str, *, tier: str, user_id: str | None = None,
                     _collect_citations(result, found, seen_papers)
                     content = json.dumps(_evidence(result), default=str)[:MAX_TOOL_RESULT_CHARS]
                     _emit(on_event, type="tool_end", name=name, ok=True,
-                          found=len(found) - before)
+                          found=len(found) - before, label=_result_label(result))
                 except CapabilityDeniedError as exc:
                     _emit(on_event, type="tool_end", name=name, ok=False, error=str(exc))
                     # Handed back to the model as a tool result, not raised: it
