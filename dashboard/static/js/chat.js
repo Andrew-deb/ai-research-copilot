@@ -230,6 +230,65 @@
     document.body.classList.toggle("rail-open", open);
   }
 
+  // Deliberately not remembered between visits: it starts where it belongs, and
+  // moving it is a response to what is on screen right now — a position saved
+  // from yesterday would be in the way of something else today.
+  var DRAG_THRESHOLD = 6;
+
+  function makeDraggable(el, onTap) {
+    var startX = 0, startY = 0, originX = 0, originY = 0, moved = false;
+
+    function clamp(x, y) {
+      var margin = 8;
+      return {
+        x: Math.max(margin, Math.min(x, window.innerWidth - el.offsetWidth - margin)),
+        y: Math.max(margin, Math.min(y, window.innerHeight - el.offsetHeight - margin)),
+      };
+    }
+
+    el.addEventListener("pointerdown", function (e) {
+      var box = el.getBoundingClientRect();
+      startX = e.clientX;
+      startY = e.clientY;
+      originX = box.left;
+      originY = box.top;
+      moved = false;
+      el.setPointerCapture(e.pointerId);
+    });
+
+    el.addEventListener("pointermove", function (e) {
+      if (!el.hasPointerCapture(e.pointerId)) { return; }
+      var dx = e.clientX - startX;
+      var dy = e.clientY - startY;
+      // A press that has not travelled is still a tap; only past the threshold
+      // does it become a drag, or the button would be impossible to press.
+      if (!moved && Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) {
+        return;
+      }
+      moved = true;
+      var next = clamp(originX + dx, originY + dy);
+      // Switching to left/top once dragged; it starts anchored right/bottom.
+      el.style.left = next.x + "px";
+      el.style.top = next.y + "px";
+      el.style.right = "auto";
+      el.style.bottom = "auto";
+    });
+
+    el.addEventListener("pointerup", function (e) {
+      if (el.hasPointerCapture(e.pointerId)) { el.releasePointerCapture(e.pointerId); }
+      if (!moved) { onTap(); }
+    });
+
+    // A button parked against an edge would be half off-screen after a rotate.
+    window.addEventListener("resize", function () {
+      if (el.style.left === "" || el.hidden) { return; }
+      var box = el.getBoundingClientRect();
+      var next = clamp(box.left, box.top);
+      el.style.left = next.x + "px";
+      el.style.top = next.y + "px";
+    });
+  }
+
   function updateLauncher() {
     if (!railLauncher) { return; }
     railLauncher.hidden = sourceCount === 0;
@@ -305,8 +364,10 @@
     launcher.className = "chat-rail-launcher";
     launcher.hidden = true;                  // until there is something to show
     launcher.setAttribute("aria-controls", "chat-rail-body");
-    launcher.addEventListener("click", function () { setDrawer(true); });
+    launcher.title = "Sources — drag to move";
     document.body.appendChild(launcher);
+
+    makeDraggable(launcher, function () { setDrawer(true); });
 
     railLauncher = launcher;
     railScrim = scrim;

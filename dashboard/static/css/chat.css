@@ -567,7 +567,11 @@
 .chat-rail-launcher {
   position: fixed;
   right: 16px;
-  bottom: 18px;
+  bottom: 96px;
+  /* Draggable, so it can be moved off whatever it happens to be covering.
+     touch-action stops the browser treating the drag as a page scroll. */
+  touch-action: none;
+  user-select: none;
   z-index: 45;
   display: none;
   padding: 9px 16px;
@@ -599,6 +603,36 @@
 
   .chat-with-rail > .chat-page,
   .chat-with-rail > .landing-main { height: auto; }
+
+  /* The composer holds its place at the bottom of the screen while the
+     conversation scrolls behind it.
+
+     Sticky rather than the fixed-height column desktop uses: mobile viewport
+     height moves as the browser chrome hides and shows, so any calc() against
+     it is wrong for part of every scroll. Sticky needs no height at all — it
+     pins while there is thread above it and settles naturally at the end. */
+  .chat-page.has-conversation .chat-stage,
+  .landing-main.has-conversation .chat-stage {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    /* Opaque, or the thread shows through the box being typed into. */
+    background: var(--bg);
+    margin: 0 -6px;
+    padding: 8px 6px 10px;
+    box-shadow: 0 -10px 12px -8px var(--bg);
+  }
+
+  /* The landing page has no .chat-stage wrapper; its composer is a direct
+     child, so it is pinned the same way. */
+  .landing-main.has-conversation > .composer {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    background: var(--bg);
+    padding: 8px 0 10px;
+    box-shadow: 0 -10px 12px -8px var(--bg);
+  }
 
   .chat-rail-launcher:not([hidden]) { display: block; }
 
