@@ -74,6 +74,48 @@ OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
 # rate limits become a problem, and it is an env change, not a code change.
 OPENROUTER_MODEL: str = os.getenv("OPENROUTER_MODEL", "inclusionai/ling-3.0-flash-vl:free")
 
+# =============================================================================
+# Databricks service auth + MCP (Phase 3.4)
+# =============================================================================
+# The research agent runs server-side and calls the MCP server as a service
+# principal. The browser never holds a Databricks token, never calls the MCP
+# server and never learns its URL — the trust boundary is:
+#
+#   browser --session cookie--> Render Flask --OAuth M2M--> MCP on Databricks
+#           (application user)               (service principal)
+#
+# Every value is optional. Unset, the agent reports itself unavailable and the
+# rest of the product — search, RAG, collections, notes — is untouched. An
+# absent integration must never stop the app booting.
+
+DATABRICKS_HOST: str | None = (os.getenv("DATABRICKS_HOST") or "").rstrip("/") or None
+DATABRICKS_CLIENT_ID: str | None = _get_secret("databricks", "client-id", "DATABRICKS_CLIENT_ID")
+DATABRICKS_CLIENT_SECRET: str | None = _get_secret(
+    "databricks", "client-secret", "DATABRICKS_CLIENT_SECRET")
+
+# Must end in /mcp — the app root redirects to a login page and only /mcp speaks
+# the protocol.
+MCP_SERVER_URL: str | None = os.getenv("MCP_SERVER_URL") or None
+
+# Measured against the deployed app: OAuth token 5.7s cold, initialize 3.3s,
+# tools/list 1.5s. The token and the tool schemas are cached and the session is
+# reused for a whole turn, which is what keeps that off the per-question path.
+MCP_TIMEOUT_SECONDS: int = int(os.getenv("MCP_TIMEOUT_SECONDS", "30"))
+
+# Two limits, because they fail differently. The call ceiling stops a model
+# looping on itself; the deadline stops a slow provider from running past
+# gunicorn's own timeout and returning nothing at all. Whichever trips first
+# ends the turn, and telemetry records which one did.
+AGENT_MAX_TOOL_CALLS: int = int(os.getenv("AGENT_MAX_TOOL_CALLS", "6"))
+AGENT_DEADLINE_SECONDS: int = int(os.getenv("AGENT_DEADLINE_SECONDS", "75"))
+
+
+def mcp_is_configured() -> bool:
+    """True when every value the agent needs to reach the MCP server is present."""
+    return bool(DATABRICKS_HOST and DATABRICKS_CLIENT_ID
+                and DATABRICKS_CLIENT_SECRET and MCP_SERVER_URL)
+
+
 # --- Flask ---
 SECRET_KEY: str = os.getenv("FLASK_SECRET_KEY", "dev-secret-change-in-production")
 DEBUG: bool = os.getenv("FLASK_DEBUG", "false").lower() == "true"
