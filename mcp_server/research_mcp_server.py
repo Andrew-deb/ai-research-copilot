@@ -248,4 +248,31 @@ if __name__ == "__main__":
     else:
         logger.info("Starting %s v%s — stdio", MCP_SERVER_NAME, MCP_SERVER_VERSION)
 
-    mcp.run(transport=transport)
+    # The dashboard sends the acting user in a header; binding it requires HTTP
+    # middleware, which means building the ASGI app here rather than letting
+    # mcp.run() do it. Only the *setup* is guarded: if the middleware cannot be
+    # installed the server still starts, without identity, exactly as before —
+    # degrading to the previous behaviour beats failing to boot. A failure once
+    # serving has begun exits the process, which is correct.
+    app = None
+    if transport == "streamable-http":
+        try:
+            import uvicorn
+            from middleware.identity_middleware import USER_ID_HEADER, IdentityMiddleware
+
+            app = mcp.streamable_http_app()
+            app.add_middleware(IdentityMiddleware)
+            logger.info("Identity middleware active — %s is honoured", USER_ID_HEADER)
+        except Exception:
+            logger.exception("Could not enable identity middleware; starting without it")
+            app = None
+
+    if app is not None:
+        uvicorn.run(
+            app,
+            host=mcp.settings.host,
+            port=mcp.settings.port,
+            log_level=str(getattr(mcp.settings, "log_level", "info")).lower(),
+        )
+    else:
+        mcp.run(transport=transport)
