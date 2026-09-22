@@ -446,6 +446,59 @@ def _tool_schemas(tier: str) -> list[dict]:
     ]
 
 
+# What a tool result is trimmed to before the model sees it.
+#
+# Measured, not guessed: a ten-paper search came back as 105,477 characters of
+# JSON, of which the model was shown the first 6,000 — 5.7%, containing zero
+# complete papers and not even valid JSON. A single paper's `payload` field (the
+# raw upstream API response, which nothing downstream reads) was 8,451
+# characters on its own. The agent was not failing to use the evidence; it was
+# never given any.
+#
+# Keeping the fields a research answer can actually be built from, and dropping
+# the bookkeeping, takes the same ten papers to roughly a seventh of the size.
+EVIDENCE_FIELDS = ("paper_id", "title", "publication_year", "venue",
+                   "citation_count", "tldr")
+
+# Abstracts are the substance, and also the second-largest field. Enough to
+# judge and quote a paper by, not enough that ten of them crowd out the rest.
+ABSTRACT_CHARS = 900
+
+# Raised from 6,000 now that a result is a seventh of the size: ten trimmed
+# papers fit comfortably, which is the entire point of the trimming.
+MAX_TOOL_RESULT_CHARS = 14000
+
+
+def _evidence(result):
+    """
+    A tool result in the shape the model needs, and no larger.
+
+    Anything paper-shaped keeps the fields an answer is built from; everything
+    else is passed through untouched, because this cannot know what another
+    tool's output means. Dropping `payload`, `authors`, `synced_at` and the
+    relevance/fulltext bookkeeping is what turns "one truncated paper" into
+    "ten whole ones".
+    """
+    def one(row):
+        if not isinstance(row, dict) or not row.get("title"):
+            return row
+        lean = {k: row[k] for k in EVIDENCE_FIELDS if row.get(k) is not None}
+        abstract = row.get("abstract")
+        if abstract:
+            text = str(abstract)
+            lean["abstract"] = (text[:ABSTRACT_CHARS] + "…"
+                                if len(text) > ABSTRACT_CHARS else text)
+        return lean
+
+    if isinstance(result, list):
+        return [one(row) for row in result]
+    if isinstance(result, dict) and "papers" in result and isinstance(result["papers"], list):
+        # compare_papers returns {count, papers: [...]}
+        return {**{k: v for k, v in result.items() if k != "papers"},
+                "papers": [one(row) for row in result["papers"]]}
+    return one(result)
+
+
 def _collect_citations(result, found: list[dict], seen: set[str]) -> None:
     """
     Pull anything paper-shaped out of a tool result.
@@ -634,8 +687,11 @@ def ask(question: str, *, tier: str, user_id: str | None = None,
                 try:
                     ensure_callable(tier, name)
                     result = call_tool(name, arguments)
+                    # Citations are collected from the FULL result, which still
+                    # has venue and citation_count; the model is handed the
+                    # trimmed one. The panel stays rich, the context stays small.
                     _collect_citations(result, found, seen_papers)
-                    content = json.dumps(result, default=str)[:6000]
+                    content = json.dumps(_evidence(result), default=str)[:MAX_TOOL_RESULT_CHARS]
                     _emit(on_event, type="tool_end", name=name, ok=True,
                           found=len(found) - before)
                 except CapabilityDeniedError as exc:
