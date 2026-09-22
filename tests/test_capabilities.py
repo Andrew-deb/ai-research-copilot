@@ -593,9 +593,10 @@ def test_the_chat_shell_renders(client):
     assert "No recent chats yet" in body
 
 
-def test_a_conversation_url_resolves_before_persistence_exists(client):
+def test_an_unknown_conversation_is_a_404(client, db):
     """
-    Routed now so the sidebar, back button and shared links all work the moment
-    storage lands, instead of needing a second pass over the navigation.
+    It used to render an empty shell for any id at all, because there was no
+    storage to check against. There is now, and a conversation that does not
+    exist is not a blank one.
     """
-    assert client.get("/chat/anything").status_code == 200
+    assert client.get("/chat/does-not-exist").status_code == 404
