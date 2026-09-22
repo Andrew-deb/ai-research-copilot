@@ -68,7 +68,11 @@ DONATE_LABEL: str = os.getenv("DONATE_LABEL", "Support the project")
 # --- OpenRouter ---
 OPENROUTER_API_KEY: str | None = _get_secret("openrouter", "api-key", "OPENROUTER_API_KEY")
 OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
-OPENROUTER_MODEL: str = os.getenv("OPENROUTER_MODEL", "openai/gpt-oss-120b:free")
+# openai/gpt-oss-120b:free was retired by OpenRouter and now 404s, which broke
+# every RAG answer. This default is verified for plain synthesis AND tool
+# calling; the paid slug openai/gpt-oss-120b is the fallback if free-tier
+# rate limits become a problem, and it is an env change, not a code change.
+OPENROUTER_MODEL: str = os.getenv("OPENROUTER_MODEL", "inclusionai/ling-3.0-flash-vl:free")
 
 # --- Flask ---
 SECRET_KEY: str = os.getenv("FLASK_SECRET_KEY", "dev-secret-change-in-production")
