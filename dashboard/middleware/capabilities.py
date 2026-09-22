@@ -36,6 +36,9 @@ PROGRESS_WRITE = "progress:write"
 SEARCH_SEMANTIC = "search:semantic"
 RAG_ASK = "rag:ask"
 AGENT_QUERY = "agent:query"
+# Conversations outlive a visit, so they belong with the persistent
+# capabilities rather than the metered ones.
+CHAT_HISTORY = "chat:history"
 
 _ANONYMOUS = frozenset({SEARCH_SEMANTIC, RAG_ASK, AGENT_QUERY})
 
@@ -46,7 +49,7 @@ CAPABILITIES: dict[str, frozenset[str]] = {
     # "can use" is not "can use without limit".
     TIER_ANONYMOUS: _ANONYMOUS,
     "authenticated": _ANONYMOUS | {
-        LIBRARY_WRITE, NOTES_WRITE, GOALS_WRITE, PROGRESS_WRITE,
+        LIBRARY_WRITE, NOTES_WRITE, GOALS_WRITE, PROGRESS_WRITE, CHAT_HISTORY,
     },
 }
 
