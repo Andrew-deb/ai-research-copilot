@@ -154,7 +154,8 @@ def check_tool(tier: str, tool_name: str) -> None:
 # ---------------------------------------------------------------------------
 
 def envelope(question: str, *, status: str = STATUS_OK, answer: str | None = None,
-             citations: list[dict] | None = None, tool_calls: list[dict] | None = None,
+             citations: list[dict] | None = None, sources: list[dict] | None = None,
+             tool_calls: list[dict] | None = None,
              message: str | None = None, llm_turns: int = 0,
              embedding_calls: int = 0) -> dict:
     """
@@ -163,10 +164,17 @@ def envelope(question: str, *, status: str = STATUS_OK, answer: str | None = Non
         status          ok | not_connected
         question        what was asked, trimmed
         answer          the prose, or None
-        citations       [{number, paper_id, title, publication_year, venue, similarity}]
+        citations       papers the answer actually cites, numbered as it wrote them
+        sources         every paper the search turned up, cited or not
         tool_calls      [{name, arguments, ok, error}]
         usage           {llm_turns, tool_calls, embedding_calls}
         message         why there is no answer, when there is none
+
+    `citations` and `sources` are different claims and are kept apart. A citation
+    is a paper the prose points at; a source is one the agent read. Collapsing
+    them would either pad the citation list with papers the answer never used, or
+    leave the panel empty whenever the model omits its mapping - and after a real
+    search, showing nothing is its own kind of lie.
 
     `citations` deliberately reuses the shape `search_service.rag_answer` already
     returns for `sources`, so the page has one citation renderer rather than two
@@ -179,6 +187,7 @@ def envelope(question: str, *, status: str = STATUS_OK, answer: str | None = Non
         "question": question,
         "answer": answer,
         "citations": citations or [],
+        "sources": sources or [],
         "tool_calls": calls,
         "usage": {
             "llm_turns": llm_turns,
@@ -482,7 +491,42 @@ def _collect_citations(result, found: list[dict], seen: set[str]) -> None:
         # others, inviting the reader to take its absence for zero.
 
 
-def ask(question: str, *, tier: str, user_id: str | None = None) -> dict:
+def validate_question(question: str) -> str:
+    """
+    The cleaned question, or raise.
+
+    Separate from `ask` because the streaming path has to decide this BEFORE it
+    commits to a stream: an SSE response has already sent 200 by the time the
+    turn begins, so a malformed question discovered inside the generator can
+    only be reported as a stream event — telling the browser a bad request
+    succeeded. Every gate is settled while a status code can still be chosen.
+    """
+    cleaned = (question or "").strip()
+    if not cleaned:
+        raise ValidationError("Question cannot be empty.")
+    if len(cleaned) > MAX_QUESTION:
+        raise ValidationError(f"Question is too long — {MAX_QUESTION} characters maximum.")
+    return cleaned
+
+
+def _emit(on_event, **payload) -> None:
+    """
+    Report progress, if anyone is listening.
+
+    Optional because the turn must behave identically whether or not it is being
+    watched: the JSON path passes nothing, the streaming path passes a queue.
+    A failure to report is never allowed to fail the turn it is reporting on.
+    """
+    if on_event is None:
+        return
+    try:
+        on_event(payload)
+    except Exception:
+        logger.debug("progress event dropped", exc_info=True)
+
+
+def ask(question: str, *, tier: str, user_id: str | None = None,
+        on_event=None) -> dict:
     """
     Answer one research question, running tools as needed.
 
@@ -493,11 +537,9 @@ def ask(question: str, *, tier: str, user_id: str | None = None) -> dict:
     gathered, rather than raising — a partial answer with citations is worth
     more than an error page.
     """
-    cleaned = (question or "").strip()
-    if not cleaned:
-        raise ValidationError("Question cannot be empty.")
-    if len(cleaned) > MAX_QUESTION:
-        raise ValidationError(f"Question is too long — {MAX_QUESTION} characters maximum.")
+    cleaned = validate_question(question)
+
+    _emit(on_event, type="status", phase="thinking")
 
     if not is_connected():
         return envelope(
@@ -553,18 +595,22 @@ def ask(question: str, *, tier: str, user_id: str | None = None) -> dict:
                                 "already have. Do not call any more tools. Cite each "
                                 "paper by its `citation` number."),
                 })
+                _emit(on_event, type="status", phase="writing")
                 message = llm_client.chat_with_tools(
-                    messages, schemas, timeout=_remaining(deadline))
+                    messages, schemas, timeout=_remaining(deadline),
+                    max_tokens=config.AGENT_MAX_TOKENS)
                 state["llm_turns"] += 1
                 state["answer"] = _clean(llm_client.message_text(message))
                 return
 
             message = llm_client.chat_with_tools(
-                messages, schemas, timeout=_remaining(deadline))
+                messages, schemas, timeout=_remaining(deadline),
+                max_tokens=config.AGENT_MAX_TOKENS)
             state["llm_turns"] += 1
             requested = message.get("tool_calls") or []
 
             if not requested:
+                _emit(on_event, type="status", phase="writing")
                 state["answer"] = _clean(llm_client.message_text(message))
                 return
 
@@ -583,18 +629,24 @@ def ask(question: str, *, tier: str, user_id: str | None = None) -> dict:
                     arguments = {}
 
                 record = {"name": name, "arguments": arguments, "ok": True, "error": None}
+                _emit(on_event, type="tool_start", name=name, arguments=arguments)
+                before = len(found)
                 try:
                     ensure_callable(tier, name)
                     result = call_tool(name, arguments)
                     _collect_citations(result, found, seen_papers)
                     content = json.dumps(result, default=str)[:6000]
+                    _emit(on_event, type="tool_end", name=name, ok=True,
+                          found=len(found) - before)
                 except CapabilityDeniedError as exc:
+                    _emit(on_event, type="tool_end", name=name, ok=False, error=str(exc))
                     # Handed back to the model as a tool result, not raised: it
                     # should tell the person it cannot do that and carry on,
                     # rather than the whole turn dying on one refused call.
                     record.update(ok=False, error=str(exc))
                     content = json.dumps({"error": str(exc), "refused": True})
                 except ExternalAPIError as exc:
+                    _emit(on_event, type="tool_end", name=name, ok=False, error=str(exc))
                     record.update(ok=False, error=str(exc))
                     content = json.dumps({"error": str(exc)})
 
@@ -604,6 +656,7 @@ def ask(question: str, *, tier: str, user_id: str | None = None) -> dict:
                     "tool_call_id": call.get("id"),
                     "content": content,
                 })
+            _emit(on_event, type="status", phase="reading")
 
     try:
         mcp_client.Turn(user_id).run(plan)
@@ -611,7 +664,7 @@ def ask(question: str, *, tier: str, user_id: str | None = None) -> dict:
         logger.error("Agent turn failed: %s", exc)
         return envelope(cleaned, status=STATUS_NOT_CONNECTED,
                         message=str(exc), llm_turns=state["llm_turns"],
-                        tool_calls=tool_calls, citations=[])
+                        tool_calls=tool_calls, citations=[], sources=found)
 
     # Prose and sidebar are reconciled here, from the mapping the model closed
     # with — not from two independent acts of counting.
@@ -635,6 +688,7 @@ def ask(question: str, *, tier: str, user_id: str | None = None) -> dict:
         status=STATUS_OK,
         answer=answer,
         citations=citations,
+        sources=found,
         tool_calls=tool_calls,
         message=message,
         llm_turns=state["llm_turns"],
