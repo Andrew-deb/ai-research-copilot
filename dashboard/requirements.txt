@@ -18,3 +18,15 @@ python-dotenv>=1.0.0
 databricks-sdk>=0.118.0
 Authlib>=1.3.0
 Flask-WTF>=1.2.0
+
+# MCP client for the research agent (Phase 3.4). The dashboard calls the MCP
+# server over streamable HTTP; this handles session initialisation, the
+# Mcp-Session-Id header, SSE framing and protocol negotiation.
+#
+# It is an async library and this app is sync gthread, so calls are bridged with
+# asyncio.run() at the service boundary rather than making Flask async. Its
+# dependencies (httpx, pydantic, anyio) are small — no torch-scale surprise for
+# the 512 MB instance.
+#
+# Floor is the version verified locally against the deployed server.
+mcp>=1.29.0

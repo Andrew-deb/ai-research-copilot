@@ -64,7 +64,21 @@ def chat(system_prompt: str, user_prompt: str, temperature: float = 0.2, max_tok
         raise ExternalAPIError(f"LLM request failed: {exc}") from exc
 
     try:
-        return resp.json()["choices"][0]["message"]["content"].strip()
+        message = resp.json()["choices"][0]["message"]
     except (KeyError, IndexError, ValueError) as exc:
         logger.error("Unexpected OpenRouter response shape: %s", resp.text[:500])
         raise ExternalAPIError("LLM returned an unexpected response format.") from exc
+
+    # Some models put the answer in `reasoning` and leave `content` empty — the
+    # currently configured one does exactly that on a turn that follows a tool
+    # result. Reading only `content` there returns "" and the caller renders a
+    # blank answer with no error anywhere, which looks like a bug in retrieval
+    # rather than in parsing. Measured, not guessed: content=0, reasoning=612.
+    text = (message.get("content") or "").strip()
+    if not text:
+        text = (message.get("reasoning") or "").strip()
+
+    if not text:
+        logger.error("LLM returned no usable text: %s", resp.text[:500])
+        raise ExternalAPIError("LLM returned an empty answer.")
+    return text
