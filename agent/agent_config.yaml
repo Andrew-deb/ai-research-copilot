@@ -5,7 +5,7 @@ agent:
 
 model:
   provider: "openrouter" # Options: openrouter, databricks_serving, openai
-  name: "openai/gpt-oss-120b:free"
+  name: "inclusionai/ling-3.0-flash-vl:free"   # :free slug of gpt-oss-120b was retired by OpenRouter
   temperature: 0.2
   max_tokens: 4096
   top_p: 0.95
