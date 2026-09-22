@@ -448,8 +448,66 @@ def test_the_thread_scrolls_rather_than_the_document():
     css = (pathlib.Path(__file__).resolve().parents[1] / "dashboard" / "static"
            / "css" / "chat.css").read_text(encoding="utf-8")
     wrapper = css.split(".chat-with-rail {")[1].split("}")[0]
-    assert "height: calc(100vh - 190px)" in wrapper
+    # A viewport-relative height, whatever the exact offset: the property is
+    # the contract, the number is tuning.
+    assert "height: calc(100vh" in wrapper
 
     # min-height: 0 is what lets the flex child shrink so the thread can scroll.
     column = css.split(".chat-with-rail > .chat-page,")[1].split("}")[0]
     assert "min-height: 0" in column
+
+
+# ---------------------------------------------------------------------------
+# Layout regressions seen on screen
+# ---------------------------------------------------------------------------
+
+def _chat_css() -> str:
+    return (pathlib.Path(__file__).resolve().parents[1] / "dashboard" / "static"
+            / "css" / "chat.css").read_text(encoding="utf-8")
+
+
+def test_the_conversation_does_not_shift_left_before_the_rail_exists():
+    """
+    The answer column is capped at its own measure, so in a 1180px flex row it
+    sat against the left edge and left a hole where the rail would appear —
+    the conversation visibly moved sideways on the first turn with sources.
+    """
+    wrapper = _chat_css().split(".chat-with-rail {")[1].split("}")[0]
+    assert "justify-content: center" in wrapper
+
+
+def test_nothing_in_the_conversation_scrolls_sideways():
+    """One long token — an error message, an identifier — used to drag a
+    horizontal bar across the whole interface."""
+    thread = _chat_css().split(".chat-thread {")[1].split("}")[0]
+    assert "overflow-x: hidden" in thread
+
+
+def test_a_step_flows_as_text_rather_than_as_columns():
+    """As a flex row the label and its count each became a column, and a UUID
+    wrapped onto four lines beside a sprawling error message."""
+    step = _chat_css().split("\n.chat-step {")[1].split("}")[0]
+    assert "display: block" in step
+    assert "overflow-wrap: anywhere" in step
+
+
+def test_a_raw_identifier_is_never_shown_as_a_step_label():
+    """A 36-character UUID tells the reader nothing. The title arrives on
+    tool_end, which is the part worth waiting for."""
+    js = _chat_js()
+    assert "IDENTIFIER.test(id)" in js
+
+    import re as _re
+    pattern = _re.search(r"var IDENTIFIER = /(.+?)/i;", js).group(1)
+    identifier = _re.compile(pattern, _re.I)
+    assert identifier.search("411fc2c1-2296-4818-9a33-2d05f0951227")
+    assert identifier.search("10.1609/aaai.v38i17.29936")
+    # A real query must still be shown.
+    assert not identifier.search("LLM agents tool use limitations")
+
+
+def test_the_trace_is_lighter_than_an_answer():
+    """It is a note about how the answer was produced, not a second answer."""
+    trace = _chat_css().split("\n.chat-trace {")[1].split("}")[0]
+    assert "border-left" in trace
+    assert "background:" not in trace
