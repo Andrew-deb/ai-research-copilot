@@ -21,14 +21,16 @@ import logging
 import queue
 import threading
 
-from flask import Blueprint, Response, jsonify, render_template, request, stream_with_context
+from flask import (Blueprint, Response, abort, jsonify, redirect,
+                   render_template, request, stream_with_context, url_for)
 
 import suggestions
 from exceptions import ResearchCopilotError
 from middleware.auth import current_tier, current_user_id
 from middleware.capabilities import AGENT_QUERY, consume_quota, require_capability, tier_can
-from routes.helpers import form_or_json
-from services import agent_service, quota_service, telemetry_service
+from routes.helpers import form_or_json, wants_json
+from services import (agent_service, conversation_service, quota_service,
+                      telemetry_service)
 
 logger = logging.getLogger(__name__)
 
@@ -73,19 +75,70 @@ def new_chat():
 @bp.get("/chat/<conversation_id>")
 def conversation(conversation_id: str):
     """
-    One conversation.
+    One stored conversation, replayed.
 
-    Routed now so the sidebar, back button and shareable URLs all work the moment
-    persistence lands, rather than requiring a second pass over the navigation.
-    Until then every id renders the same empty shell.
+    The messages are handed to the page in the envelope's own shape and drawn by
+    the same renderer a live turn uses, so a reopened answer looks like the one
+    that was given — citations panel, step trace and all. Rebuilding them into
+    some other shape here is how a replay drifts from the original.
     """
+    stored = conversation_service.load(current_user_id(), conversation_id)
+    if not stored:
+        abort(404)
+
     return render_template(
         "chat.html",
-        conversation={"conversation_id": conversation_id},
-        messages=[],
+        conversation={"conversation_id": conversation_id, "title": stored["title"]},
+        messages=stored["messages"],
         starters=suggestions.AGENT_STARTERS,
         initial_prompt="",
     )
+
+
+@bp.post("/chat/<conversation_id>/rename")
+def rename_conversation(conversation_id: str):
+    """Retitle a conversation. The sidebar renames in place, so this answers JSON."""
+    title = (form_or_json("title").get("title") or "")
+    renamed = conversation_service.rename(current_user_id(), conversation_id, title)
+    if not renamed:
+        abort(404)
+    return jsonify({"conversation_id": conversation_id, "title": renamed["title"]})
+
+
+@bp.post("/chat/<conversation_id>/pin")
+def pin_conversation(conversation_id: str):
+    """
+    Pin or unpin, with the desired state sent explicitly.
+
+    A toggle computed on the server would disagree with the page the moment two
+    tabs are open: both would send "flip it" and the second would undo the first.
+    """
+    payload = form_or_json("pinned")
+    wanted = payload.get("pinned")
+    if isinstance(wanted, str):
+        wanted = wanted.lower() not in ("false", "0", "")
+
+    updated = conversation_service.set_pinned(
+        current_user_id(), conversation_id, bool(wanted))
+    if not updated:
+        abort(404)
+    return jsonify({"conversation_id": conversation_id, "pinned": updated["pinned"]})
+
+
+@bp.post("/chat/<conversation_id>/delete")
+def delete_conversation(conversation_id: str):
+    """
+    Remove a conversation.
+
+    POST rather than GET: a link that deletes is a link a browser, a crawler or
+    a prefetcher can follow without anyone meaning to.
+    """
+    removed = conversation_service.delete(current_user_id(), conversation_id)
+    if not removed:
+        abort(404)
+    if wants_json():
+        return jsonify({"deleted": True, "conversation_id": conversation_id})
+    return redirect(url_for("chat.new_chat"))
 
 
 @bp.post("/chat/ask")
@@ -116,8 +169,9 @@ def ask():
     # Validated here, not inside the turn: once a stream is open the status code
     # is already spent, and a 400 delivered as a stream event is a bad request
     # the browser was told to treat as success.
-    question = agent_service.validate_question(
-        form_or_json("question").get("question") or "")
+    payload = form_or_json("question", "conversation_id")
+    question = agent_service.validate_question(payload.get("question") or "")
+    conversation_id = (payload.get("conversation_id") or "").strip() or None
     tier = current_tier()
     user_id = current_user_id()
 
@@ -131,7 +185,7 @@ def ask():
 
     if _wants_stream():
         return Response(
-            stream_with_context(_stream_turn(question, tier, user_id)),
+            stream_with_context(_stream_turn(question, tier, user_id, conversation_id)),
             mimetype="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
@@ -142,7 +196,8 @@ def ask():
             },
         )
 
-    return jsonify(_run_turn(question, tier, user_id))
+    result = _run_turn(question, tier, user_id)
+    return jsonify(_with_conversation(result, user_id, conversation_id, question))
 
 
 def _wants_stream() -> bool:
@@ -167,11 +222,25 @@ def _run_turn(question: str, tier: str, user_id: str | None, on_event=None) -> d
     return result
 
 
+def _with_conversation(result: dict, user_id: str | None,
+                       conversation_id: str | None, question: str) -> dict:
+    """
+    Persist the turn and tell the page where it landed.
+
+    The id rides alongside the envelope rather than inside it: which
+    conversation a turn belongs to is a routing concern, and agent_service has
+    no business knowing about storage.
+    """
+    stored = conversation_service.record_turn(user_id, conversation_id, question, result)
+    return dict(result, conversation_id=stored)
+
+
 def _sse(payload: dict) -> str:
     return f"data: {json.dumps(payload, default=str)}\n\n"
 
 
-def _stream_turn(question: str, tier: str, user_id: str | None):
+def _stream_turn(question: str, tier: str, user_id: str | None,
+                 conversation_id: str | None = None):
     """
     Run the turn on a worker thread and relay its progress as it happens.
 
@@ -190,7 +259,9 @@ def _stream_turn(question: str, tier: str, user_id: str | None):
 
     def work():
         try:
-            outcome["result"] = _run_turn(question, tier, user_id, on_event=events.put)
+            result = _run_turn(question, tier, user_id, on_event=events.put)
+            outcome["result"] = _with_conversation(
+                result, user_id, conversation_id, question)
         except ResearchCopilotError as exc:
             outcome["error"] = str(exc)
         except Exception as exc:                      # noqa: BLE001
@@ -218,14 +289,9 @@ def _stream_turn(question: str, tier: str, user_id: str | None):
         yield _sse({"type": "done", "result": outcome["result"]})
 
 
-def recent_conversations(limit: int = 8) -> list[dict]:
-    """
-    Sidebar history. Empty until the agent phase adds storage.
-
-    A function rather than an empty list inline, so the sidebar has one place to
-    start reading real data from and the template never changes.
-    """
-    return []
+def recent_conversations(limit: int = conversation_service.RECENT_LIMIT) -> list[dict]:
+    """Sidebar history for whoever is signed in. Empty for everyone else."""
+    return conversation_service.recent(current_user_id(), limit=limit)
 
 
 def register_chat_context(app) -> None:
