@@ -15,6 +15,12 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='css/landing.css') }}">
 {% endblock %}
 
+{# The conversation column measures itself against the space between the
+   topbar and the footer, rather than subtracting a guessed number of
+   pixels from the viewport height. #}
+{% block content_class %}content-fill{% endblock %}
+{% block body_class %}app-fixed{% endblock %}
+
 {% block content %}
 <div class="landing-main">
   <h1 class="landing-title">What are you researching?</h1>
