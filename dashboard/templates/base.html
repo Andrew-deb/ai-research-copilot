@@ -32,7 +32,7 @@
   <meta name="csrf-token" content="{{ csrf_token() }}">
   {% block extra_css %}{% endblock %}
 </head>
-<body>
+<body class="{% block body_class %}{% endblock %}">
 
 {%- macro icon(name) -%}
   {%- set paths = {
@@ -342,7 +342,7 @@
       {% endwith %}
     </div>
 
-    <main class="content">
+    <main class="content {% block content_class %}{% endblock %}">
       {% block content %}{% endblock %}
     </main>
 
