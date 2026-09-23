@@ -223,6 +223,40 @@ svg.icon { width: 18px; height: 18px; flex: none; }
 
 /* ---------- Content ---------- */
 .content { flex: 1; width: 100%; max-width: var(--maxw); margin: 0 auto; padding: 28px 24px 40px; }
+
+/* A page that wants to end exactly where the footer begins.
+   `.main-col` is already a flex column and `.content` already takes the space
+   left over, so a child asking for `flex: 1` here gets the real remaining
+   height — no `calc(100vh - 176px)` guess at the size of the topbar, the
+   padding and the footer, and no gap when the guess is wrong. */
+.content-fill { display: flex; flex-direction: column; min-height: 0; }
+.content-fill > * { min-height: 0; }
+
+/* On a wide screen the conversation IS the page, so the space beneath it goes
+   back to the thread. Forty pixels of padding below an already-pinned composer
+   is a margin nobody reads, and the footer supplies its own directly under it.
+
+   Desktop only: the mobile composer is sticky and already sits where it
+   should. */
+@media (min-width: 1101px) {
+  .content-fill { padding-bottom: 12px; }
+
+  /* The shell gets a DEFINITE height on these pages, and this is the whole
+     trick.
+
+     `.app-shell` normally has `min-height: 100vh`, which means its height is
+     whatever its content needs. Under that, every `flex: 1` below is just
+     distributing free space in a box that grows — so `.chat-with-rail` was
+     never bounded, `.chat-thread`'s `overflow-y: auto` never had a height to
+     scroll within, and the page grew until the composer was below the fold.
+     Capping the shell is what turns all of those into real constraints.
+
+     `min-height: 0` on the way down because a flex item refuses to shrink
+     below its content otherwise, which would undo the cap one level lower. */
+  body.app-fixed .app-shell { height: 100vh; min-height: 0; }
+  body.app-fixed .main-col { min-height: 0; }
+  body.app-fixed .content-fill { min-height: 0; overflow: hidden; }
+}
 .app-footer {
   max-width: var(--maxw);
   margin: 0 auto;
