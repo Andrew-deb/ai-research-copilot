@@ -453,12 +453,10 @@ def test_the_thread_scrolls_rather_than_the_document():
     A long answer used to grow the page and push the composer below the fold,
     so you had to scroll back down to ask the next question.
     """
-    css = (pathlib.Path(__file__).resolve().parents[1] / "dashboard" / "static"
-           / "css" / "chat.css").read_text(encoding="utf-8")
+    css = _chat_css()
     wrapper = css.split(".chat-with-rail {")[1].split("}")[0]
-    # A viewport-relative height, whatever the exact offset: the property is
-    # the contract, the number is tuning.
-    assert "height: calc(100vh" in wrapper
+    # The height comes from the parent now, not from viewport arithmetic.
+    assert "flex: 1" in wrapper
 
     # min-height: 0 is what lets the flex child shrink so the thread can scroll.
     column = css.split(".chat-with-rail > .chat-page,")[1].split("}")[0]
@@ -599,3 +597,127 @@ def test_the_position_is_not_remembered_between_visits():
 def test_the_browser_does_not_treat_the_drag_as_a_scroll():
     launcher = _chat_css().split(".chat-rail-launcher {")[1].split("}")[0]
     assert "touch-action: none" in launcher
+
+
+# ---------------------------------------------------------------------------
+# The column measures itself instead of guessing the viewport
+# ---------------------------------------------------------------------------
+
+def test_the_column_measures_itself_instead_of_guessing_the_viewport():
+    """
+    `calc(100vh - 176px)` had to guess the topbar, both content paddings and the
+    footer. It guessed low, and the composer floated well above the bottom of
+    the page. `.content-fill` already ends where the footer begins, so `flex: 1`
+    is the exact remaining height.
+    """
+    base = (pathlib.Path(__file__).resolve().parents[1] / "dashboard" / "static"
+            / "css" / "base.css").read_text(encoding="utf-8")
+    assert ".content-fill" in base
+    fill = base.split(".content-fill {")[1].split("}")[0]
+    assert "display: flex" in fill and "flex-direction: column" in fill
+
+    desktop = _chat_css().split("@media (max-width: 1100px)")[0]
+    wrapper = desktop.split(".chat-with-rail {")[1].split("}")[0]
+    assert "flex: 1" in wrapper
+    assert "100vh" not in wrapper
+
+
+def test_no_viewport_arithmetic_survives_on_desktop():
+    """
+    The whole point: nothing on the desktop path guesses at chrome sizes.
+
+    Comments are stripped first — the file still *describes* the old
+    `calc(100vh - 176px)` in the note explaining why it went, and a test that
+    cannot tell a rule from the prose about it fails for the wrong reason.
+    """
+    import re as _re
+
+    desktop = _chat_css().split("@media (max-width: 1100px)")[0]
+    declarations = _re.sub(r"/\*.*?\*/", "", desktop, flags=_re.S)
+    assert "100vh" not in declarations
+
+
+def test_both_composer_pages_ask_for_the_fill():
+    templates = pathlib.Path(__file__).resolve().parents[1] / "dashboard" / "templates"
+    for name in ("chat.html", "landing.html"):
+        assert "content-fill" in (templates / name).read_text(encoding="utf-8"), name
+    shell = (templates / "base.html").read_text(encoding="utf-8")
+    assert "{% block content_class %}" in shell
+
+
+def test_the_space_under_the_composer_is_given_to_the_thread():
+    """
+    Forty pixels of content padding below an already-pinned composer is a margin
+    nobody reads, and the footer supplies its own directly underneath.
+    """
+    base = (pathlib.Path(__file__).resolve().parents[1] / "dashboard" / "static"
+            / "css" / "base.css").read_text(encoding="utf-8")
+    assert ".content-fill { padding-bottom: 12px; }" in base
+
+    tight = _chat_css().split("@media (min-width: 1101px)")[1]
+    assert ".content-fill .chat-stage" in tight
+    assert ".content-fill .chat-note" in tight
+
+
+def test_the_tightening_is_desktop_only():
+    """Mobile is sticky and already sits where it should."""
+    base = (pathlib.Path(__file__).resolve().parents[1] / "dashboard" / "static"
+            / "css" / "base.css").read_text(encoding="utf-8")
+    block = base.split(".content-fill { padding-bottom: 12px; }")[0]
+    assert block.rstrip().endswith("@media (min-width: 1101px) {")
+
+
+def test_the_shell_has_a_definite_height_on_conversation_pages():
+    """
+    The bug behind two failed attempts at this. `.app-shell` carries
+    `min-height: 100vh`, which means its height is whatever its content needs —
+    so every `flex: 1` below it was distributing free space in a box that grew.
+    `.chat-thread`'s `overflow-y: auto` had no height to scroll within, the page
+    grew instead, and the composer ended up below the fold.
+
+    A cap on the shell is what turns all of those into real constraints.
+    """
+    base = (pathlib.Path(__file__).resolve().parents[1] / "dashboard" / "static"
+            / "css" / "base.css").read_text(encoding="utf-8")
+
+    assert "body.app-fixed .app-shell { height: 100vh; min-height: 0; }" in base
+    # And the cap has to survive the trip down: a flex item will not shrink
+    # below its content without this, which would undo it one level lower.
+    assert "body.app-fixed .main-col { min-height: 0; }" in base
+    assert "body.app-fixed .content-fill" in base
+
+
+def test_the_cap_is_scoped_to_the_pages_that_want_it():
+    """Every other page keeps a shell that grows with its content."""
+    base = (pathlib.Path(__file__).resolve().parents[1] / "dashboard" / "static"
+            / "css" / "base.css").read_text(encoding="utf-8")
+    assert ".app-shell { display: flex; min-height: 100vh; }" in base   # unchanged default
+
+    templates = pathlib.Path(__file__).resolve().parents[1] / "dashboard" / "templates"
+    assert "{% block body_class %}" in (templates / "base.html").read_text(encoding="utf-8")
+    for name in ("chat.html", "landing.html"):
+        assert "app-fixed" in (templates / name).read_text(encoding="utf-8"), name
+
+
+def test_the_cap_does_not_reach_mobile():
+    """
+    Mobile scrolls the document and sticks the composer; capping the shell there
+    would fight the sticky positioning.
+    """
+    base = (pathlib.Path(__file__).resolve().parents[1] / "dashboard" / "static"
+            / "css" / "base.css").read_text(encoding="utf-8")
+
+    # The media block, from its opening brace to its matching close.
+    start = base.index("@media (min-width: 1101px) {")
+    depth, i = 0, start + len("@media (min-width: 1101px)")
+    while True:
+        if base[i] == "{":
+            depth += 1
+        elif base[i] == "}":
+            depth -= 1
+            if depth == 0:
+                break
+        i += 1
+    block = base[start:i]
+
+    assert "body.app-fixed .app-shell" in block, "the cap escaped its breakpoint"
