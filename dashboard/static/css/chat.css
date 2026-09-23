@@ -9,8 +9,8 @@
 .chat-page {
   display: flex;
   flex-direction: column;
-  height: 100%;
-  min-height: calc(100vh - 190px);
+  flex: 1;
+  min-height: 0;
   max-width: 740px;
   margin: 0 auto;
   width: 100%;
@@ -191,7 +191,6 @@
 .chat-page.is-empty .chat-note { text-align: center; }
 
 @media (max-width: 720px) {
-  .chat-page { min-height: calc(100vh - 160px); }
   .chat-page.is-empty { padding-bottom: 4vh; }
   .chat-msg-user { max-width: 92%; }
   .chat-starters .prompt-chip { white-space: normal; }
@@ -330,9 +329,15 @@
    Without it the answer grew the page, the composer was pushed below the fold,
    and you had to scroll back down to ask the next question — which is the one
    thing a chat must never make you do. */
+/* The height comes from the parent rather than from arithmetic: `.content-fill`
+   already ends where the footer begins, so `flex: 1` here is the exact
+   remaining space. The previous `calc(100vh - 176px)` had to guess the topbar,
+   both paddings and the footer, and it guessed low — which is why the composer
+   floated above the bottom of the page. */
 .chat-with-rail {
   display: flex;
   align-items: stretch;
+  flex: 1;
   /* Centred, not packed to the start. The answer column is capped at its own
      measure, so without this it sat against the left edge of a 1180px row and
      left a hole where the rail would eventually appear — the conversation
@@ -342,8 +347,7 @@
   width: 100%;
   max-width: 1180px;
   margin: 0 auto;
-  height: calc(100vh - 176px);
-  min-height: 420px;
+  min-height: 0;
 }
 
 /* The answer column keeps its own measure; the rail takes a fixed share rather
@@ -356,7 +360,6 @@
   flex: 1;
   min-width: 0;
   min-height: 0;
-  height: 100%;
   margin: 0;
 }
 
@@ -538,8 +541,8 @@
    same fixed-height column /chat uses, and .chat-thread's own flex: 1 and
    overflow-y: auto then do the work in both places. */
 .landing-main.has-conversation {
-  height: 100%;
-  min-height: calc(100vh - 190px);
+  flex: 1;
+  min-height: 0;
   max-width: 740px;
   justify-content: flex-start;
   align-items: stretch;
@@ -550,7 +553,7 @@
 .landing-main.has-conversation .chat-note { text-align: left; }
 
 @media (max-width: 720px) {
-  .landing-main.has-conversation { min-height: calc(100vh - 160px); }
+  .landing-main.has-conversation { min-height: 0; }
 }
 
 
@@ -594,6 +597,10 @@
 }
 
 @media (max-width: 1100px) {
+  /* The document scrolls again below this width; the composer holds its place
+     by sticking rather than by the column having a fixed height. */
+  .content-fill { display: block; }
+
   .chat-with-rail {
     display: block;
     max-width: 740px;
@@ -601,6 +608,7 @@
     min-height: 0;
   }
 
+  .chat-page { display: block; }
   .chat-with-rail > .chat-page,
   .chat-with-rail > .landing-main { height: auto; }
 
@@ -673,4 +681,9 @@
 @media (min-width: 1101px) {
   /* Desktop has a column, so the drawer machinery stays out of the way. */
   .chat-rail-scrim, .chat-rail-launcher { display: none !important; }
+
+  /* The last of the gap under the composer. Scoped to the conversation pages so
+     the allowance line keeps its normal spacing everywhere else it appears. */
+  .content-fill .chat-stage { padding-bottom: 2px; }
+  .content-fill .chat-note { margin-top: 6px; }
 }

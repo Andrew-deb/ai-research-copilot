@@ -12,6 +12,12 @@
   {% endif %}
 {% endblock %}
 
+{# The conversation column measures itself against the space between the
+   topbar and the footer, rather than subtracting a guessed number of
+   pixels from the viewport height. #}
+{% block content_class %}content-fill{% endblock %}
+{% block body_class %}app-fixed{% endblock %}
+
 {% block content %}
 
 {# Shell only. Phase 3.3 wires orchestration and MCP calls into the composer;
