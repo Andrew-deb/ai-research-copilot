@@ -29,7 +29,7 @@ def answering(monkeypatch):
     """A connected agent that answers without touching a model or a server."""
     monkeypatch.setattr(agent_service, "is_connected", lambda: True)
 
-    def fake_ask(question, *, tier, user_id=None, on_event=None):
+    def fake_ask(question, *, tier, user_id=None, on_event=None, usage=None):
         return agent_service.envelope(
             question, answer="Because [1].",
             citations=[{"number": 1, "paper_id": "p1", "title": "A Paper",
