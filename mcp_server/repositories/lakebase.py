@@ -622,9 +622,9 @@ def write_trace(trace: dict) -> None:
         """
         INSERT INTO mcp_traces (
             request_id, session_id, started_at, finished_at, duration_ms,
-            method, path, status_code, user_email, mcp_session_id,
+            method, path, status_code, user_email, user_id, mcp_session_id,
             tool_name, session_result, error_message
-        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
         """,
         (
             trace.get("request_id"),
@@ -636,6 +636,7 @@ def write_trace(trace: dict) -> None:
             trace.get("path"),
             trace.get("status_code", 200),
             trace.get("user_email"),
+            trace.get("user_id"),
             trace.get("mcp_session_id"),
             trace.get("tool_name"),
             json.dumps(trace.get("session_result")) if trace.get("session_result") else None,
