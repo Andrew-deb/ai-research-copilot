@@ -20,13 +20,23 @@ services:
     buildCommand: pip install -r requirements.txt
     # One worker: the free instance is 512 MB / 0.1 CPU. Threads (not processes)
     # give concurrency, and every slow call here is I/O — Postgres, OpenRouter, HF.
+    #
+    # Four threads, but a STREAMED agent turn holds two of them: one for the SSE
+    # response and one for the worker running the turn. So two concurrent
+    # research questions is the real ceiling, and the third visitor waits. That
+    # is acceptable at these quota levels and is the number to revisit first if
+    # the free tier is ever outgrown.
+    #
+    # The timeout is the OUTER limit; AGENT_DEADLINE_SECONDS is the inner one.
+    # dashboard/config.py explains the relationship and warns at boot if the gap
+    # between them is too small to cover synthesis and delivery.
     startCommand: >-
       gunicorn app:app
       --bind 0.0.0.0:$PORT
       --workers 1
       --threads 4
       --worker-class gthread
-      --timeout 120
+      --timeout ${GUNICORN_TIMEOUT_SECONDS:-180}
       --graceful-timeout 30
     envVars:
       - key: PYTHON_VERSION
@@ -68,13 +78,64 @@ services:
       # boot if the dev bypass or the default secret key are still set.
       - key: APP_ENV
         value: production
-      # Anonymous browsing stays OFF until 3.2 ships the capability layer that
-      # stops an anonymous visitor writing. Enabling it before those guards exist
-      # would give every visitor write access to shared data.
+      # ON: the capability layer shipped in 3.2, so an anonymous visitor can
+      # search, ask and browse the curated collections but holds no persistent
+      # capability at all — no library, notes, progress or chat history. That is
+      # the tier the pricing page describes, and leaving this off would make the
+      # deployed product quieter than its own documentation.
+      #
+      # The bill is protected by the GLOBAL ceilings below, not by this flag:
+      # per-visitor limits shape behaviour and reset when someone clears a
+      # cookie, while the global ones cannot be cleared by anybody.
       - key: ALLOW_ANONYMOUS_DEMO
-        value: "false"
+        value: "true"
       # One worker, and Lakebase free tiers are stingy with connections.
       - key: DB_POOL_MAX
         value: "3"
       - key: PYTHONUNBUFFERED
         value: "1"
+
+      # --- Timeouts -------------------------------------------------------
+      # Outer limit, passed to the start command above. Must stay comfortably
+      # above AGENT_DEADLINE_SECONDS; see dashboard/config.py.
+      - key: GUNICORN_TIMEOUT_SECONDS
+        value: "180"
+      # Inner research budget: how long the agent may keep searching before it
+      # must stop and write the answer.
+      - key: AGENT_DEADLINE_SECONDS
+        value: "75"
+      - key: AGENT_MAX_TOOL_CALLS
+        value: "6"
+      - key: AGENT_MAX_TOKENS
+        value: "2400"
+
+      # --- Metering -------------------------------------------------------
+      # Explicit rather than relying on the code default: this is the switch
+      # that decides whether the product has a bill it can survive, and it
+      # should be visible in the deployment rather than inferred.
+      - key: QUOTAS_ENABLED
+        value: "true"
+
+      # PLACEHOLDER VALUES. Phase 3.6 measures real cost per operation from the
+      # ai_operations table and replaces every number here. They are deliberately
+      # stingy so that an un-calibrated deploy is cheap rather than expensive,
+      # and they live here rather than in code so 3.6 changes configuration, not
+      # source.
+      - key: ANON_SEARCH_PER_DAY
+        value: "20"
+      - key: ANON_RAG_PER_DAY
+        value: "3"
+      - key: ANON_AGENT_PER_DAY
+        value: "1"
+      - key: USER_SEARCH_PER_DAY
+        value: "200"
+      - key: USER_RAG_PER_DAY
+        value: "30"
+      - key: USER_AGENT_PER_DAY
+        value: "10"
+      # The ceilings that actually protect the bill. Per-visitor limits reset
+      # when somebody clears a cookie; these do not.
+      - key: GLOBAL_RAG_PER_DAY
+        value: "200"
+      - key: GLOBAL_AGENT_PER_DAY
+        value: "50"
