@@ -2,14 +2,21 @@
 
 from flask import Blueprint, jsonify, render_template, request
 
+import embedding
 import llm_client
 import suggestions
+from config import EMBEDDING_MODEL
 from middleware.capabilities import require_capability, require_quota
 from middleware.auth import current_tier, current_user_id
 from routes.helpers import form_or_json
 from services import quota_service, search_service, telemetry_service
 
 bp = Blueprint("search", __name__)
+
+
+def _embedding_provider() -> str:
+    """Who ran the embedding, in the vocabulary of the ai_operations column."""
+    return "huggingface" if embedding.active_backend() == "hf_api" else "local"
 
 
 @bp.get("/search")
@@ -43,8 +50,13 @@ def semantic_json():
     top_k = request.args.get("top_k", 10, type=int)
     # Measured beside the quota decorator, so the metered event and the measured
     # event are the same event. One embedding call: the query vector.
+    # No model call, so no tokens and no cost — but which backend embedded the
+    # query is still the answer to "what did this cost", and it differs between
+    # a laptop and the deployment.
     with telemetry_service.measure(quota_service.SEMANTIC_SEARCH, current_tier(),
-                                   current_user_id(), embedding_calls=1):
+                                   current_user_id(), embedding_calls=1,
+                                   provider=_embedding_provider(),
+                                   model=EMBEDDING_MODEL):
         return jsonify(search_service.semantic_search(query, top_k=top_k))
 
 
@@ -56,10 +68,15 @@ def rag_ask():
     # One embedding (the question) and one LLM turn (the synthesis). These are
     # the cheap baseline Phase 3.6 compares agent runs against, so they have to
     # be collected even while the agent does not exist.
+    tally = llm_client.Usage()
     with telemetry_service.measure(quota_service.RAG_QUERY, current_tier(),
                                    current_user_id(),
-                                   embedding_calls=1, llm_turns=1):
-        return jsonify(search_service.rag_answer(data["question"]))
+                                   embedding_calls=1, llm_turns=1) as op:
+        try:
+            answer = search_service.rag_answer(data["question"], usage=tally)
+        finally:
+            op.spent(tally)
+    return jsonify(answer)
 
 
 @bp.get("/paper/<paper_id>")
@@ -73,7 +90,9 @@ def paper_detail(paper_id: str):
 def paper_related(paper_id: str):
     """JSON — vector-similar papers, fetched by the detail page after it renders."""
     with telemetry_service.measure(quota_service.SEMANTIC_SEARCH, current_tier(),
-                                   current_user_id(), embedding_calls=1):
+                                   current_user_id(), embedding_calls=1,
+                                   provider=_embedding_provider(),
+                                   model=EMBEDDING_MODEL):
         papers = search_service.get_related_papers(paper_id)
     return jsonify({"related": [
         {
