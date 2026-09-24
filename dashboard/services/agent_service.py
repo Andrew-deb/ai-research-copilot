@@ -621,9 +621,19 @@ def _emit(on_event, **payload) -> None:
 
 
 def ask(question: str, *, tier: str, user_id: str | None = None,
-        on_event=None) -> dict:
+        on_event=None, usage=None) -> dict:
     """
     Answer one research question, running tools as needed.
+
+    `usage` is an optional `llm_client.Usage` belonging to the caller. A turn
+    makes several model calls and the only figure that means anything is their
+    sum, so the caller hands one accumulator down rather than trying to add up
+    return values it never sees. Every exit path stays correct without effort,
+    because the calls fill it as they happen rather than the ending reporting it.
+
+    It is kept out of the envelope on purpose. The envelope is sent to the
+    browser and stored per conversation; what a question cost to serve is the
+    operator's business, not a running readout for every visitor.
 
     Two independent stopping conditions, because they fail differently: a call
     ceiling stops a model looping on itself, and a wall-clock deadline stops a
@@ -693,14 +703,14 @@ def ask(question: str, *, tier: str, user_id: str | None = None,
                 _emit(on_event, type="status", phase="writing")
                 message = llm_client.chat_with_tools(
                     messages, schemas, timeout=_remaining(deadline),
-                    max_tokens=config.AGENT_MAX_TOKENS)
+                    max_tokens=config.AGENT_MAX_TOKENS, usage=usage)
                 state["llm_turns"] += 1
                 state["answer"] = _clean(llm_client.message_text(message))
                 return
 
             message = llm_client.chat_with_tools(
                 messages, schemas, timeout=_remaining(deadline),
-                max_tokens=config.AGENT_MAX_TOKENS)
+                max_tokens=config.AGENT_MAX_TOKENS, usage=usage)
             state["llm_turns"] += 1
             requested = message.get("tool_calls") or []
 
