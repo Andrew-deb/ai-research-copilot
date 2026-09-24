@@ -12,7 +12,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Callable
 
-from middleware.request_context import get_current_user_email
+from middleware.request_context import get_bound_user_id, get_current_user_email
 from repositories import lakebase
 
 logger = logging.getLogger("mcp_trace")
@@ -29,7 +29,11 @@ def trace_tool(tool_name: str) -> Callable:
             session_id = str(uuid.uuid4())
             started_at = datetime.now(timezone.utc)
             t0 = time.perf_counter()
+            # Both accessors are side-effect free. The previous email getter
+            # provisioned the demo user as a side effect of being called, which
+            # rebound the acting id a line before the tool ran.
             user_email = get_current_user_email()
+            user_id = get_bound_user_id()
             
             error_message = None
             result = None
@@ -58,6 +62,10 @@ def trace_tool(tool_name: str) -> Callable:
                     "path": f"/tool/{tool_name}",
                     "status_code": status_code,
                     "user_email": user_email,
+                    # The authoritative identity. The dashboard sends an id and
+                    # no email, so user_email is null for signed-in callers and
+                    # this is the column that answers "who was this for".
+                    "user_id": user_id,
                     "mcp_session_id": session_id,
                     "tool_name": tool_name,
                     "session_result": {
