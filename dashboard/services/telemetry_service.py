@@ -62,6 +62,29 @@ class Operation:
         self.ok = True
         self.error: str | None = None
 
+    def spent(self, usage) -> None:
+        """
+        Copy an `llm_client.Usage` tally onto this operation.
+
+        Duck-typed on purpose: telemetry measures the LLM client, so it must not
+        be the thing the LLM client depends on.
+
+        A tally with no calls in it leaves every field None rather than writing
+        zeros. NULL and 0 are different claims - "no model was called" against
+        "a model was called and cost nothing" - and 3.6 averages this column, so
+        a zero from a request that never reached a provider would pull the mean
+        down and under-price the quota derived from it.
+        """
+        if not getattr(usage, "calls", 0):
+            return
+        self.provider = usage.provider
+        self.model = usage.model
+        self.input_tokens = usage.input_tokens
+        self.output_tokens = usage.output_tokens
+        # Absent rather than zero for the same reason: some providers report no
+        # cost at all, and a free turn is not the same as an unpriced one.
+        self.estimated_cost_usd = usage.estimated_cost_usd or None
+
 
 def record(metric: str, tier: str, latency_ms: int, **fields) -> None:
     """Write one row. Never raises."""
