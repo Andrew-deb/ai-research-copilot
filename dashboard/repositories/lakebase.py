@@ -12,6 +12,7 @@ paginated listing queries optimised for UI rendering.
 import json
 import logging
 import os
+import time
 import threading
 from contextlib import contextmanager
 from typing import Any, Generator
@@ -39,6 +40,27 @@ _POOL_LOCK = threading.Lock()
 _POOL_MIN = int(os.getenv("DB_POOL_MIN", "1"))
 _POOL_MAX = int(os.getenv("DB_POOL_MAX", "8"))
 
+# How many stale connections to step over before giving up and asking the
+# pool for a brand new one. Bounded so a database that is genuinely down
+# fails quickly instead of looping.
+_CHECKOUT_ATTEMPTS = 3
+
+# Only probe a connection that has actually been idle long enough to have been
+# dropped.
+#
+# Measured: the liveness probe is a full round trip to Lakebase — 748 ms from a
+# developer machine, 78% of the cost of an entire query. Paying that on every
+# checkout would make a four-query page three seconds slower to save a failure
+# that happens once per wake.
+#
+# One timestamp for the whole pool rather than one per connection, because that
+# matches the failure: the instance sleeps and every connection is dropped
+# together. A connection killed on its own is rarer and is still caught by the
+# error path below, which discards it and lets the next checkout open a fresh
+# one.
+_IDLE_PROBE_SECONDS = float(os.getenv("DB_IDLE_PROBE_SECONDS", "60"))
+_last_activity = 0.0
+
 
 def _get_pool() -> psycopg2.pool.ThreadedConnectionPool:
     global _POOL
@@ -56,18 +78,70 @@ def _get_pool() -> psycopg2.pool.ThreadedConnectionPool:
     return _POOL
 
 
+def _is_alive(conn) -> bool:
+    """Whether a pooled connection can still be used."""
+    if getattr(conn, "closed", 0):
+        return False
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT 1;")
+        return True
+    except psycopg2.Error:
+        return False
+
+
+def _checkout(pool):
+    """
+    A connection that is actually alive.
+
+    Render's free instance sleeps after about fifteen minutes and Lakebase drops
+    the idle connections while it is away. The pool does not know that: it hands
+    back a socket that looks fine and fails on first use. Without this, the FIRST
+    request after every wake returns an error page, discards the dead connection,
+    and only then recovers — so on a free tier the broken case is the normal
+    case, not an edge one.
+
+    Probed only after a quiet spell. A busy app has been talking to the database
+    continuously and its connections cannot have been dropped underneath it, so
+    it pays nothing; an app waking from sleep pays one round trip to avoid
+    serving an error.
+    """
+    if time.monotonic() - _last_activity < _IDLE_PROBE_SECONDS:
+        return pool.getconn()
+
+    for _ in range(_CHECKOUT_ATTEMPTS):
+        conn = pool.getconn()
+        if _is_alive(conn):
+            return conn
+        # Discard rather than return it: a dead connection put back is one the
+        # next caller inherits.
+        logger.info("Discarding a stale pooled connection")
+        try:
+            pool.putconn(conn, close=True)
+        except psycopg2.pool.PoolError:
+            pass
+    # Every one in the pool was stale — which happens when the whole pool went
+    # to sleep together. The next getconn opens a fresh socket.
+    return pool.getconn()
+
+
 @contextmanager
 def get_connection() -> Generator[psycopg2.extensions.connection, None, None]:
     """
     Yield a pooled psycopg2 connection; commit on success, roll back on error,
     and return it to the pool (discarding it if it broke).
     """
+    global _last_activity
+
     pool = _get_pool()
-    conn = pool.getconn()
+    conn = _checkout(pool)
     broken = False
     try:
         yield conn
         conn.commit()
+        # Recorded on success only: a failed call tells us nothing reassuring
+        # about the connection, and is exactly when the next one should check.
+        _last_activity = time.monotonic()
     except Exception:
         broken = getattr(conn, "closed", 0) != 0
         if not broken:
