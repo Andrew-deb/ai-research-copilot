@@ -24,6 +24,7 @@ import threading
 from flask import (Blueprint, Response, abort, jsonify, redirect,
                    render_template, request, stream_with_context, url_for)
 
+import llm_client
 import suggestions
 from exceptions import ResearchCopilotError
 from middleware.auth import current_tier, current_user_id
@@ -212,13 +213,27 @@ def _wants_stream() -> bool:
 
 
 def _run_turn(question: str, tier: str, user_id: str | None, on_event=None) -> dict:
-    """One measured turn. Shared by the JSON and streaming paths."""
+    """
+    One measured turn. Shared by the JSON and streaming paths.
+
+    The tally is created here and filled by the model calls inside, so it is
+    complete even when `ask` returns a not_connected envelope after spending a
+    turn or two. Assigned before the `with` block closes, because that is where
+    the row is written.
+    """
+    tally = llm_client.Usage()
     with telemetry_service.measure(quota_service.AGENT_QUERY, tier, user_id) as op:
-        result = agent_service.ask(question, tier=tier, user_id=user_id,
-                                   on_event=on_event)
-        op.llm_turns = result["usage"]["llm_turns"]
-        op.tool_calls = result["usage"]["tool_calls"]
-        op.embedding_calls = result["usage"]["embedding_calls"]
+        try:
+            result = agent_service.ask(question, tier=tier, user_id=user_id,
+                                       on_event=on_event, usage=tally)
+            op.llm_turns = result["usage"]["llm_turns"]
+            op.tool_calls = result["usage"]["tool_calls"]
+            op.embedding_calls = result["usage"]["embedding_calls"]
+        finally:
+            # In a finally: a turn that raises still burned tokens, and an
+            # expensive failure is the one measurement 3.6 can least afford to
+            # be missing when it sets a ceiling.
+            op.spent(tally)
     return result
 
 
