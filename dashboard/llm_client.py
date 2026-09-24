@@ -27,12 +27,74 @@ _HEADERS_EXTRA = {
 }
 
 
+class Usage:
+    """
+    What a set of LLM calls cost, summed across the turns of one operation.
+
+    A sink passed down rather than a value returned. `chat_with_tools` has to
+    return the assistant message verbatim - the caller appends it to the message
+    list unchanged - and one agent turn makes several calls whose cost only
+    means anything added up. An accumulator keeps both properties.
+
+    Not a module global and not a thread-local: a streamed turn runs on a worker
+    thread the server reuses, and a tally left behind on one is the last
+    visitor's spend attributed to this one. Passed explicitly, it cannot outlive
+    the operation that made it.
+    """
+
+    __slots__ = ("input_tokens", "output_tokens", "estimated_cost_usd",
+                 "provider", "model", "calls")
+
+    def __init__(self) -> None:
+        self.input_tokens = 0
+        self.output_tokens = 0
+        self.estimated_cost_usd = 0.0
+        self.provider: str | None = None
+        self.model: str | None = None
+        self.calls = 0
+
+    def add(self, body: dict) -> None:
+        """
+        Fold one OpenRouter response into the running total.
+
+        Never raises. A measurement that fails is a gap in a calibration sample;
+        an exception here would cost the visitor the answer they already spent
+        their allowance on, which is the trade telemetry_service refuses to make
+        and this has to refuse for the same reason.
+        """
+        try:
+            self.calls += 1
+            self.provider = "openrouter"
+            # Which model ANSWERED, not which was asked for: OpenRouter picks a
+            # provider and can fall back to a different one mid-conversation, so
+            # the request's model name is a hope and this is the fact.
+            self.model = body.get("model") or self.model
+
+            usage = body.get("usage") or {}
+            self.input_tokens += int(usage.get("prompt_tokens") or 0)
+            # completion_tokens already counts reasoning tokens, which matters
+            # here more than usual: the configured model routinely puts a whole
+            # answer in `reasoning` rather than `content` (see message_text).
+            self.output_tokens += int(usage.get("completion_tokens") or 0)
+
+            # Credits, which OpenRouter denominates 1:1 with USD. Absent on some
+            # providers, so a missing cost stays absent rather than becoming a
+            # zero that would quietly drag a calibration average down.
+            cost = usage.get("cost")
+            if cost is not None:
+                self.estimated_cost_usd += float(cost)
+        except (AttributeError, TypeError, ValueError):
+            logger.debug("Unreadable usage block in an OpenRouter response",
+                         exc_info=True)
+
+
 def is_available() -> bool:
     """True when an API key is configured — routes use this to hide RAG UI gracefully."""
     return bool(OPENROUTER_API_KEY)
 
 
-def _post(payload: dict, timeout: float | None = None) -> dict:
+def _post(payload: dict, timeout: float | None = None,
+          usage: Usage | None = None) -> dict:
     """
     One OpenRouter call. Raises ExternalAPIError on anything that is not a 2xx.
 
@@ -62,6 +124,12 @@ def _post(payload: dict, timeout: float | None = None) -> dict:
         raise ExternalAPIError(f"LLM request failed: {exc}") from exc
 
     body = resp.json()
+    # Counted before the error check: a 200 carrying an error object can still
+    # have burned input tokens, and an operation that failed expensively is
+    # exactly the one calibration must not miss.
+    if usage is not None:
+        usage.add(body)
+
     # OpenRouter can answer 200 with an error object in the body — a provider
     # rate limit arrives this way, so a status check alone misses it.
     if "error" in body:
@@ -87,7 +155,8 @@ def message_text(message: dict) -> str:
 
 def chat_with_tools(messages: list[dict], tools: list[dict],
                     temperature: float = 0.2, max_tokens: int = 1024,
-                    timeout: float | None = None) -> dict:
+                    timeout: float | None = None,
+                    usage: Usage | None = None) -> dict:
     """
     One turn of a tool-calling conversation. Returns the raw assistant message.
 
@@ -104,7 +173,7 @@ def chat_with_tools(messages: list[dict], tools: list[dict],
     if tools:
         payload["tools"] = tools
 
-    body = _post(payload, timeout=timeout)
+    body = _post(payload, timeout=timeout, usage=usage)
     try:
         return body["choices"][0]["message"]
     except (KeyError, IndexError) as exc:
@@ -112,7 +181,8 @@ def chat_with_tools(messages: list[dict], tools: list[dict],
         raise ExternalAPIError("LLM returned an unexpected response format.") from exc
 
 
-def chat(system_prompt: str, user_prompt: str, temperature: float = 0.2, max_tokens: int = 1024) -> str:
+def chat(system_prompt: str, user_prompt: str, temperature: float = 0.2,
+         max_tokens: int = 1024, usage: Usage | None = None) -> str:
     """
     Send a two-message conversation to OpenRouter and return the assistant text.
 
@@ -129,7 +199,7 @@ def chat(system_prompt: str, user_prompt: str, temperature: float = 0.2, max_tok
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ],
-    })
+    }, usage=usage)
 
     try:
         message = body["choices"][0]["message"]
