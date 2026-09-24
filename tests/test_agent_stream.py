@@ -43,7 +43,7 @@ def wired(monkeypatch):
 
     monkeypatch.setattr(agent_service, "is_connected", lambda: True)
 
-    def fake_ask(question, *, tier, user_id=None, on_event=None):
+    def fake_ask(question, *, tier, user_id=None, on_event=None, usage=None):
         if on_event:
             on_event({"type": "status", "phase": "thinking"})
             on_event({"type": "tool_start", "name": "search_papers",
@@ -203,7 +203,7 @@ def test_a_failure_mid_turn_is_reported_as_an_event(anon_client, db, monkeypatch
 
     monkeypatch.setattr(agent_service, "is_connected", lambda: True)
 
-    def explode(question, *, tier, user_id=None, on_event=None):
+    def explode(question, *, tier, user_id=None, on_event=None, usage=None):
         if on_event:
             on_event({"type": "status", "phase": "thinking"})
         raise ExternalAPIError("The research service is not running right now.")
@@ -223,7 +223,7 @@ def test_the_turn_is_metered_even_when_it_fails(anon_client, db, monkeypatch):
     and calibration needs the row."""
     monkeypatch.setattr(agent_service, "is_connected", lambda: True)
 
-    def explode(question, *, tier, user_id=None, on_event=None):
+    def explode(question, *, tier, user_id=None, on_event=None, usage=None):
         raise RuntimeError("provider exploded")
 
     monkeypatch.setattr(agent_service, "ask", explode)
