@@ -107,7 +107,34 @@ MCP_TIMEOUT_SECONDS: int = int(os.getenv("MCP_TIMEOUT_SECONDS", "30"))
 # gunicorn's own timeout and returning nothing at all. Whichever trips first
 # ends the turn, and telemetry records which one did.
 AGENT_MAX_TOOL_CALLS: int = int(os.getenv("AGENT_MAX_TOOL_CALLS", "6"))
+
+# --- The two timeouts, and why they are two --------------------------------
+#
+#   AGENT_DEADLINE_SECONDS     the inner, application budget for research
+#   GUNICORN_TIMEOUT_SECONDS   the outer, infrastructure limit on the request
+#
+# They are not alternatives and neither should be tuned alone. The agent's
+# deadline stops it searching forever; the web server's timeout is the backstop
+# for a request that has gone wrong in some way the agent cannot see. The outer
+# one must stay comfortably above the inner one, because the deadline bounds the
+# SEARCH phase only — after it expires a turn still has to run a final synthesis
+# call, assemble citations, and stream the answer out. Measured turns finished
+# between 90 and 122 seconds against a 75-second deadline, which is exactly that
+# gap in practice.
+#
+# Set too close together, a perfectly good long answer is killed mid-stream and
+# the person sees nothing at all, which is worse than a slow answer.
+#
+# Both come from the environment so they can move with the hosting plan, the
+# model, or the size of the corpus without a code change. render.yaml passes
+# GUNICORN_TIMEOUT_SECONDS to the start command and sets it here too, so the
+# check below is comparing the number the server actually used.
 AGENT_DEADLINE_SECONDS: int = int(os.getenv("AGENT_DEADLINE_SECONDS", "75"))
+GUNICORN_TIMEOUT_SECONDS: int = int(os.getenv("GUNICORN_TIMEOUT_SECONDS", "180"))
+
+# Room for MCP session overhead, the final synthesis call, citation resolution
+# and delivering the response after the search budget is spent.
+AGENT_TIMEOUT_HEADROOM_SECONDS: int = 60
 
 # Raised from the 1024 default after a live answer was cut off mid-sentence:
 # "...it is difficult to systematically characterize *when* and *why* agents
@@ -244,6 +271,17 @@ if not DATABASE_URL:
     logger.warning("DATABASE_URL not set — database operations will fail.")
 if not OPENROUTER_API_KEY:
     logger.warning("OPENROUTER_API_KEY not set — RAG summaries will be unavailable.")
+_timeout_margin = GUNICORN_TIMEOUT_SECONDS - AGENT_DEADLINE_SECONDS
+if _timeout_margin < AGENT_TIMEOUT_HEADROOM_SECONDS:
+    logger.warning(
+        "GUNICORN_TIMEOUT_SECONDS (%ds) leaves only %ds above "
+        "AGENT_DEADLINE_SECONDS (%ds); %ds is the minimum that reliably covers "
+        "MCP overhead, final synthesis, citation assembly and delivery. A long "
+        "answer may be killed mid-stream.",
+        GUNICORN_TIMEOUT_SECONDS, _timeout_margin, AGENT_DEADLINE_SECONDS,
+        AGENT_TIMEOUT_HEADROOM_SECONDS,
+    )
+
 if not IS_PRODUCTION and ALLOW_DEV_USER_BYPASS:
     logger.warning(
         "ALLOW_DEV_USER_BYPASS is on — every request resolves to %s without "
