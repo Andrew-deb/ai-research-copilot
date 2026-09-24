@@ -113,8 +113,19 @@ def semantic_search(query: str, top_k: int = 10) -> dict:
 # RAG — retrieval-augmented synthesis
 # =============================================================================
 
-def rag_answer(query: str, top_k: int = 6) -> dict:
-    """Vector-retrieve supporting chunks, then ask the LLM to synthesise a cited answer."""
+def rag_answer(query: str, top_k: int = 6, usage=None) -> dict:
+    """
+    Vector-retrieve supporting chunks, then ask the LLM to synthesise a cited
+    answer.
+
+    `usage` is an optional `llm_client.Usage` the caller reads afterwards. It is
+    a parameter rather than part of the returned dict because that dict is the
+    JSON the browser receives, and cost belongs in ai_operations, not in a
+    response body.
+
+    The early return above the LLM call leaves the tally empty, which is the
+    honest record: no model was asked, so nothing was spent.
+    """
     if not query or not query.strip():
         raise ValidationError("Question cannot be empty.")
 
@@ -140,7 +151,7 @@ def rag_answer(query: str, top_k: int = 6) -> dict:
         })
 
     user_prompt = f"Question: {query.strip()}\n\nSources:\n" + "\n\n".join(context_blocks)
-    answer = llm_client.chat(_RAG_SYSTEM_PROMPT, user_prompt)
+    answer = llm_client.chat(_RAG_SYSTEM_PROMPT, user_prompt, usage=usage)
 
     return {"query": query.strip(), "answer": answer, "sources": sources}
 
