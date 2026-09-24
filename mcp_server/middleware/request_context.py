@@ -83,10 +83,35 @@ def require_current_user_id() -> str:
     return uid
 
 
-def get_current_user_email() -> str:
-    """Get current user email from contextvar."""
-    email = _current_user_email.get()
-    if not email:
-        set_current_user(DEFAULT_USER_EMAIL, "Demo Researcher")
-        return DEFAULT_USER_EMAIL
-    return email
+def get_bound_user_id() -> Optional[str]:
+    """
+    The acting user id, or None. No fallback, no database, no side effects.
+
+    What telemetry should read. The difference from get_current_user_id is that
+    this one cannot change the answer to the question it is asked - see the note
+    on get_current_user_email for what that cost.
+    """
+    return _current_user_id.get()
+
+
+def get_current_user_email() -> Optional[str]:
+    """
+    The acting user's email, or None when only an id is bound.
+
+    THIS FUNCTION USED TO PROVISION. When no email was set it called
+    set_current_user(DEFAULT_USER_EMAIL), which resolves the demo account and
+    writes its id into _current_user_id - so merely *asking* who was acting
+    replaced the answer with the demo user.
+
+    That is not a hypothetical. IdentityMiddleware binds an id and sets the
+    email to None, which is exactly the branch that provisioned; and
+    trace_middleware read this one line before running the tool. Every traced
+    call therefore executed as the demo user, and mcp_traces recorded
+    demo@research-copilot.dev for all of them - the trace table was not showing
+    the symptom, it was writing the cause.
+
+    None rather than the demo address when an id is bound and no email is: the
+    dashboard sends an id and no email, and naming the demo user there would be
+    a trace that says a signed-in person's work was done by somebody else.
+    """
+    return _current_user_email.get()
