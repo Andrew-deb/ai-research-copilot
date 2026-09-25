@@ -11,10 +11,10 @@
 
 services:
   - type: web
-    name: research-copilot-dashboard
+    name: alfred
     runtime: python
     plan: free
-    rootDir: dashboard          # dashboard/ is the import root — imports are flat
+    rootDir: dashboard # dashboard/ is the import root — imports are flat
     region: oregon
     healthCheckPath: /healthz
     buildCommand: pip install -r requirements.txt
@@ -78,6 +78,14 @@ services:
       # boot if the dev bypass or the default secret key are still set.
       - key: APP_ENV
         value: production
+
+      # One proxy in front: Render terminates TLS and forwards plain HTTP. Without
+      # this the app builds its Google callback as http://, which Google refuses
+      # for any host but localhost - so sign-in works locally and fails here with
+      # redirect_uri_mismatch. See dashboard/config.py for why it is a count
+      # rather than a production-only branch.
+      - key: TRUSTED_PROXY_HOPS
+        value: "1"
       # ON: the capability layer shipped in 3.2, so an anonymous visitor can
       # search, ask and browse the curated collections but holds no persistent
       # capability at all — no library, notes, progress or chat history. That is
