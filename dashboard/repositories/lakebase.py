@@ -194,6 +194,23 @@ def get_user_by_id(user_id: str) -> dict | None:
     return rows[0] if rows else None
 
 
+def get_user_by_email(email: str) -> dict | None:
+    """
+    The account holding an address, if any.
+
+    Used only to LINK a pre-OAuth account to a provider identity - never to
+    authenticate. auth_service checks provider_subject before trusting the match,
+    because an email address can be reassigned and "whoever presents this address"
+    is not an identity.
+
+    Case-insensitive: Google may return `Name@Gmail.com` where the row was created
+    as `name@gmail.com`, and a case-sensitive miss would silently create a second
+    account rather than linking the existing one.
+    """
+    rows = run_query("SELECT * FROM users WHERE lower(email) = lower(%s);", (email,))
+    return rows[0] if rows else None
+
+
 def get_user_by_provider(provider: str, subject: str) -> dict | None:
     """The account behind a provider identity. This is the real identity key."""
     rows = run_query(
