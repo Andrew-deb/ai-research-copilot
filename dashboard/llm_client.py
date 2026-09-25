@@ -11,6 +11,7 @@ one code path. The model is whatever OPENROUTER_MODEL names — the original
 """
 
 import logging
+import time
 
 import requests
 
@@ -111,19 +112,42 @@ def _post(payload: dict, timeout: float | None = None,
     if not OPENROUTER_API_KEY:
         raise ExternalAPIError("OPENROUTER_API_KEY is not configured.")
 
+    effective_timeout = timeout or _TIMEOUT_SECONDS
+    started = time.monotonic()
+    logger.info(
+        "OpenRouter request start model=%s timeout=%.1fs messages=%d tools=%d",
+        OPENROUTER_MODEL,
+        effective_timeout,
+        len(payload.get("messages") or []),
+        len(payload.get("tools") or []),
+    )
+
     try:
         resp = requests.post(
             f"{OPENROUTER_BASE_URL}/chat/completions",
             headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}", **_HEADERS_EXTRA},
             json={"model": OPENROUTER_MODEL, **payload},
-            timeout=timeout or _TIMEOUT_SECONDS,
+            timeout=effective_timeout,
         )
         resp.raise_for_status()
     except requests.RequestException as exc:
-        logger.error("OpenRouter request failed: %s", exc)
+        elapsed = time.monotonic() - started
+        logger.error("OpenRouter request failed after %.2fs: %s", elapsed, exc)
         raise ExternalAPIError(f"LLM request failed: {exc}") from exc
 
     body = resp.json()
+    elapsed = time.monotonic() - started
+    response_usage = body.get("usage") or {}
+    logger.info(
+        "OpenRouter response model=%s status=%s elapsed=%.2fs prompt_tokens=%s "
+        "completion_tokens=%s tool_calls=%d",
+        body.get("model") or OPENROUTER_MODEL,
+        resp.status_code,
+        elapsed,
+        response_usage.get("prompt_tokens"),
+        response_usage.get("completion_tokens"),
+        len(((body.get("choices") or [{}])[0].get("message") or {}).get("tool_calls") or []),
+    )
     # Counted before the error check: a 200 carrying an error object can still
     # have burned input tokens, and an operation that failed expensively is
     # exactly the one calibration must not miss.
