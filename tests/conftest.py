@@ -67,6 +67,11 @@ def _now():
     return datetime.datetime(2026, 1, 1, 12, 0, 0, tzinfo=datetime.timezone.utc)
 
 
+# Methods that exist only to set a test up, with no counterpart in the real
+# repository. Anything else FakeDB defines must exist on lakebase too.
+FAKE_ONLY_HELPERS = frozenset({"seed_paper"})
+
+
 class FakeDB:
     """Minimal in-memory implementation of the repository surface the app uses."""
 
@@ -441,10 +446,14 @@ def db(monkeypatch):
     """In-memory repository + stubbed embedding/LLM. Returns the FakeDB instance."""
     fake = FakeDB()
     for name in dir(FakeDB):
-        if name.startswith("_") or name == "seed_paper":
+        if name.startswith("_") or name in FAKE_ONLY_HELPERS:
             continue
-        if hasattr(lakebase_module, name):
-            monkeypatch.setattr(lakebase_module, name, getattr(fake, name))
+        # No `if hasattr` guard, and no raising=False. A FakeDB method the real
+        # module does not have used to be skipped in silence, so the suite
+        # exercised a repository the application did not possess - which is how
+        # `get_user_by_email` stayed missing through 517 green tests and crashed
+        # on the first real Google sign-in. Now that drift fails here, loudly.
+        monkeypatch.setattr(lakebase_module, name, getattr(fake, name))
 
     monkeypatch.setattr(embedding_module, "encode_query",
                         lambda text: [0.0] * EMBEDDING_DIMENSION)
