@@ -28,5 +28,22 @@ Flask-WTF>=1.2.0
 # dependencies (httpx, pydantic, anyio) are small — no torch-scale surprise for
 # the 512 MB instance.
 #
-# Floor is the version verified locally against the deployed server.
-mcp>=1.29.0
+# Bounded at both ends, and the ceiling is the load-bearing half.
+#
+# This file had no upper bound, so a Render rebuild picked up 2.2.0 and the agent
+# died on import:
+#
+#   ImportError: cannot import name 'streamablehttp_client'
+#                from 'mcp.client.streamable_http'
+#
+# 1.30.0 deprecated `streamablehttp_client` in favour of `streamable_http_client`
+# and 2.0 deleted it. 2.x also moves onto httpx2, a different HTTP stack, which
+# is not a dependency change to make by accident on a 512 MB instance.
+#
+# Nothing was wrong with the code and nothing had been committed - the deployed
+# environment simply drifted away from the local one between two builds. An
+# unbounded requirement means the next rebuild is a version bump nobody chose.
+#
+# mcp_server/requirements.txt carries the same ceiling, so both halves of the
+# protocol move together and deliberately.
+mcp>=1.29.0,<2.0.0
