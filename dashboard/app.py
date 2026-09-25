@@ -29,6 +29,7 @@ import datetime
 
 from flask import Flask
 from flask_wtf.csrf import CSRFProtect
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 import embedding
 from config import (
@@ -39,6 +40,7 @@ from config import (
     SESSION_COOKIE_SAMESITE,
     SESSION_COOKIE_SECURE,
     SESSION_LIFETIME_DAYS,
+    TRUSTED_PROXY_HOPS,
 )
 from middleware.auth import register_auth
 from middleware.capabilities import register_capabilities
@@ -77,6 +79,20 @@ def create_app() -> Flask:
     # cross-site form POST, but it is one mitigation rather than a control, so
     # every state-changing request carries a token as well.
     CSRFProtect(app)
+
+    # Applied in every environment, with TRUSTED_PROXY_HOPS deciding how much of
+    # the forwarded headers to believe - 0 locally, where it is a pass-through,
+    # and 1 on Render. Every count is named explicitly: ProxyFix defaults x_for
+    # and x_proto to 1, so leaving one out would silently trust a header nobody
+    # had thought about.
+    app.wsgi_app = ProxyFix(
+        app.wsgi_app,
+        x_for=TRUSTED_PROXY_HOPS,
+        x_proto=TRUSTED_PROXY_HOPS,
+        x_host=TRUSTED_PROXY_HOPS,
+        x_port=0,
+        x_prefix=0,
+    )
 
     init_oauth(app)
     register_auth(app)
