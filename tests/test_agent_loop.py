@@ -748,6 +748,24 @@ def test_each_call_is_bounded_by_what_is_left_of_the_budget(wired, monkeypatch):
     assert all(t <= 40 for t in seen), seen
 
 
+def test_planner_call_preserves_the_synthesis_reserve(wired, monkeypatch):
+    """A research/planning call must not be allowed to consume the final-answer reserve."""
+    seen = []
+
+    def capture(messages, tools, **kwargs):
+        seen.append(kwargs.get("timeout"))
+        return {"content": "Done."}
+
+    monkeypatch.setattr(agent_service.llm_client, "chat_with_tools", capture)
+    monkeypatch.setattr(agent_service.config, "AGENT_DEADLINE_SECONDS", 40)
+    monkeypatch.setattr(agent_service, "SYNTHESIS_RESERVE_SECONDS", 20)
+
+    agent_service.ask("q", tier="anonymous")
+
+    assert seen, "no planner call was made"
+    assert seen[0] <= 20.1, seen
+
+
 def test_a_call_is_never_given_an_impossible_deadline(wired, monkeypatch):
     """
     With the budget already spent, the final synthesis turn still needs long
