@@ -786,6 +786,30 @@ def test_a_call_is_never_given_an_impossible_deadline(wired, monkeypatch):
     assert seen == [agent_service.MIN_CALL_SECONDS]
 
 
+def test_openrouter_http_error_keeps_provider_detail(monkeypatch, caplog):
+    """A non-2xx response must expose OpenRouter's diagnostic body, not just
+    requests' generic '404 Not Found' text."""
+    import llm_client
+    from exceptions import ExternalAPIError
+
+    class FakeResponse:
+        status_code = 404
+        text = '{"error":{"message":"No endpoints found for this model"}}'
+
+        def json(self):
+            return {"error": {"message": "No endpoints found for this model"}}
+
+    monkeypatch.setattr(llm_client.requests, "post", lambda *a, **k: FakeResponse())
+    monkeypatch.setattr(llm_client, "OPENROUTER_API_KEY", "test-key")
+
+    with pytest.raises(ExternalAPIError) as excinfo:
+        llm_client.chat_with_tools([{"role": "user", "content": "hi"}], [])
+
+    assert "404" in str(excinfo.value)
+    assert "No endpoints found for this model" in str(excinfo.value)
+    assert "OpenRouter request rejected" in caplog.text
+
+
 def test_the_llm_client_honours_a_caller_supplied_timeout(monkeypatch):
     """The plumbing, at the far end: what the loop hands down has to reach
     requests, or the bound is decorative."""

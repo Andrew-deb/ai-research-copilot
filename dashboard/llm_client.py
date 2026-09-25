@@ -129,14 +129,55 @@ def _post(payload: dict, timeout: float | None = None,
             json={"model": OPENROUTER_MODEL, **payload},
             timeout=effective_timeout,
         )
-        resp.raise_for_status()
     except requests.RequestException as exc:
         elapsed = time.monotonic() - started
         logger.error("OpenRouter request failed after %.2fs: %s", elapsed, exc)
         raise ExternalAPIError(f"LLM request failed: {exc}") from exc
 
-    body = resp.json()
     elapsed = time.monotonic() - started
+
+    # Read the provider body BEFORE classifying an HTTP error. OpenRouter often
+    # explains a routing/model failure in JSON, and calling raise_for_status()
+    # first reduced a useful error such as "no endpoints found" to a generic
+    # "404 Not Found", which hid the actual production failure.
+    try:
+        body = resp.json()
+    except ValueError:
+        body = None
+
+    if resp.status_code >= 400:
+        if isinstance(body, dict):
+            detail = body.get("error") or body
+        else:
+            detail = (getattr(resp, "text", "") or "").strip() or "<empty response body>"
+
+        detail_text = str(detail)
+        logger.error(
+            "OpenRouter request rejected status=%s elapsed=%.2fs model=%s body=%s",
+            resp.status_code,
+            elapsed,
+            OPENROUTER_MODEL,
+            detail_text[:500],
+        )
+
+        # A rejected request may still report usage. Keep it in calibration
+        # telemetry if OpenRouter supplied it, just as we do for HTTP 200 error
+        # bodies below.
+        if usage is not None and isinstance(body, dict):
+            usage.add(body)
+
+        raise ExternalAPIError(
+            f"LLM request failed ({resp.status_code}): {detail_text[:200]}"
+        )
+
+    if not isinstance(body, dict):
+        logger.error(
+            "OpenRouter returned non-JSON success status=%s elapsed=%.2fs",
+            resp.status_code,
+            elapsed,
+        )
+        raise ExternalAPIError("LLM returned an unexpected response format.")
+
     response_usage = body.get("usage") or {}
     logger.info(
         "OpenRouter response model=%s status=%s elapsed=%.2fs prompt_tokens=%s "
