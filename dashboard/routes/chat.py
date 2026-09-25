@@ -42,6 +42,11 @@ bp = Blueprint("chat", __name__)
 # something enormous.
 MAX_CARRIED_PROMPT = 500
 
+# Keep a streaming response visibly alive while an upstream provider is quiet.
+# This is an SSE comment rather than a UI event, so browsers/proxies see bytes
+# but the chat trace does not gain fake progress steps.
+SSE_HEARTBEAT_SECONDS = 15
+
 
 def carried_prompt() -> str:
     """
@@ -293,7 +298,11 @@ def _stream_turn(question: str, tier: str, user_id: str | None,
     yield _sse({"type": "status", "phase": "thinking"})
 
     while True:
-        event = events.get()
+        try:
+            event = events.get(timeout=SSE_HEARTBEAT_SECONDS)
+        except queue.Empty:
+            yield ": keep-alive\n\n"
+            continue
         if event is None:
             break
         yield _sse(event)

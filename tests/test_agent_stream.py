@@ -17,6 +17,7 @@ What matters here, and what these pin:
 """
 
 import json
+import time
 
 import pytest
 
@@ -104,6 +105,27 @@ def test_the_final_event_carries_the_whole_envelope(anon_client, db, wired):
     assert result["answer"] == "Answered [1]."
     assert result["citations"][0]["title"] == "A Paper"
     assert result["usage"]["llm_turns"] == 2
+
+
+def test_stream_sends_keepalive_while_provider_is_quiet(
+        anon_client, db, monkeypatch):
+    """A quiet upstream call must not leave the SSE connection byte-silent."""
+    from routes import chat as chat_route
+
+    monkeypatch.setattr(agent_service, "is_connected", lambda: True)
+    monkeypatch.setattr(chat_route, "SSE_HEARTBEAT_SECONDS", 0.01)
+
+    def slow_ask(question, *, tier, user_id=None, on_event=None, usage=None):
+        time.sleep(0.04)
+        return agent_service.envelope(question, answer="Eventually answered.")
+
+    monkeypatch.setattr(agent_service, "ask", slow_ask)
+
+    resp = anon_client.post("/chat/ask", json={"question": "why?"}, headers=SSE)
+    body = resp.get_data(as_text=True)
+
+    assert ": keep-alive\n\n" in body
+    assert '"type": "done"' in body
 
 
 def test_buffering_is_disabled_on_the_response(anon_client, db, wired):

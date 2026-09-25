@@ -339,9 +339,16 @@ MIN_CALL_SECONDS = 10
 
 
 def _remaining(deadline: float) -> float:
-    """What is left of the turn's budget, with a floor so a call is never
-    given an impossible deadline just because time is nearly up."""
+    """What is left of the whole turn budget for final synthesis."""
     return max(MIN_CALL_SECONDS, deadline - time.monotonic())
+
+
+def _research_remaining(deadline: float) -> float:
+    """Time a planning/research call may use without consuming synthesis reserve."""
+    return max(
+        MIN_CALL_SECONDS,
+        deadline - SYNTHESIS_RESERVE_SECONDS - time.monotonic(),
+    )
 
 
 _TOOL_XML = re.compile(r"<tool_call>.*?(?:</tool_call>|$)", re.DOTALL)
@@ -643,6 +650,8 @@ def ask(question: str, *, tier: str, user_id: str | None = None,
     more than an error page.
     """
     cleaned = validate_question(question)
+    turn_started = time.monotonic()
+    logger.info("Agent turn start tier=%s user_bound=%s", tier, bool(user_id))
 
     _emit(on_event, type="status", phase="thinking")
 
@@ -659,6 +668,7 @@ def ask(question: str, *, tier: str, user_id: str | None = None,
     # dependency being unavailable must degrade the feature, not 500 the page.
     try:
         schemas = _tool_schemas(tier)
+        logger.info("Agent tool schemas loaded count=%d", len(schemas))
     except ExternalAPIError as exc:
         logger.error("Could not load tool schemas: %s", exc)
         return envelope(cleaned, status=STATUS_NOT_CONNECTED, message=str(exc))
@@ -708,11 +718,20 @@ def ask(question: str, *, tier: str, user_id: str | None = None,
                 state["answer"] = _clean(llm_client.message_text(message))
                 return
 
+            planner_timeout = _research_remaining(deadline)
+            logger.info(
+                "Agent planner start turn=%d timeout=%.1fs tools_seen=%d",
+                state["llm_turns"] + 1, planner_timeout, len(schemas),
+            )
             message = llm_client.chat_with_tools(
-                messages, schemas, timeout=_remaining(deadline),
+                messages, schemas, timeout=planner_timeout,
                 max_tokens=config.AGENT_MAX_TOKENS, usage=usage)
             state["llm_turns"] += 1
             requested = message.get("tool_calls") or []
+            logger.info(
+                "Agent planner complete turn=%d requested_tools=%d",
+                state["llm_turns"], len(requested),
+            )
 
             if not requested:
                 _emit(on_event, type="status", phase="writing")
@@ -736,6 +755,8 @@ def ask(question: str, *, tier: str, user_id: str | None = None,
                 record = {"name": name, "arguments": arguments, "ok": True, "error": None}
                 _emit(on_event, type="tool_start", name=name, arguments=arguments)
                 before = len(found)
+                tool_started = time.monotonic()
+                logger.info("Agent tool start name=%s", name)
                 try:
                     ensure_callable(tier, name)
                     result = call_tool(name, arguments)
@@ -746,8 +767,16 @@ def ask(question: str, *, tier: str, user_id: str | None = None,
                     content = json.dumps(_evidence(result), default=str)[:MAX_TOOL_RESULT_CHARS]
                     _emit(on_event, type="tool_end", name=name, ok=True,
                           found=len(found) - before, label=_result_label(result))
+                    logger.info(
+                        "Agent tool complete name=%s ok=true elapsed=%.2fs found=%d",
+                        name, time.monotonic() - tool_started, len(found) - before,
+                    )
                 except CapabilityDeniedError as exc:
                     _emit(on_event, type="tool_end", name=name, ok=False, error=str(exc))
+                    logger.info(
+                        "Agent tool complete name=%s ok=false elapsed=%.2fs reason=capability",
+                        name, time.monotonic() - tool_started,
+                    )
                     # Handed back to the model as a tool result, not raised: it
                     # should tell the person it cannot do that and carry on,
                     # rather than the whole turn dying on one refused call.
@@ -755,6 +784,10 @@ def ask(question: str, *, tier: str, user_id: str | None = None,
                     content = json.dumps({"error": str(exc), "refused": True})
                 except ExternalAPIError as exc:
                     _emit(on_event, type="tool_end", name=name, ok=False, error=str(exc))
+                    logger.warning(
+                        "Agent tool complete name=%s ok=false elapsed=%.2fs reason=external",
+                        name, time.monotonic() - tool_started,
+                    )
                     record.update(ok=False, error=str(exc))
                     content = json.dumps({"error": str(exc)})
 
@@ -767,7 +800,9 @@ def ask(question: str, *, tier: str, user_id: str | None = None,
             _emit(on_event, type="status", phase="reading")
 
     try:
+        logger.info("Agent MCP turn start")
         mcp_client.Turn(user_id).run(plan)
+        logger.info("Agent MCP turn complete")
     except ExternalAPIError as exc:
         logger.error("Agent turn failed: %s", exc)
         return envelope(cleaned, status=STATUS_NOT_CONNECTED,
@@ -791,6 +826,14 @@ def ask(question: str, *, tier: str, user_id: str | None = None,
                             "Try asking for one thing at a time.",
         }.get(state["stopped"], "The assistant could not produce an answer.")
 
+    logger.info(
+        "Agent turn complete elapsed=%.2fs llm_turns=%d tool_calls=%d sources=%d answer=%s",
+        time.monotonic() - turn_started,
+        state["llm_turns"],
+        len(tool_calls),
+        len(found),
+        bool(answer),
+    )
     return envelope(
         cleaned,
         status=STATUS_OK,
