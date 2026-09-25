@@ -228,6 +228,32 @@ GLOBAL_AGENT_PER_DAY: int = int(os.getenv("GLOBAL_AGENT_PER_DAY", "50"))
 # Off switch for local work, where metering only gets in the way.
 QUOTAS_ENABLED: bool = os.getenv("QUOTAS_ENABLED", "true").lower() == "true"
 
+# --- What is in front of this process -------------------------------------
+#
+# Render terminates TLS and forwards plain HTTP, so the app sees an `http`
+# request even though the visitor is on `https`. One line cares:
+# routes/auth.py builds the Google callback with url_for(_external=True), and a
+# callback built as `http://` is one Google refuses to register for any host but
+# localhost. Sign-in then works locally and fails only once deployed.
+#
+# ProxyFix reads the X-Forwarded-* headers a proxy adds so the app knows the real
+# scheme and host. It is applied UNCONDITIONALLY and this number decides how much
+# it believes:
+#
+#   0   nothing in front - the headers are ignored, so nobody can claim otherwise
+#   1   one proxy in front (Render), and its headers are trusted
+#
+# A number rather than `if IS_PRODUCTION`, because a branch means the request
+# path exercised in development is not the one that runs in production - which is
+# how the bug above survives every local test. At 0 the wrapper is a pass-through,
+# so both environments run the same code and differ only in a value.
+#
+# It states a fact about the deployment. Raise it only when a proxy is genuinely
+# added, never to make something work: a hop count larger than the real one lets
+# a caller forge the headers of the hops that do not exist.
+TRUSTED_PROXY_HOPS: int = int(os.getenv("TRUSTED_PROXY_HOPS", "0"))
+
+
 # --- Session cookie ---
 # Lax rather than Strict on purpose: the Google callback is a top-level GET
 # navigation from accounts.google.com, and Strict would withhold the cookie on
