@@ -40,6 +40,7 @@ import llm_client
 from exceptions import (
     CapabilityDeniedError,
     ExternalAPIError,
+    ResearchCopilotError,
     LLMTimeoutError,
     ValidationError,
 )
@@ -60,6 +61,12 @@ MAX_QUESTION = 2000
 # Envelope statuses.
 STATUS_OK = "ok"
 STATUS_NOT_CONNECTED = "not_connected"
+STATUS_STOPPED = "stopped"
+
+
+class RunStopped(ResearchCopilotError):
+    """Cooperative cancellation at an agent boundary, after the current I/O."""
+
 
 # Held back from the deadline so there is always room for one final, tool-less
 # turn. Sized from a measured run: turns against the free model took 8-15s, so
@@ -658,7 +665,7 @@ def _emit(on_event, **payload) -> None:
 
 def ask(question: str, *, tier: str, user_id: str | None = None,
         conversation_history: list[dict] | None = None,
-        on_event=None, usage=None) -> dict:
+        on_event=None, usage=None, should_stop=None) -> dict:
     """
     Answer one research question, running tools as needed.
 
@@ -680,6 +687,11 @@ def ask(question: str, *, tier: str, user_id: str | None = None,
     more than an error page.
     """
     cleaned = validate_question(question)
+    def check_stop():
+        if should_stop and should_stop():
+            raise RunStopped()
+
+    check_stop()
     turn_started = time.monotonic()
     logger.info("Agent turn start tier=%s user_bound=%s", tier, bool(user_id))
 
@@ -697,7 +709,9 @@ def ask(question: str, *, tier: str, user_id: str | None = None,
     # the MCP server, so it fails exactly when the server is down — and a
     # dependency being unavailable must degrade the feature, not 500 the page.
     try:
+        check_stop()
         schemas = _tool_schemas(tier)
+        check_stop()
         logger.info("Agent tool schemas loaded count=%d", len(schemas))
     except ExternalAPIError as exc:
         logger.error("Could not load tool schemas: %s", exc)
@@ -730,6 +744,7 @@ def ask(question: str, *, tier: str, user_id: str | None = None,
             schema context but is not allowed to spend the reserved writing turn
             asking for another tool.
             """
+            check_stop()
             state["stopped"] = reason
             messages.append({
                 "role": "user",
@@ -755,6 +770,7 @@ def ask(question: str, *, tier: str, user_id: str | None = None,
                 tool_choice="none",
             )
             state["llm_turns"] += 1
+            check_stop()
             state["answer"] = _clean(llm_client.message_text(message))
             logger.info(
                 "Agent synthesis complete reason=%s answer=%s",
@@ -762,6 +778,7 @@ def ask(question: str, *, tier: str, user_id: str | None = None,
             )
 
         while True:
+            check_stop()
             # Both stopping conditions lead to a final synthesis turn. The
             # deadline reserves room for that turn rather than firing at the
             # limit. Stopping research is not the same as giving up.
@@ -784,7 +801,10 @@ def ask(question: str, *, tier: str, user_id: str | None = None,
                 message = llm_client.chat_with_tools(
                     messages, schemas, timeout=planner_timeout,
                     max_tokens=config.AGENT_MAX_TOKENS, usage=usage)
+                state["llm_turns"] += 1
+                check_stop()
             except LLMTimeoutError as exc:
+                check_stop()
                 if not found:
                     raise
                 logger.warning(
@@ -795,7 +815,6 @@ def ask(question: str, *, tier: str, user_id: str | None = None,
                 synthesize("planner_timeout")
                 return
 
-            state["llm_turns"] += 1
             requested = message.get("tool_calls") or []
             logger.info(
                 "Agent planner complete turn=%d requested_tools=%d",
@@ -814,6 +833,7 @@ def ask(question: str, *, tier: str, user_id: str | None = None,
             })
 
             for call in requested:
+                check_stop()
                 function = call.get("function") or {}
                 name = function.get("name") or ""
                 try:
@@ -866,12 +886,20 @@ def ask(question: str, *, tier: str, user_id: str | None = None,
                     "tool_call_id": call.get("id"),
                     "content": content,
                 })
+                check_stop()
             _emit(on_event, type="status", phase="reading")
 
     try:
+        check_stop()
         logger.info("Agent MCP turn start")
         mcp_client.Turn(user_id).run(plan)
+        check_stop()
         logger.info("Agent MCP turn complete")
+    except RunStopped:
+        return envelope(cleaned, status=STATUS_STOPPED,
+                        message="Stopped. Work already completed may have used your allowance.",
+                        tool_calls=tool_calls, sources=found,
+                        llm_turns=state["llm_turns"])
     except ExternalAPIError as exc:
         logger.error("Agent turn failed: %s", exc)
         return envelope(cleaned, status=STATUS_NOT_CONNECTED,
