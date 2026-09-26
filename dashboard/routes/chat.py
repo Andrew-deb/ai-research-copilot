@@ -20,6 +20,7 @@ import json
 import logging
 import queue
 import threading
+import uuid
 
 from flask import (Blueprint, Response, abort, jsonify, redirect,
                    render_template, request, stream_with_context, url_for)
@@ -27,11 +28,12 @@ from flask import (Blueprint, Response, abort, jsonify, redirect,
 import llm_client
 import suggestions
 from exceptions import ResearchCopilotError
-from middleware.auth import current_tier, current_user_id
+from middleware.auth import current_tier, current_user_id, current_quota_scope
 from middleware.capabilities import AGENT_QUERY, consume_quota, require_capability, tier_can
 from routes.helpers import form_or_json, wants_json
 from services import (agent_service, conversation_service, quota_service,
                       telemetry_service)
+from repositories import agent_runs
 
 logger = logging.getLogger(__name__)
 
@@ -190,8 +192,12 @@ def ask():
     consume_quota(quota_service.AGENT_QUERY)
 
     if _wants_stream():
+        run_id = str(uuid.uuid4())
+        owner = current_quota_scope()
+        agent_runs.create(run_id, owner)
         return Response(
-            stream_with_context(_stream_turn(question, tier, user_id, conversation_id)),
+            stream_with_context(_stream_turn(question, tier, user_id, conversation_id,
+                                             run_id=run_id, owner=owner)),
             mimetype="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
@@ -206,6 +212,23 @@ def ask():
     return jsonify(_with_conversation(result, user_id, conversation_id, question))
 
 
+@bp.post("/chat/runs/<uuid:run_id>/stop")
+def stop_run(run_id):
+    """Request a stop; only the run worker can confirm it finished stopping."""
+    state = agent_runs.request_stop(str(run_id), current_quota_scope())
+    if state is None:
+        abort(404)
+    return jsonify({"run_id": str(run_id), "state": state})
+
+
+@bp.get("/chat/runs/<uuid:run_id>")
+def run_status(run_id):
+    state = agent_runs.status(str(run_id), current_quota_scope())
+    if state is None:
+        abort(404)
+    return jsonify({"run_id": str(run_id), "state": state})
+
+
 def _wants_stream() -> bool:
     """
     Streaming is opt-in by Accept header, on the same endpoint.
@@ -218,7 +241,8 @@ def _wants_stream() -> bool:
 
 
 def _run_turn(question: str, tier: str, user_id: str | None,
-              conversation_id: str | None = None, on_event=None) -> dict:
+              conversation_id: str | None = None, on_event=None,
+              should_stop=None) -> dict:
     """
     One measured turn. Shared by the JSON and streaming paths.
 
@@ -232,17 +256,23 @@ def _run_turn(question: str, tier: str, user_id: str | None,
         try:
             history = conversation_service.agent_context(
                 user_id, conversation_id)
-            result = agent_service.ask(
-                question,
-                tier=tier,
-                user_id=user_id,
-                conversation_history=history,
-                on_event=on_event,
-                usage=tally,
-            )
+            options = {"tier": tier, "user_id": user_id,
+                       "conversation_history": history, "on_event": on_event,
+                       "usage": tally}
+            if should_stop:
+                options["should_stop"] = should_stop
+            try:
+                result = agent_service.ask(question, **options)
+            except agent_service.RunStopped:
+                result = agent_service.envelope(
+                    question, status=agent_service.STATUS_STOPPED,
+                    message="Stopped. Work already completed may have used your allowance.")
             op.llm_turns = result["usage"]["llm_turns"]
             op.tool_calls = result["usage"]["tool_calls"]
             op.embedding_calls = result["usage"]["embedding_calls"]
+            if result.get("status") == agent_service.STATUS_STOPPED:
+                op.ok = False
+                op.error = "stopped by user"
         finally:
             # In a finally: a turn that raises still burned tokens, and an
             # expensive failure is the one measurement 3.6 can least afford to
@@ -269,7 +299,7 @@ def _sse(payload: dict) -> str:
 
 
 def _stream_turn(question: str, tier: str, user_id: str | None,
-                 conversation_id: str | None = None):
+                 conversation_id: str | None = None, *, run_id=None, owner=None):
     """
     Run the turn on a worker thread and relay its progress as it happens.
 
@@ -289,14 +319,33 @@ def _stream_turn(question: str, tier: str, user_id: str | None,
     def work():
         try:
             result = _run_turn(
-                question, tier, user_id, conversation_id, on_event=events.put)
-            outcome["result"] = _with_conversation(
-                result, user_id, conversation_id, question)
+                question, tier, user_id, conversation_id, on_event=events.put,
+                should_stop=(lambda: agent_runs.status(run_id, owner) == "stop_requested")
+                if run_id else None)
+            terminal = agent_runs.finish(run_id, owner) if run_id else "completed"
+            if terminal == "stopped" or result.get("status") == agent_service.STATUS_STOPPED:
+                result = dict(result, status=agent_service.STATUS_STOPPED,
+                              message="Stopped. Work already completed may have used your allowance.")
+            outcome["result"] = (_with_conversation(
+                result, user_id, conversation_id, question) if result.get("answer")
+                                 else result)
         except ResearchCopilotError as exc:
-            outcome["error"] = str(exc)
+            terminal = agent_runs.finish(run_id, owner, failed=True) if run_id else "failed"
+            if terminal == "stopped":
+                outcome["result"] = agent_service.envelope(
+                    question, status=agent_service.STATUS_STOPPED,
+                    message="Stopped. Work already completed may have used your allowance.")
+            else:
+                outcome["error"] = str(exc)
         except Exception as exc:                      # noqa: BLE001
+            terminal = agent_runs.finish(run_id, owner, failed=True) if run_id else "failed"
             logger.exception("Agent turn failed")
-            outcome["error"] = "The research assistant failed on that question."
+            if terminal == "stopped":
+                outcome["result"] = agent_service.envelope(
+                    question, status=agent_service.STATUS_STOPPED,
+                    message="Stopped. Work already completed may have used your allowance.")
+            else:
+                outcome["error"] = "The research assistant failed on that question."
         finally:
             events.put(None)                          # sentinel: work is over
 
@@ -305,6 +354,8 @@ def _stream_turn(question: str, tier: str, user_id: str | None,
 
     # Sent immediately so the page can switch out of its idle state without
     # waiting for the first real event, which may be seconds away.
+    if run_id:
+        yield _sse({"type": "run", "run_id": run_id})
     yield _sse({"type": "status", "phase": "thinking"})
 
     while True:
