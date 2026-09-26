@@ -17,6 +17,31 @@
   var openFor = null;   // the row the menu currently belongs to
   var historyResults = document.getElementById("nav-history-results");
   var filters = list.querySelectorAll("[data-history-kind]");
+  var filterToggle = document.getElementById("history-filter-toggle");
+  var filterMenu = document.getElementById("history-filter-menu");
+
+  function closeFilter() {
+    filterMenu.hidden = true;
+    filterToggle.setAttribute("aria-expanded", "false");
+  }
+  filterToggle.addEventListener("click", function () {
+    var opening = filterMenu.hidden;
+    closeMenu();
+    filterMenu.hidden = !opening;
+    filterToggle.setAttribute("aria-expanded", opening ? "true" : "false");
+    if (opening) {
+      var box = filterToggle.getBoundingClientRect();
+      filterMenu.style.top = Math.min(box.bottom + 5, window.innerHeight - filterMenu.offsetHeight - 8) + "px";
+      filterMenu.style.left = Math.min(box.left, window.innerWidth - filterMenu.offsetWidth - 8) + "px";
+      filterMenu.querySelector(".is-active").focus();
+    }
+  });
+  filterMenu.addEventListener("keydown", function (event) {
+    if (event.key === "Escape") { closeFilter(); filterToggle.focus(); }
+  });
+  document.addEventListener("pointerdown", function (event) {
+    if (!filterMenu.contains(event.target) && !filterToggle.contains(event.target)) { closeFilter(); }
+  });
 
   function renderEntry(entry) {
     if (entry.kind === "search") {
@@ -62,6 +87,7 @@
   filters.forEach(function (button) {
     button.addEventListener("click", function () {
       closeMenu();
+      closeFilter();
       filters.forEach(function (other) {
         var active = other === button;
         other.classList.toggle("is-active", active);

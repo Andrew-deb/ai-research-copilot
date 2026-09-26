@@ -82,7 +82,10 @@
   function addUserMessage(text) {
     var el = document.createElement("article");
     el.className = "chat-msg chat-msg-user";
-    el.textContent = text;
+    var bubble = document.createElement("div");
+    bubble.className = "chat-prompt-text";
+    bubble.textContent = text;
+    el.appendChild(bubble);
     ensureThread().appendChild(el);
     scrollToLatest();
     return el;
@@ -948,10 +951,13 @@
     if (message.role === "user") {
       var edit = document.createElement("button");
       edit.type = "button";
-      edit.textContent = "Edit";
+      edit.className = "chat-action-icon chat-action-edit";
+      edit.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L9 17l-4 1 1-4L16.5 3.5Z"/></svg>';
+      edit.title = "Edit prompt";
       edit.setAttribute("aria-label", "Edit this prompt and create a new version");
       edit.addEventListener("click", function () {
         if (pending || el.querySelector(".chat-prompt-edit")) { return; }
+        var bubble = el.querySelector(".chat-prompt-text");
         var formEdit = document.createElement("div");
         formEdit.className = "chat-prompt-edit";
         var field = document.createElement("textarea");
@@ -960,29 +966,49 @@
         field.setAttribute("aria-label", "Edit prompt");
         var save = document.createElement("button");
         save.type = "button";
-        save.textContent = "Send edited prompt";
+        save.className = "chat-prompt-save";
+        save.textContent = "Send";
         save.addEventListener("click", function () {
           var changed = field.value.trim();
           if (changed) {
-            formEdit.remove();
+            closeEditor();
             send(changed, { action: "edit", source_message_id: message.message_id });
           }
         });
         var cancel = document.createElement("button");
         cancel.type = "button";
         cancel.textContent = "Cancel";
-        cancel.addEventListener("click", function () { formEdit.remove(); });
+        function closeEditor() {
+          formEdit.remove();
+          bubble.hidden = false;
+          bar.hidden = false;
+          el.classList.remove("is-editing");
+        }
+        cancel.addEventListener("click", closeEditor);
+        field.addEventListener("keydown", function (event) {
+          if (event.key === "Escape") { closeEditor(); edit.focus(); }
+          if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) { save.click(); }
+        });
+        var buttons = document.createElement("div");
+        buttons.className = "chat-prompt-edit-actions";
+        buttons.appendChild(cancel);
+        buttons.appendChild(save);
         formEdit.appendChild(field);
-        formEdit.appendChild(save);
-        formEdit.appendChild(cancel);
+        formEdit.appendChild(buttons);
+        bubble.hidden = true;
+        bar.hidden = true;
+        el.classList.add("is-editing");
         el.appendChild(formEdit);
         field.focus();
+        field.setSelectionRange(field.value.length, field.value.length);
       });
       bar.appendChild(edit);
     } else if (prompt && prompt.message_id) {
       var regen = document.createElement("button");
       regen.type = "button";
-      regen.textContent = "Regenerate";
+      regen.className = "chat-action-icon chat-action-regen";
+      regen.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 6.3M20 4v7h-7"/></svg>';
+      regen.title = "Regenerate answer";
       regen.setAttribute("aria-label", "Regenerate answer and keep this version");
       regen.addEventListener("click", function () {
         if (!pending) {
