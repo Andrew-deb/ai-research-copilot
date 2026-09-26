@@ -3,7 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Research Copilot{% endblock %}</title>
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/alfred/portrait.png') }}">
+  <title>{% block title %}Alfred{% endblock %}</title>
 
   {# No-flash theme: resolve saved choice (or system preference) before first paint. #}
   <script>
@@ -66,11 +67,11 @@
 {% set ep = request.endpoint or '' %}
 
 <div class="app-shell">
-  <aside class="sidebar" id="sidebar">
+  <aside class="sidebar" id="sidebar" aria-label="Main navigation">
     <div class="sidebar-head">
-      <a class="sidebar-brand" href="{{ url_for('home.index') }}">
-        <span class="brand-leaf">🌿</span>
-        <span class="brand-name">Research Copilot</span>
+      <a class="sidebar-brand" aria-label="Alfred home" href="{{ url_for('home.index') }}">
+        <img class="brand-portrait" src="{{ url_for('static', filename='img/alfred/portrait.png') }}" alt="" width="36" height="36">
+        <span class="brand-name">Alfred</span>
       </a>
       <div class="sidebar-head-actions">
         {# Gated on the account, not the shell: anonymous conversations are never
@@ -83,7 +84,7 @@
           </button>
         {% endif %}
         <button type="button" class="icon-btn sidebar-collapse" id="sidebar-collapse"
-                aria-label="Collapse navigation" title="Collapse navigation">
+                aria-label="Collapse navigation" title="Collapse navigation" aria-controls="sidebar" aria-expanded="true">
           {{ icon('panel') }}
         </button>
       </div>
@@ -104,8 +105,8 @@
       {% set chat_href = url_for('home.index') %}
       {% set chat_active = ep == 'home.index' %}
     {% endif %}
-    <a class="sidebar-cta {{ 'active' if chat_active }}" href="{{ chat_href }}">
-      <span class="cta-mark">{{ icon('plus') }}</span><span>New research chat</span>
+    <a aria-label="New research chat" data-tooltip="New research chat" class="sidebar-cta {{ 'active' if chat_active }}" href="{{ chat_href }}">
+      <span class="cta-mark">{{ icon('plus') }}</span><span class="nav-text">New research chat</span>
     </a>
 
     {% if not is_workspace_shell %}
@@ -116,20 +117,20 @@
       <nav class="sidebar-nav">
         <div class="nav-section">
           <h2 class="nav-label">Explore</h2>
-          <a href="{{ url_for('home.dashboard') }}" class="nav-item">
+          <a href="{{ url_for('home.dashboard') }}" class="nav-item" aria-label="Try the demo" data-tooltip="Try the demo">
             {{ icon('spark') }}<span>Try the demo</span>
           </a>
-          <a href="{{ url_for('public.pricing') }}" class="nav-item {{ 'active' if ep == 'public.pricing' }}">
+          <a href="{{ url_for('public.pricing') }}" class="nav-item {{ 'active' if ep == 'public.pricing' }}" aria-label="Plans &amp; pricing" data-tooltip="Plans &amp; pricing">
             {{ icon('target') }}<span>Plans &amp; pricing</span>
           </a>
         </div>
 
         <div class="nav-section">
           <h2 class="nav-label">Learn more</h2>
-          <a href="{{ url_for('public.about') }}" class="nav-item {{ 'active' if ep == 'public.about' }}">
+          <a href="{{ url_for('public.about') }}" class="nav-item {{ 'active' if ep == 'public.about' }}" aria-label="About" data-tooltip="About">
             {{ icon('info') }}<span>About</span>
           </a>
-          <a href="{{ url_for('public.help_page') }}" class="nav-item {{ 'active' if ep in ('public.help_page', 'public.docs') }}">
+          <a href="{{ url_for('public.help_page') }}" class="nav-item {{ 'active' if ep in ('public.help_page', 'public.docs') }}" aria-label="Help &amp; docs" data-tooltip="Help &amp; docs">
             {{ icon('book') }}<span>Help &amp; docs</span>
           </a>
         </div>
@@ -144,7 +145,7 @@
            nothing says so, and a visitor exploring the workspace has no obvious
            route back to the page that explains what they are looking at. #}
         <div class="nav-section">
-          <a href="{{ url_for('home.index') }}" class="nav-item nav-item-back">
+          <a href="{{ url_for('home.index') }}" class="nav-item nav-item-back" aria-label="Back to home" data-tooltip="Back to home">
             {{ icon('arrow-left') }}<span>Back to home</span>
           </a>
         </div>
@@ -152,19 +153,19 @@
 
       <div class="nav-section">
         <h2 class="nav-label">Workspace</h2>
-        <a href="{{ url_for('home.dashboard') }}" class="nav-item {{ 'active' if ep in ('home.index', 'home.dashboard') }}">
+        <a href="{{ url_for('home.dashboard') }}" class="nav-item {{ 'active' if ep in ('home.index', 'home.dashboard') }}" aria-label="Dashboard" data-tooltip="Dashboard">
           {{ icon('dashboard') }}<span>Dashboard</span>
         </a>
-        <a href="{{ url_for('search.search_page') }}" class="nav-item {{ 'active' if ep.startswith('search.') }}">
+        <a href="{{ url_for('search.search_page') }}" class="nav-item {{ 'active' if ep.startswith('search.') }}" aria-label="Search" data-tooltip="Search">
           {{ icon('search') }}<span>Search</span>
         </a>
-        <a href="{{ url_for('collections.list_collections') }}" class="nav-item {{ 'active' if ep.startswith('collections.') }}">
+        <a href="{{ url_for('collections.list_collections') }}" class="nav-item {{ 'active' if ep.startswith('collections.') }}" aria-label="Collections" data-tooltip="Collections">
           {{ icon('folder') }}<span>Collections</span>
         </a>
-        <a href="{{ url_for('progress.board') }}" class="nav-item {{ 'active' if ep == 'progress.board' }}">
+        <a href="{{ url_for('progress.board') }}" class="nav-item {{ 'active' if ep == 'progress.board' }}" aria-label="Progress" data-tooltip="Progress">
           {{ icon('progress') }}<span>Progress</span>
         </a>
-        <a href="{{ url_for('goals.list_goals') }}" class="nav-item {{ 'active' if ep.startswith('goals.') }}">
+        <a href="{{ url_for('goals.list_goals') }}" class="nav-item {{ 'active' if ep.startswith('goals.') }}" aria-label="Goals" data-tooltip="Goals">
           {{ icon('target') }}<span>Goals</span>
         </a>
       </div>
@@ -214,20 +215,20 @@
 
     <div class="sidebar-footer">
       {% if is_authenticated %}
-        <div class="user-chip" title="{{ current_user.email }}">
+        <div class="user-chip" tabindex="0" aria-label="Account: {{ current_user.display_name or current_user.email }}" data-tooltip="{{ current_user.email }}" title="{{ current_user.email }}">
           <span class="user-avatar">{{ (current_user.display_name or current_user.email)[0] | upper }}</span>
           <span class="user-name">{{ current_user.display_name or current_user.email }}</span>
         </div>
         <form method="post" action="{{ url_for('auth.logout') }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <button type="submit" class="btn btn-ghost btn-sm sidebar-signout">Log out</button>
+          <button type="submit" class="btn btn-ghost btn-sm sidebar-signout" aria-label="Log out" data-tooltip="Log out">{{ icon('login') }}<span>Log out</span></button>
         </form>
       {% elif is_workspace_shell %}
         {# Inside the demo the account actions are one prompt, not two: someone
            already trying the product needs a reason before a pair of buttons. #}
         <div class="guest-card">
           <p class="guest-note">You're viewing the demo workspace.</p>
-          <a class="btn btn-primary btn-sm" href="{{ url_for('auth.signup') }}">Sign up to save work</a>
+          <a class="btn btn-primary btn-sm" href="{{ url_for('auth.signup') }}" aria-label="Sign up to save work" data-tooltip="Sign up to save work">{{ icon('user-plus') }}<span>Sign up to save work</span></a>
         </div>
       {% else %}
         {# At the foot rather than the top of the nav, so that the account lives
@@ -240,11 +241,11 @@
            places. #}
         <div class="nav-auth">
           <a href="{{ url_for('auth.login') }}"
-             class="sidebar-btn sidebar-btn-primary {{ 'active' if ep == 'auth.login' }}">
+             class="sidebar-btn sidebar-btn-primary {{ 'active' if ep == 'auth.login' }}" aria-label="Log in" data-tooltip="Log in">
             {{ icon('login') }}<span>Log in</span>
           </a>
           <a href="{{ url_for('auth.signup') }}"
-             class="sidebar-btn {{ 'active' if ep == 'auth.signup' }}">
+             class="sidebar-btn {{ 'active' if ep == 'auth.signup' }}" aria-label="Sign up" data-tooltip="Sign up">
             {{ icon('user-plus') }}<span>Sign up</span>
           </a>
         </div>
@@ -308,7 +309,7 @@
 
   <div class="main-col">
     <header class="topbar">
-      <button type="button" class="icon-btn sidebar-toggle" id="sidebar-toggle" aria-label="Toggle navigation">
+      <button type="button" class="icon-btn sidebar-toggle" id="sidebar-toggle" aria-label="Open navigation" aria-controls="sidebar" aria-expanded="false">
         {{ icon('menu') }}
       </button>
       <div class="topbar-title">{% block topbar_title %}{% endblock %}</div>
@@ -347,7 +348,7 @@
     </main>
 
     <footer class="app-footer">
-      AI Research &amp; Learning Copilot — Databricks Lakebase · pgvector · MCP · Agent Bricks
+      Alfred — Your research assistant
     </footer>
   </div>
 </div>

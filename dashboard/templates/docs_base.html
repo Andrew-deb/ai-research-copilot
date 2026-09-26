@@ -16,7 +16,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}Documentation — Research Copilot{% endblock %}</title>
+  <title>{% block title %}Documentation — Alfred{% endblock %}</title>
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/alfred/portrait.png') }}">
 
   {# No-flash theme: resolve the saved choice (or system preference) before first
      paint, exactly as base.html does. #}
@@ -62,7 +63,7 @@
 <header class="doc-top">
   <a class="doc-brand" href="{{ url_for('home.index') }}">
     <span class="doc-brand-mark">{{ icon('book') }}</span>
-    <span class="doc-brand-name">Research Copilot</span>
+    <span class="doc-brand-name">Alfred</span>
     <span class="doc-badge">{% block doc_badge %}Docs{% endblock %}</span>
   </a>
 
