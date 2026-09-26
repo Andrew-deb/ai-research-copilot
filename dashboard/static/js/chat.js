@@ -22,6 +22,17 @@
   var stage = form.closest(".chat-stage") || form;
   var thread = document.getElementById("chat-thread");
   var pending = false;
+  var activeRunId = null;
+  var stopRequested = false;
+  var stopButton = form.querySelector(".composer-stop");
+  var runStorageKey = "alfred-active-run";
+
+  function rememberRun(id) {
+    try {
+      if (id) { sessionStorage.setItem(runStorageKey, id); }
+      else { sessionStorage.removeItem(runStorageKey); }
+    } catch (e) { /* Private browsing may block storage. */ }
+  }
   var conversationId = (page && page.dataset.conversation) || null;
 
   if (thread && page) { page.classList.add("has-conversation"); }
@@ -676,11 +687,49 @@
     pending = on;
     input.disabled = on;
     var send = form.querySelector(".composer-send");
-    if (send) { send.disabled = on; }
+    if (send) { send.hidden = on; send.disabled = on; }
+    if (stopButton) {
+      stopButton.hidden = !on;
+      stopButton.disabled = !on || stopRequested;
+      stopButton.textContent = stopRequested ? "Stopping…" : "Stop";
+    }
+  }
+
+  if (stopButton) {
+    stopButton.addEventListener("click", async function () {
+      if (!pending || stopRequested) { return; }
+      stopRequested = true;
+      setPending(true);
+      // The run event normally arrives before the first step. A press during
+      // that short gap is sent as soon as the server supplies its identifier.
+      if (activeRunId) { await requestStop(activeRunId); }
+    });
+  }
+
+  async function requestStop(runId) {
+    try {
+      var res = await fetch("/chat/runs/" + encodeURIComponent(runId) + "/stop", {
+        method: "POST",
+        headers: { "X-CSRFToken": (document.querySelector('meta[name="csrf-token"]') || {})
+          .content || "", "X-Requested-With": "XMLHttpRequest" },
+      });
+      if (!res.ok) { throw new Error("Could not request a stop."); }
+      var result = await res.json();
+      if (result.state === "completed") { stopButton.textContent = "Finishing…"; }
+    } catch (err) {
+      addNotice(err.message || "Could not request a stop.");
+      stopRequested = false;
+      setPending(true);
+    }
   }
 
   function handle(event, trace, done) {
-    if (event.type === "status") {
+    if (event.type === "run") {
+      activeRunId = event.run_id;
+      rememberRun(activeRunId);
+      if (stopRequested) { requestStop(activeRunId); }
+    } else if (event.type === "status") {
+      if (stopRequested) { return; }
       trace.status(event.phase);
     } else if (event.type === "tool_start") {
       trace.toolStart(event.name, event.arguments);
@@ -797,6 +846,8 @@
       var answer = addAnswer(result.answer);
       var sources = addSources(result, question);
       linkCitations(answer, result.citations, sources);
+    } else if (result.status === "stopped") {
+      addSources(result, question);
     }
     if (result.message) { addNotice(result.message); }
     if (!result.answer && !result.message) {
@@ -805,6 +856,8 @@
   }
 
   async function send(question) {
+    activeRunId = null;
+    stopRequested = false;
     setPending(true);
     addUserMessage(question);
     input.value = "";
@@ -815,10 +868,32 @@
       await streamTurn(question, trace);
     } catch (err) {
       trace.finish();
-      addNotice(err.message || "Something went wrong.");
+      addNotice(activeRunId
+        ? "The connection ended. The run may still be active; check its status before retrying."
+        : (err.message || "Something went wrong."));
     } finally {
-      setPending(false);
-      input.focus();
+      var detached = false;
+      if (activeRunId) {
+        try {
+          var status = await fetch("/chat/runs/" + encodeURIComponent(activeRunId));
+          var state = status.ok ? (await status.json()).state : null;
+          if (state && state !== "running" && state !== "stop_requested") {
+            rememberRun(null);
+          } else if (state === "running" || state === "stop_requested") {
+            detached = true;
+            recoverRun(activeRunId);
+          }
+        } catch (e) {
+          detached = true;
+          recoverRun(activeRunId);
+        }
+      }
+      if (!detached) {
+        activeRunId = null;
+        stopRequested = false;
+        setPending(false);
+        input.focus();
+      }
     }
   }
 
@@ -927,6 +1002,50 @@
   }
 
   replay();
+
+  // A disconnected SSE connection does not cancel the worker. On reload, ask
+  // the shared run ledger what happened and offer Stop if it is still running.
+  var pendingNoticeShown = false;
+  async function recoverRun(id) {
+    if (activeRunId !== id) { return; }
+    try {
+      var res = await fetch("/chat/runs/" + encodeURIComponent(id));
+      if (!res.ok) {
+        rememberRun(null);
+        activeRunId = null;
+        stopRequested = false;
+        setPending(false);
+        return;
+      }
+      var state = (await res.json()).state;
+      if (state === "running" || state === "stop_requested") {
+        stopRequested = state === "stop_requested";
+        setPending(true);
+        if (!pendingNoticeShown) {
+          addNotice("A previous research run is still " +
+                    (stopRequested ? "stopping." : "working. You can stop it here."));
+          pendingNoticeShown = true;
+        }
+        setTimeout(function () { recoverRun(id); }, 2000);
+        return;
+      }
+      rememberRun(null);
+      activeRunId = null;
+      stopRequested = false;
+      setPending(false);
+      addNotice(state === "completed"
+        ? "Your previous run finished. Reload your conversations to see its answer."
+        : state === "stopped" ? "Previous run stopped." : "Previous run ended.");
+    } catch (e) {
+      if (!pendingNoticeShown) {
+        addNotice("Could not check the previous run status. Retrying…");
+        pendingNoticeShown = true;
+      }
+      setTimeout(function () { recoverRun(id); }, 4000);
+    }
+  }
+  try { activeRunId = sessionStorage.getItem(runStorageKey); } catch (e) { /* ignore */ }
+  if (activeRunId) { recoverRun(activeRunId); }
 
   // A question may arrive already in the box via ?q=. Size it to what it holds
   // and put the caret at the end, so it reads as something to edit rather than
