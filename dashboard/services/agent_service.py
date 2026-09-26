@@ -304,6 +304,15 @@ def build_system_prompt(tier: str) -> str:
         f"{lines}\n\n"
         "You cannot currently save, create, modify or delete anything. If asked "
         "to, say so briefly and offer what you can do instead.\n\n"
+        "## Conversation follow-ups\n\n"
+        "Tool restrictions apply to external data access and actions, not to "
+        "ordinary language work on content already present in this conversation. "
+        "You may summarize, shorten, rephrase, explain, restructure, or compare "
+        "previous messages directly without calling a tool. Do not say you lack "
+        "capability for those requests. Use a research tool only when the user "
+        "asks for new evidence, new papers, or information not already available "
+        "in the conversation. Do not re-run research merely to summarize or "
+        "rephrase an answer that is already present.\n\n"
         "## Citing — required\n\n"
         "After each statement you take from a paper, write a number in square "
         "brackets, like [1]. Number them however you like, in whatever order "
@@ -640,6 +649,7 @@ def _emit(on_event, **payload) -> None:
 
 
 def ask(question: str, *, tier: str, user_id: str | None = None,
+        conversation_history: list[dict] | None = None,
         on_event=None, usage=None) -> dict:
     """
     Answer one research question, running tools as needed.
@@ -687,8 +697,13 @@ def ask(question: str, *, tier: str, user_id: str | None = None,
 
     messages = [
         {"role": "system", "content": build_system_prompt(tier)},
-        {"role": "user", "content": cleaned},
     ]
+    for prior in conversation_history or []:
+        role = prior.get("role")
+        content = (prior.get("content") or "").strip()
+        if role in ("user", "assistant") and content:
+            messages.append({"role": role, "content": content})
+    messages.append({"role": "user", "content": cleaned})
 
     found: list[dict] = []
     seen_papers: set[str] = set()

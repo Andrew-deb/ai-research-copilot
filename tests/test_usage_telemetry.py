@@ -145,7 +145,8 @@ def test_tokens_are_counted_even_when_the_body_carries_an_error(monkeypatch):
 
 def _spending_ask(prompt, completion, cost, raises=None):
     """A stand-in agent that spends before it succeeds or fails."""
-    def ask(question, *, tier, user_id=None, on_event=None, usage=None):
+    def ask(question, *, tier, user_id=None, conversation_history=None,
+            on_event=None, usage=None):
         if usage is not None:
             usage.add(_body(prompt=prompt, completion=completion, cost=cost))
         if raises:

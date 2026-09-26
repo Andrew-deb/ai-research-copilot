@@ -29,7 +29,8 @@ def answering(monkeypatch):
     """A connected agent that answers without touching a model or a server."""
     monkeypatch.setattr(agent_service, "is_connected", lambda: True)
 
-    def fake_ask(question, *, tier, user_id=None, on_event=None, usage=None):
+    def fake_ask(question, *, tier, user_id=None, conversation_history=None,
+                 on_event=None, usage=None):
         return agent_service.envelope(
             question, answer="Because [1].",
             citations=[{"number": 1, "paper_id": "p1", "title": "A Paper",
@@ -179,6 +180,67 @@ def test_a_second_turn_joins_the_same_conversation(client, db, answering):
 
     assert second == first
     assert len(db.conversation_messages[first]) == 4
+
+
+def test_a_followup_receives_recent_conversation_context(client, db, monkeypatch):
+    """The visible conversation and the model conversation must be the same one."""
+    monkeypatch.setattr(agent_service, "is_connected", lambda: True)
+    seen = []
+
+    def fake_ask(question, *, tier, user_id=None, conversation_history=None,
+                 on_event=None, usage=None):
+        seen.append(list(conversation_history or []))
+        return agent_service.envelope(question, answer="A short answer.")
+
+    monkeypatch.setattr(agent_service, "ask", fake_ask)
+
+    first = client.post(
+        "/chat/ask", json={"question": "Explain RAG"}, headers=XHR).get_json()
+    cid = first["conversation_id"]
+
+    client.post(
+        "/chat/ask",
+        json={"question": "Summarize your previous response", "conversation_id": cid},
+        headers=XHR,
+    )
+
+    assert seen[0] == []
+    assert seen[1] == [
+        {"role": "user", "content": "Explain RAG"},
+        {"role": "assistant", "content": "A short answer."},
+    ]
+
+
+def test_foreign_conversation_never_becomes_model_context(client, db, monkeypatch):
+    """A guessed conversation id must not leak another user's messages."""
+    owner = db.get_or_create_user("owner@example.com")
+    foreign = db.create_conversation(owner["user_id"], "Private thread")
+    db.append_message(foreign["conversation_id"], "user", "private question")
+    db.append_message(foreign["conversation_id"], "assistant", "private answer")
+
+    # The normal test client is a different dev user.
+    assert conversation_service.agent_context(
+        "not-the-owner", foreign["conversation_id"]) == []
+
+
+def test_agent_context_is_bounded_to_recent_messages(client, db):
+    user = db.get_or_create_user("context@example.com")
+    convo = db.create_conversation(user["user_id"], "Long thread")
+    cid = convo["conversation_id"]
+
+    for i in range(8):
+        db.append_message(cid, "user", f"question-{i}")
+        db.append_message(cid, "assistant", f"answer-{i}")
+
+    context = conversation_service.agent_context(
+        user["user_id"], cid, max_messages=4, max_chars=1000)
+
+    assert context == [
+        {"role": "user", "content": "question-6"},
+        {"role": "assistant", "content": "answer-6"},
+        {"role": "user", "content": "question-7"},
+        {"role": "assistant", "content": "answer-7"},
+    ]
 
 
 def test_messages_are_ordered_by_sequence_not_by_clock(client, db, answering):

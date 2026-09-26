@@ -202,7 +202,7 @@ def ask():
             },
         )
 
-    result = _run_turn(question, tier, user_id)
+    result = _run_turn(question, tier, user_id, conversation_id)
     return jsonify(_with_conversation(result, user_id, conversation_id, question))
 
 
@@ -217,7 +217,8 @@ def _wants_stream() -> bool:
     return "text/event-stream" in (request.headers.get("Accept") or "")
 
 
-def _run_turn(question: str, tier: str, user_id: str | None, on_event=None) -> dict:
+def _run_turn(question: str, tier: str, user_id: str | None,
+              conversation_id: str | None = None, on_event=None) -> dict:
     """
     One measured turn. Shared by the JSON and streaming paths.
 
@@ -229,8 +230,16 @@ def _run_turn(question: str, tier: str, user_id: str | None, on_event=None) -> d
     tally = llm_client.Usage()
     with telemetry_service.measure(quota_service.AGENT_QUERY, tier, user_id) as op:
         try:
-            result = agent_service.ask(question, tier=tier, user_id=user_id,
-                                       on_event=on_event, usage=tally)
+            history = conversation_service.agent_context(
+                user_id, conversation_id)
+            result = agent_service.ask(
+                question,
+                tier=tier,
+                user_id=user_id,
+                conversation_history=history,
+                on_event=on_event,
+                usage=tally,
+            )
             op.llm_turns = result["usage"]["llm_turns"]
             op.tool_calls = result["usage"]["tool_calls"]
             op.embedding_calls = result["usage"]["embedding_calls"]
@@ -279,7 +288,8 @@ def _stream_turn(question: str, tier: str, user_id: str | None,
 
     def work():
         try:
-            result = _run_turn(question, tier, user_id, on_event=events.put)
+            result = _run_turn(
+                question, tier, user_id, conversation_id, on_event=events.put)
             outcome["result"] = _with_conversation(
                 result, user_id, conversation_id, question)
         except ResearchCopilotError as exc:
