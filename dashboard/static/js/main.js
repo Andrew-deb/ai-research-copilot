@@ -32,6 +32,50 @@
     });
   }
 
+  // Account actions stay behind the profile control in both sidebar states.
+  const profileToggle = document.getElementById("profile-toggle");
+  const profileMenu = document.getElementById("profile-menu");
+  const logoutOpen = document.getElementById("logout-open");
+  const logoutDialog = document.getElementById("logout-dialog");
+  const logoutCancel = document.getElementById("logout-cancel");
+  function closeProfile(restoreFocus) {
+    if (!profileMenu || profileMenu.hidden) { return; }
+    profileMenu.hidden = true;
+    profileToggle.setAttribute("aria-expanded", "false");
+    if (restoreFocus) { profileToggle.focus(); }
+  }
+  if (profileToggle && profileMenu) {
+    profileToggle.addEventListener("click", function () {
+      const opening = profileMenu.hidden;
+      profileMenu.hidden = !opening;
+      profileToggle.setAttribute("aria-expanded", String(opening));
+      if (opening && logoutOpen) { logoutOpen.focus(); }
+    });
+    document.addEventListener("click", function (e) {
+      if (!e.target.closest(".profile-actions")) { closeProfile(false); }
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && !profileMenu.hidden) {
+        closeProfile(true);
+        e.stopPropagation();
+      }
+    }, true);
+  }
+  if (logoutOpen && logoutDialog) {
+    logoutOpen.addEventListener("click", function () {
+      closeProfile(false);
+      logoutDialog.showModal();
+      if (logoutCancel) { logoutCancel.focus(); }
+    });
+  }
+  if (logoutCancel && logoutDialog) {
+    logoutCancel.addEventListener("click", function () { logoutDialog.close(); });
+    logoutDialog.addEventListener("close", function () { if (profileToggle) { profileToggle.focus(); } });
+    logoutDialog.addEventListener("click", function (e) {
+      if (e.target === logoutDialog) { logoutDialog.close(); }
+    });
+  }
+
   // Desktop preference and mobile drawer state are independent.
   const sidebar = document.getElementById("sidebar");
   const sidebarToggle = document.getElementById("sidebar-toggle");

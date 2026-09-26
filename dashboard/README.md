@@ -171,7 +171,9 @@ and opening it makes the main column inert. Escape closes the drawer and restore
 focus. Mobile open state does not overwrite the desktop preference.
 
 Brand originals and their intended uses are documented in `static/img/alfred/`.
-The account avatar remains informational until the Profile & Settings phase.
+The account avatar opens a compact account menu in both sidebar states. Its
+logout action opens a confirmation dialog before the existing CSRF-protected
+POST. Profile & Settings remains a separate later phase.
 These changes use the existing Jinja/CSS/vanilla JavaScript architecture and do
 not alter authentication, quotas, agent execution, or database schemas.
 
