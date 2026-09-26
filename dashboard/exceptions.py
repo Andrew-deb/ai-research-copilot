@@ -36,6 +36,10 @@ class ExternalAPIError(ResearchCopilotError):
     """
 
 
+class LLMTimeoutError(ExternalAPIError):
+    """Raised when an LLM provider exceeds the operation's time budget."""
+
+
 class EmbeddingError(ResearchCopilotError):
     """Raised when the embedding model fails to produce a vector."""
 
@@ -47,6 +51,7 @@ __all__ = [
     "NoteNotFoundError",
     "ValidationError",
     "ExternalAPIError",
+    "LLMTimeoutError",
     "EmbeddingError",
 ]
 
