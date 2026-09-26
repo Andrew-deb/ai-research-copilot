@@ -656,7 +656,6 @@ input:focus, textarea:focus, select:focus {
 }
 
 .sidebar-footer { display: flex; flex-direction: column; gap: 8px; }
-.sidebar-signout { width: 100%; }
 
 /* Anonymous visitors get an invitation with a reason attached, rather than a
    bare demand to sign in. */
@@ -1164,8 +1163,6 @@ h1, h2, h3,
 .sidebar-brand-slot .sidebar-collapse { position: absolute; top: 8px; right: 2px; }
 .sidebar-head { flex: none; }
 .sidebar-nav { min-height: 0; overflow-y: auto; }
-.sidebar-signout { display: flex; align-items: center; justify-content: center; gap: 8px; }
-.sidebar-signout .icon { width: 17px; height: 17px; }
 .profile-actions { position: relative; width: 100%; }
 .profile-toggle { width: 100%; border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; }
 .profile-toggle:hover, .profile-toggle[aria-expanded="true"] { background: var(--surface-2); }
@@ -1206,11 +1203,12 @@ h1, h2, h3,
   .sidebar-collapsed .sidebar-brand-slot .sidebar-collapse {
     inset: 0; width: 48px; height: 48px; opacity: 0; pointer-events: none;
   }
-  .sidebar-collapsed .sidebar-brand-slot:is(:hover, :focus-within) .sidebar-collapse {
+  .sidebar-collapsed .sidebar-brand-slot:hover .sidebar-collapse,
+  .sidebar-collapsed .sidebar-brand-slot .sidebar-collapse:focus-visible {
     opacity: 1; pointer-events: auto; background: var(--surface-2);
   }
-  .sidebar-collapsed .sidebar-brand-slot:is(:hover, :focus-within) .brand-portrait { opacity: 0; }
-  .sidebar-collapsed .sidebar-brand-slot .sidebar-collapse:focus-visible { opacity: 1; pointer-events: auto; }
+  .sidebar-collapsed .sidebar-brand-slot:hover .brand-portrait,
+  .sidebar-collapsed .sidebar-brand-slot:has(.sidebar-collapse:focus-visible) .brand-portrait { opacity: 0; }
   .sidebar-collapsed .brand-name,
   .sidebar-collapsed .nav-label,
   .sidebar-collapsed .nav-section-scroll,
