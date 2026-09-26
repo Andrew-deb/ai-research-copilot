@@ -1157,8 +1157,11 @@ h1, h2, h3,
 .chat-menu button.is-danger:hover { background: var(--danger-tint); }
 
 /* Alfred identity and compact desktop navigation. Mobile remains a drawer. */
-.brand-portrait { width: 36px; height: 36px; object-fit: contain; flex: none; background: #fff; border-radius: 9px; }
-.sidebar-brand { padding: 0 10px; gap: 7px; border-bottom: 0; min-width: 0; }
+.brand-portrait { width: 36px; height: 36px; object-fit: contain; flex: none; border-radius: 9px; }
+.sidebar-brand-slot { position: relative; flex: 1; min-width: 0; }
+.sidebar-brand { padding: 0 10px; gap: 8px; border-bottom: 0; min-width: 0; }
+.sidebar-brand .brand-name { font-family: var(--font-display); font-size: 19px; font-weight: 600; }
+.sidebar-brand-slot .sidebar-collapse { position: absolute; top: 8px; right: 2px; }
 .sidebar-head { flex: none; }
 .sidebar-nav { min-height: 0; overflow-y: auto; }
 .sidebar-signout { display: flex; align-items: center; justify-content: center; gap: 8px; }
@@ -1168,8 +1171,16 @@ h1, h2, h3,
 .navigation-open { overflow: hidden; }
 @media (min-width: 901px) {
   .sidebar-collapsed .sidebar-head { flex-direction: column; padding: 10px 0 0; gap: 4px; }
-  .sidebar-collapsed .sidebar-brand { height: 42px; padding: 0; }
-  .sidebar-collapsed .sidebar-head-actions { flex-direction: column-reverse; }
+  .sidebar-collapsed .sidebar-brand-slot { flex: none; width: 48px; height: 48px; }
+  .sidebar-collapsed .sidebar-brand { height: 48px; padding: 0; justify-content: center; }
+  .sidebar-collapsed .sidebar-brand-slot .sidebar-collapse {
+    inset: 0; width: 48px; height: 48px; opacity: 0; pointer-events: none;
+  }
+  .sidebar-collapsed .sidebar-brand-slot:is(:hover, :focus-within) .sidebar-collapse {
+    opacity: 1; pointer-events: auto; background: var(--surface-2);
+  }
+  .sidebar-collapsed .sidebar-brand-slot:is(:hover, :focus-within) .brand-portrait { opacity: 0; }
+  .sidebar-collapsed .sidebar-brand-slot .sidebar-collapse:focus-visible { opacity: 1; pointer-events: auto; }
   .sidebar-collapsed .brand-name,
   .sidebar-collapsed .nav-label,
   .sidebar-collapsed .nav-section-scroll,

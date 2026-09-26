@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/alfred/portrait.png') }}">
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/alfred/favicon-magnifier.png') }}">
   <title>{% block title %}Alfred{% endblock %}</title>
 
   {# No-flash theme: resolve saved choice (or system preference) before first paint. #}
@@ -69,10 +69,16 @@
 <div class="app-shell">
   <aside class="sidebar" id="sidebar" aria-label="Main navigation">
     <div class="sidebar-head">
-      <a class="sidebar-brand" aria-label="Alfred home" href="{{ url_for('home.index') }}">
-        <img class="brand-portrait" src="{{ url_for('static', filename='img/alfred/portrait.png') }}" alt="" width="36" height="36">
-        <span class="brand-name">Alfred</span>
-      </a>
+      <div class="sidebar-brand-slot">
+        <a class="sidebar-brand" aria-label="Alfred home" href="{{ url_for('home.index') }}">
+          <img class="brand-portrait" src="{{ url_for('static', filename='img/alfred/portrait.png') }}" alt="" width="36" height="36">
+          <span class="brand-name">Alfred</span>
+        </a>
+        <button type="button" class="icon-btn sidebar-collapse" id="sidebar-collapse"
+                aria-label="Collapse navigation" title="Collapse navigation" aria-controls="sidebar" aria-expanded="true">
+          {{ icon('panel') }}
+        </button>
+      </div>
       <div class="sidebar-head-actions">
         {# Gated on the account, not the shell: anonymous conversations are never
            persisted, so a demo visitor has no history to search and never will.
@@ -83,10 +89,6 @@
             {{ icon('search') }}
           </button>
         {% endif %}
-        <button type="button" class="icon-btn sidebar-collapse" id="sidebar-collapse"
-                aria-label="Collapse navigation" title="Collapse navigation" aria-controls="sidebar" aria-expanded="true">
-          {{ icon('panel') }}
-        </button>
       </div>
     </div>
 
