@@ -34,6 +34,7 @@ psql "$DATABASE_URL" -f sql/05_paper_sections.sql           # additive; destroys
 psql "$DATABASE_URL" -f sql/06_pipeline_runs.sql            # additive; destroys nothing
 psql "$DATABASE_URL" -f sql/07_fulltext_status_taxonomy.sql # resets fetch_failed/parse_failed rows for one retry
 psql "$DATABASE_URL" -f sql/08_relevance.sql                # additive; deletes nothing
+psql "$DATABASE_URL" -f sql/15_agent_runs.sql               # apply before deploying chat Stop controls
 ```
 
 ## Key Design Decisions

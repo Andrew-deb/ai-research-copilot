@@ -576,6 +576,23 @@
    queue a question the first one has not answered yet. */
 .composer-input:disabled,
 .composer-send:disabled { opacity: .6; cursor: default; }
+.composer-send[hidden] { display: none; }
+.composer-stop:not([hidden]) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.composer-stop:disabled { opacity: .65; cursor: wait; }
 
 /* ---------- A conversation is under way ----------
 

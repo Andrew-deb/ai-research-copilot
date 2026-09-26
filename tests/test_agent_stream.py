@@ -45,7 +45,7 @@ def wired(monkeypatch):
     monkeypatch.setattr(agent_service, "is_connected", lambda: True)
 
     def fake_ask(question, *, tier, user_id=None, conversation_history=None,
-                 on_event=None, usage=None):
+                 on_event=None, usage=None, should_stop=None):
         if on_event:
             on_event({"type": "status", "phase": "thinking"})
             on_event({"type": "tool_start", "name": "search_papers",
@@ -78,7 +78,8 @@ def test_the_stream_reports_the_steps_as_they_happen(anon_client, db, wired):
     assert "text/event-stream" in resp.headers["Content-Type"]
 
     kinds = [e["type"] for e in _events(resp)]
-    assert kinds[0] == "status"           # sent before any work, so the page
+    assert kinds[0] == "run"              # identifies the cancelable run
+    assert kinds[1] == "status"           # sent before any work, so the page
     assert "tool_start" in kinds          # can leave its idle state at once
     assert "tool_end" in kinds
     assert kinds[-1] == "done"
@@ -108,6 +109,48 @@ def test_the_final_event_carries_the_whole_envelope(anon_client, db, wired):
     assert result["usage"]["llm_turns"] == 2
 
 
+def test_stop_request_is_owner_scoped_and_terminal(anon_client, db, monkeypatch):
+    """A stop must be confirmed by the worker, and another cookie cannot send it."""
+    import threading
+    from repositories import agent_runs
+
+    monkeypatch.setattr(agent_service, "is_connected", lambda: True)
+    started = threading.Event()
+    resume = threading.Event()
+
+    def waiting_ask(question, *, tier, user_id=None, conversation_history=None,
+                    on_event=None, usage=None, should_stop=None):
+        started.set()
+        assert resume.wait(3)
+        if should_stop and should_stop():
+            raise agent_service.RunStopped()
+        return agent_service.envelope(question, answer="Completed.")
+
+    monkeypatch.setattr(agent_service, "ask", waiting_ask)
+    response = anon_client.post("/chat/ask", json={"question": "why?"},
+                                headers=SSE, buffered=False)
+    first = next(response.response).decode()
+    run_id = json.loads(first.split("data: ")[1])["run_id"]
+    assert started.wait(3)
+    assert anon_client.get(f"/chat/runs/{run_id}").get_json()["state"] == "running"
+
+    # A foreign anonymous session cannot see or request this run.
+    with anon_client.session_transaction() as sess:
+        original = sess["anon_id"]
+        sess["anon_id"] = "another-visitor"
+    assert anon_client.post(f"/chat/runs/{run_id}/stop", headers=XHR).status_code == 404
+    assert anon_client.get(f"/chat/runs/{run_id}").status_code == 404
+    with anon_client.session_transaction() as sess:
+        sess["anon_id"] = original
+
+    requested = anon_client.post(f"/chat/runs/{run_id}/stop", headers=XHR)
+    assert requested.get_json()["state"] == "stop_requested"
+    resume.set()
+    events = _events(response)
+    assert events[-1]["result"]["status"] == "stopped"
+    assert agent_runs.status(run_id, ("anon", original)) == "stopped"
+
+
 def test_stream_sends_keepalive_while_provider_is_quiet(
         anon_client, db, monkeypatch):
     """A quiet upstream call must not leave the SSE connection byte-silent."""
@@ -116,7 +159,8 @@ def test_stream_sends_keepalive_while_provider_is_quiet(
     monkeypatch.setattr(agent_service, "is_connected", lambda: True)
     monkeypatch.setattr(chat_route, "SSE_HEARTBEAT_SECONDS", 0.01)
 
-    def slow_ask(question, *, tier, user_id=None, on_event=None, usage=None):
+    def slow_ask(question, *, tier, user_id=None, conversation_history=None,
+                 on_event=None, usage=None, should_stop=None):
         time.sleep(0.04)
         return agent_service.envelope(question, answer="Eventually answered.")
 
@@ -226,7 +270,8 @@ def test_a_failure_mid_turn_is_reported_as_an_event(anon_client, db, monkeypatch
 
     monkeypatch.setattr(agent_service, "is_connected", lambda: True)
 
-    def explode(question, *, tier, user_id=None, on_event=None, usage=None):
+    def explode(question, *, tier, user_id=None, conversation_history=None,
+                on_event=None, usage=None, should_stop=None):
         if on_event:
             on_event({"type": "status", "phase": "thinking"})
         raise ExternalAPIError("The research service is not running right now.")
@@ -246,7 +291,8 @@ def test_the_turn_is_metered_even_when_it_fails(anon_client, db, monkeypatch):
     and calibration needs the row."""
     monkeypatch.setattr(agent_service, "is_connected", lambda: True)
 
-    def explode(question, *, tier, user_id=None, on_event=None, usage=None):
+    def explode(question, *, tier, user_id=None, conversation_history=None,
+                on_event=None, usage=None, should_stop=None):
         raise RuntimeError("provider exploded")
 
     monkeypatch.setattr(agent_service, "ask", explode)

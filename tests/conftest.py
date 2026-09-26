@@ -445,6 +445,32 @@ class FakeDB:
 def db(monkeypatch):
     """In-memory repository + stubbed embedding/LLM. Returns the FakeDB instance."""
     fake = FakeDB()
+    from repositories import agent_runs
+    runs = {}
+
+    def run_create(run_id, owner):
+        runs[(run_id, owner)] = "running"
+
+    def run_status(run_id, owner):
+        return runs.get((run_id, owner))
+
+    def run_stop(run_id, owner):
+        state = run_status(run_id, owner)
+        if state == "running":
+            runs[(run_id, owner)] = "stop_requested"
+            return "stop_requested"
+        return state
+
+    def run_finish(run_id, owner, *, failed=False):
+        state = "stopped" if run_status(run_id, owner) == "stop_requested" else (
+            "failed" if failed else "completed")
+        runs[(run_id, owner)] = state
+        return state
+
+    monkeypatch.setattr(agent_runs, "create", run_create)
+    monkeypatch.setattr(agent_runs, "status", run_status)
+    monkeypatch.setattr(agent_runs, "request_stop", run_stop)
+    monkeypatch.setattr(agent_runs, "finish", run_finish)
     for name in dir(FakeDB):
         if name.startswith("_") or name in FAKE_ONLY_HELPERS:
             continue

@@ -98,6 +98,20 @@ def test_a_connected_agent_answers_with_citations(wired):
     assert result["usage"]["llm_turns"] == 2
 
 
+def test_stop_after_inflight_tool_keeps_sources_and_skips_followup(wired):
+    wired["turns"] = [{"content": "", "tool_calls": [
+        _tool_call("search_papers", call_id="c1"),
+        _tool_call("search_papers", call_id="c2"),
+    ]}]
+    result = agent_service.ask(
+        "what is RAG?", tier="anonymous",
+        should_stop=lambda: len(wired["calls"]) >= 1)
+    assert result["status"] == agent_service.STATUS_STOPPED
+    assert len(wired["calls"]) == 1
+    assert [paper["paper_id"] for paper in result["sources"]] == ["p1", "p2"]
+    assert result["answer"] is None
+
+
 def test_citations_are_deduplicated_across_tool_calls(wired):
     """The same paper found twice is one citation, not two."""
     wired["turns"] = [

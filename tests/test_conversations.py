@@ -30,7 +30,7 @@ def answering(monkeypatch):
     monkeypatch.setattr(agent_service, "is_connected", lambda: True)
 
     def fake_ask(question, *, tier, user_id=None, conversation_history=None,
-                 on_event=None, usage=None):
+                 on_event=None, usage=None, should_stop=None):
         return agent_service.envelope(
             question, answer="Because [1].",
             citations=[{"number": 1, "paper_id": "p1", "title": "A Paper",
@@ -188,7 +188,7 @@ def test_a_followup_receives_recent_conversation_context(client, db, monkeypatch
     seen = []
 
     def fake_ask(question, *, tier, user_id=None, conversation_history=None,
-                 on_event=None, usage=None):
+                 on_event=None, usage=None, should_stop=None):
         seen.append(list(conversation_history or []))
         return agent_service.envelope(question, answer="A short answer.")
 
