@@ -44,7 +44,8 @@ def wired(monkeypatch):
 
     monkeypatch.setattr(agent_service, "is_connected", lambda: True)
 
-    def fake_ask(question, *, tier, user_id=None, on_event=None, usage=None):
+    def fake_ask(question, *, tier, user_id=None, conversation_history=None,
+                 on_event=None, usage=None):
         if on_event:
             on_event({"type": "status", "phase": "thinking"})
             on_event({"type": "tool_start", "name": "search_papers",
