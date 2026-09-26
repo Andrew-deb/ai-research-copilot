@@ -85,6 +85,7 @@
     el.textContent = text;
     ensureThread().appendChild(el);
     scrollToLatest();
+    return el;
   }
 
   function addAnswer(text) {
@@ -743,7 +744,7 @@
     }
   }
 
-  async function streamTurn(question, trace) {
+  async function streamTurn(question, trace, options) {
     var res = await fetch("/chat/ask", {
       method: "POST",
       headers: {
@@ -755,7 +756,8 @@
       },
       // The id travels with every turn so the second question lands in the same
       // conversation as the first, rather than starting a new one each time.
-      body: JSON.stringify({ question: question, conversation_id: conversationId }),
+      body: JSON.stringify({ question: question, conversation_id: conversationId,
+        action: options.action || "new", source_message_id: options.source_message_id || null }),
     });
 
     // Refusals (403 capability, 429 quota, 503 unavailable) answer JSON even
@@ -792,7 +794,12 @@
         if (!line) { return; }
         var event;
         try { event = JSON.parse(line.slice(5).trim()); } catch (e) { return; }
-        handle(event, trace, function (result) { finishTurn(result, trace, question); });
+        handle(event, trace, function (result) {
+          finishTurn(result, trace, question);
+          if (options.action && result.conversation_id && result.answer) {
+            window.location.href = "/chat/" + encodeURIComponent(result.conversation_id);
+          }
+        });
       });
     }
   }
@@ -814,7 +821,7 @@
   // The sidebar is rendered server-side, so a conversation started in this tab
   // would otherwise not appear until the next full page load.
   function addToSidebar(id, question) {
-    var section = document.querySelector(".nav-section-scroll");
+    var section = document.getElementById("nav-history-results");
     if (!section) { return; }
 
     var empty = section.querySelector(".nav-empty");
@@ -831,12 +838,7 @@
       : question;
     link.appendChild(label);
 
-    var heading = section.querySelector(".nav-label");
-    if (heading && heading.nextSibling) {
-      section.insertBefore(link, heading.nextSibling);
-    } else {
-      section.appendChild(link);
-    }
+    section.prepend(link);
   }
 
   function finishTurn(result, trace, question) {
@@ -855,17 +857,19 @@
     }
   }
 
-  async function send(question) {
+  async function send(question, options) {
+    options = options || {};
+    if (pending) { return; }
     activeRunId = null;
     stopRequested = false;
     setPending(true);
-    addUserMessage(question);
-    input.value = "";
+    if (options.action !== "regenerate") { addUserMessage(question); }
+    if (!options.action) { input.value = ""; }
     autosize();
 
     var trace = createTrace();
     try {
-      await streamTurn(question, trace);
+      await streamTurn(question, trace, options);
     } catch (err) {
       trace.finish();
       addNotice(activeRunId
@@ -937,6 +941,94 @@
 
   /* -------------------------------------------------------------- replay */
 
+  function versionControls(el, message, prompt) {
+    if (!conversationId || !message.message_id) { return; }
+    var bar = document.createElement("div");
+    bar.className = "chat-version-actions";
+    if (message.role === "user") {
+      var edit = document.createElement("button");
+      edit.type = "button";
+      edit.textContent = "Edit";
+      edit.setAttribute("aria-label", "Edit this prompt and create a new version");
+      edit.addEventListener("click", function () {
+        if (pending || el.querySelector(".chat-prompt-edit")) { return; }
+        var formEdit = document.createElement("div");
+        formEdit.className = "chat-prompt-edit";
+        var field = document.createElement("textarea");
+        field.value = message.content;
+        field.maxLength = 2000;
+        field.setAttribute("aria-label", "Edit prompt");
+        var save = document.createElement("button");
+        save.type = "button";
+        save.textContent = "Send edited prompt";
+        save.addEventListener("click", function () {
+          var changed = field.value.trim();
+          if (changed) {
+            formEdit.remove();
+            send(changed, { action: "edit", source_message_id: message.message_id });
+          }
+        });
+        var cancel = document.createElement("button");
+        cancel.type = "button";
+        cancel.textContent = "Cancel";
+        cancel.addEventListener("click", function () { formEdit.remove(); });
+        formEdit.appendChild(field);
+        formEdit.appendChild(save);
+        formEdit.appendChild(cancel);
+        el.appendChild(formEdit);
+        field.focus();
+      });
+      bar.appendChild(edit);
+    } else if (prompt && prompt.message_id) {
+      var regen = document.createElement("button");
+      regen.type = "button";
+      regen.textContent = "Regenerate";
+      regen.setAttribute("aria-label", "Regenerate answer and keep this version");
+      regen.addEventListener("click", function () {
+        if (!pending) {
+          send(prompt.content, { action: "regenerate",
+                                 source_message_id: prompt.message_id });
+        }
+      });
+      bar.appendChild(regen);
+    }
+    var versions = message.versions || [];
+    if (versions.length > 1) {
+      var index = versions.indexOf(message.message_id);
+      var position = document.createElement("span");
+      position.textContent = (index + 1) + " / " + versions.length;
+      var move = function (direction) {
+        var target = versions[index + direction];
+        if (!target || pending) { return; }
+        fetch("/chat/" + encodeURIComponent(conversationId) + "/versions/" +
+              encodeURIComponent(target) + "/select", {
+          method: "POST",
+          headers: { "X-CSRFToken": (document.querySelector('meta[name="csrf-token"]') || {})
+            .content || "", "X-Requested-With": "XMLHttpRequest" },
+        }).then(function (res) {
+          if (!res.ok) { throw new Error(); }
+          window.location.reload();
+        }).catch(function () { addNotice("Could not switch versions."); });
+      };
+      var previous = document.createElement("button");
+      previous.type = "button";
+      previous.textContent = "‹";
+      previous.disabled = index <= 0;
+      previous.setAttribute("aria-label", "Previous version");
+      previous.addEventListener("click", function () { move(-1); });
+      var next = document.createElement("button");
+      next.type = "button";
+      next.textContent = "›";
+      next.disabled = index >= versions.length - 1;
+      next.setAttribute("aria-label", "Next version");
+      next.addEventListener("click", function () { move(1); });
+      bar.appendChild(previous);
+      bar.appendChild(position);
+      bar.appendChild(next);
+    }
+    if (bar.childNodes.length) { el.appendChild(bar); }
+  }
+
   // A stored turn is drawn by the same functions a live one uses. That is the
   // whole design: one renderer means a reopened answer cannot drift from the
   // answer that was originally given.
@@ -987,12 +1079,16 @@
     try { history = JSON.parse(tag.textContent); } catch (e) { return; }
     if (!history || !history.length) { return; }
 
+    var previousPrompt = null;
     history.forEach(function (message) {
       if (message.role === "user") {
-        addUserMessage(message.content || "");
+        var promptEl = addUserMessage(message.content || "");
+        versionControls(promptEl, message, null);
+        previousPrompt = message;
       } else if (message.role === "assistant") {
         replayTrace(message);
         var answer = message.content ? addAnswer(message.content) : null;
+        if (answer) { versionControls(answer, message, previousPrompt); }
         var sources = addSources(message, "");
         linkCitations(answer, message.citations, sources);
       } else {

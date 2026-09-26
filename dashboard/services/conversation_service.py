@@ -5,6 +5,11 @@ Deferred in Phase 3.3 on the grounds that the shape of a stored turn depends on
 what an agent actually produces, and no agent existed. It does now, and the
 envelope has settled, so this stores it whole.
 
+One conversation ID is the durable chat session ID. Message parent links and a
+selected leaf express versions inside that session; an extra sessions table
+would duplicate the identity with no distinct lifecycle yet. The future
+assistant panel opens the same conversation ID and keeps its original `origin`.
+
 **Anonymous visitors have no history**, and that is a promise rather than an
 oversight: the demo tier states that nothing is kept between visits, the
 sidebar hides the history controls for them, and `conversations.user_id` is NOT
@@ -17,9 +22,10 @@ from __future__ import annotations
 
 import logging
 import re
+from urllib.parse import urlencode
 
 from exceptions import CapabilityDeniedError, ValidationError
-from repositories import lakebase
+from repositories import lakebase, conversation_versions
 
 logger = logging.getLogger(__name__)
 
@@ -121,14 +127,18 @@ def _require_owner(user_id: str | None) -> str:
     return user_id
 
 
-def start(user_id: str | None, question: str, answer: str | None = None) -> dict:
+def start(user_id: str | None, question: str, answer: str | None = None,
+          *, origin: str = "agent", origin_context: str | None = None) -> dict:
     """Open a conversation, named from the answer where it named itself."""
     return lakebase.create_conversation(
-        _require_owner(user_id), title_from(question, answer))
+        _require_owner(user_id), title_from(question, answer), origin, origin_context)
 
 
 def record_turn(user_id: str | None, conversation_id: str | None,
-                question: str, result: dict) -> str | None:
+                question: str, result: dict, *, mode: str = "new",
+                source_id: str | None = None,
+                expected_head: str | None = None, origin: str = "agent",
+                origin_context: str | None = None) -> str | None:
     """
     Persist one exchange, and return the conversation it belongs to.
 
@@ -147,6 +157,8 @@ def record_turn(user_id: str | None, conversation_id: str | None,
         if conversation_id:
             existing = lakebase.get_conversation(user_id, conversation_id)
             if not existing:
+                if mode != "new":
+                    return None
                 # Someone else's id, or one that no longer exists. Start a new
                 # conversation rather than refusing: the answer is already
                 # written and the person is not at fault.
@@ -154,23 +166,22 @@ def record_turn(user_id: str | None, conversation_id: str | None,
 
         if not conversation_id:
             conversation_id = str(
-                start(user_id, question, result.get("answer"))["conversation_id"])
+                start(user_id, question, result.get("answer"), origin=origin,
+                      origin_context=origin_context)["conversation_id"])
 
-        lakebase.append_message(conversation_id, "user", question)
-        lakebase.append_message(
-            conversation_id, "assistant", result.get("answer"),
-            citations=result.get("citations"),
-            sources=result.get("sources"),
-            tool_calls=result.get("tool_calls"),
-            usage=result.get("usage"),
-        )
+        selected = conversation_versions.append(
+            user_id, conversation_id, question, result,
+            mode=mode, source_id=source_id, expected_head=expected_head)
+        if selected is None:
+            return None
         return conversation_id
     except Exception:
         logger.exception("Could not record conversation turn")
         return None
 
 
-def recent(user_id: str | None, limit: int = RECENT_LIMIT) -> list[dict]:
+def recent(user_id: str | None, limit: int = RECENT_LIMIT, *, kind: str = "all",
+           search: str = "", offset: int = 0) -> list[dict]:
     """
     The sidebar list. Empty, never an error, for anyone without history.
 
@@ -179,16 +190,45 @@ def recent(user_id: str | None, limit: int = RECENT_LIMIT) -> list[dict]:
     """
     if not user_id:
         return []
+    if kind not in ("all", "agent", "assistant", "search"):
+        raise ValidationError("Unknown history filter.")
     try:
-        return [
+        chats = [
             {"conversation_id": str(row["conversation_id"]),
              "title": row["title"],
-             "pinned": bool(row.get("pinned"))}
-            for row in lakebase.list_conversations(user_id, limit=limit)
-        ]
+             "pinned": bool(row.get("pinned")),
+             "origin": row.get("origin") or "agent",
+             "origin_context": row.get("origin_context"),
+             "updated_at": row.get("updated_at")}
+            for row in lakebase.list_conversations(
+                user_id, limit=limit + offset,
+                origin=kind if kind in ("agent", "assistant") else None,
+                search=search)
+        ] if kind != "search" else []
+        entries = [dict(chat, kind="chat", url="/chat/" + chat["conversation_id"])
+                   for chat in chats]
+        if kind in ("all", "search"):
+            entries += [{"kind": "search", "origin": "search", "title": row["query"],
+                         "mode": row["mode"], "pinned": False,
+                         "updated_at": row["updated_at"],
+                         "url": "/search?" + urlencode({"q": row["query"], "mode": row["mode"]})}
+                        for row in conversation_versions.searches(
+                            user_id, search=search, limit=limit + offset)]
+        entries.sort(key=lambda entry: (bool(entry["pinned"]), entry["updated_at"]),
+                     reverse=True)
+        return entries[offset:offset + limit]
     except Exception:
         logger.exception("Could not load recent conversations")
         return []
+
+
+def record_search(user_id: str | None, query: str, mode: str) -> None:
+    if not user_id or not query or mode not in ("keyword", "semantic"):
+        return
+    try:
+        conversation_versions.record_search(user_id, query[:500], mode)
+    except Exception:
+        logger.exception("Could not record search history")
 
 
 def load(user_id: str | None, conversation_id: str) -> dict | None:
@@ -204,9 +244,18 @@ def load(user_id: str | None, conversation_id: str) -> dict | None:
     if not conversation:
         return None
 
+    all_rows = conversation_versions.messages(owner, conversation_id)
+    selected = _path(all_rows or [], conversation.get("selected_message_id"))
+    siblings = {}
+    for row in all_rows or []:
+        key = (str(row.get("parent_message_id")), row["role"])
+        siblings.setdefault(key, []).append(str(row["message_id"]))
     messages = []
-    for row in lakebase.get_conversation_messages(conversation_id):
+    for row in selected:
+        versions = siblings[(str(row.get("parent_message_id")), row["role"])]
         messages.append({
+            "message_id": str(row["message_id"]),
+            "versions": versions,
             "role": row["role"],
             "content": row["content"],
             "citations": row.get("citations") or [],
@@ -219,7 +268,76 @@ def load(user_id: str | None, conversation_id: str) -> dict | None:
         "conversation_id": str(conversation["conversation_id"]),
         "title": conversation["title"],
         "messages": messages,
+        "origin": conversation.get("origin") or "agent",
     }
+
+
+def _path(rows: list[dict], leaf) -> list[dict]:
+    """Walk the selected ancestry, never the abandoned tail of another branch."""
+    by_id = {str(row["message_id"]): row for row in rows}
+    path, seen = [], set()
+    while leaf and str(leaf) in by_id and str(leaf) not in seen:
+        seen.add(str(leaf))
+        row = by_id[str(leaf)]
+        path.append(row)
+        leaf = row.get("parent_message_id")
+    return list(reversed(path))
+
+
+def prepare_turn(user_id: str | None, conversation_id: str | None,
+                 mode: str = "new", source_id: str | None = None) -> dict:
+    """Freeze the chosen context before a metered run begins."""
+    if not user_id or not conversation_id:
+        if mode != "new":
+            raise ValidationError("Select a saved conversation to create a version.")
+        return {"history": [], "expected_head": None}
+    conversation = lakebase.get_conversation(user_id, conversation_id)
+    if not conversation:
+        if mode != "new":
+            raise ValidationError("That conversation is unavailable.")
+        return {"history": [], "expected_head": None}
+    rows = conversation_versions.messages(user_id, conversation_id) or []
+    path = _path(rows, conversation.get("selected_message_id"))
+    original_question = None
+    if mode != "new":
+        if mode not in ("edit", "regenerate"):
+            raise ValidationError("Unknown conversation action.")
+        index = next((i for i, row in enumerate(path)
+                      if str(row["message_id"]) == str(source_id) and row["role"] == "user"), None)
+        if index is None:
+            raise ValidationError("Select a prompt on the current version.")
+        original_question = path[index]["content"]
+        if mode == "regenerate":
+            # A completed write is not a safe instruction to repeat by accident.
+            from services.agent_service import WRITE_TOOLS
+            answer = path[index + 1] if index + 1 < len(path) else None
+            if answer and any(call.get("name") in WRITE_TOOLS
+                              for call in answer.get("tool_calls") or []):
+                raise ValidationError("This response performed a write and cannot be regenerated.")
+        path = path[:index]
+    return {"history": _limit_context(path),
+            "original_question": original_question,
+            "expected_head": str(conversation["selected_message_id"])
+                             if conversation.get("selected_message_id") else None}
+
+
+def _limit_context(rows: list[dict], max_messages=AGENT_CONTEXT_MESSAGES,
+                   max_chars=AGENT_CONTEXT_CHARS) -> list[dict]:
+    usable = [{"role": row["role"], "content": row.get("content") or ""}
+              for row in rows if row.get("role") in ("user", "assistant") and row.get("content")]
+    chosen, chars = [], 0
+    for message in reversed(usable):
+        remaining = max_chars - chars
+        if remaining <= 0 or len(chosen) >= max_messages:
+            break
+        content = message["content"][-remaining:]
+        chosen.append({"role": message["role"], "content": content})
+        chars += len(content)
+    return list(reversed(chosen))
+
+
+def select_version(user_id: str | None, conversation_id: str, message_id: str) -> bool:
+    return conversation_versions.select(_require_owner(user_id), conversation_id, message_id)
 
 
 def agent_context(user_id: str | None, conversation_id: str | None,
@@ -245,36 +363,9 @@ def agent_context(user_id: str | None, conversation_id: str | None,
         if not conversation:
             return []
 
-        rows = lakebase.get_conversation_messages(conversation_id)
-        usable = [
-            {"role": row["role"], "content": row.get("content") or ""}
-            for row in rows
-            if row.get("role") in ("user", "assistant") and row.get("content")
-        ]
-
-        # Work backwards so the newest exchange wins when the character budget
-        # is tight, then restore chronological order for the model.
-        chosen: list[dict] = []
-        chars = 0
-        for message in reversed(usable):
-            content = message["content"]
-            remaining = max_chars - chars
-            if remaining <= 0:
-                break
-
-            if len(content) > remaining:
-                # Keep the tail of an oversized old message: follow-ups tend to
-                # refer to conclusions/last bullets, and the newest material is
-                # more useful than its opening boilerplate.
-                content = content[-remaining:]
-
-            chosen.append({"role": message["role"], "content": content})
-            chars += len(content)
-
-            if len(chosen) >= max_messages:
-                break
-
-        return list(reversed(chosen))
+        rows = conversation_versions.messages(user_id, conversation_id) or []
+        return _limit_context(_path(rows, conversation.get("selected_message_id")),
+                              max_messages, max_chars)
     except Exception:
         logger.exception("Could not load agent conversation context")
         return []

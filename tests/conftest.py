@@ -90,6 +90,7 @@ class FakeDB:
         self.ai_operations: list[dict] = []
         self.conversations: dict[str, dict] = {}
         self.conversation_messages: dict[str, list[dict]] = {}
+        self.search_history: dict[tuple[str, str, str], dict] = {}
 
     # ---------- test helpers (not part of the repo surface) ----------
     def seed_paper(self, **overrides) -> dict:
@@ -302,10 +303,12 @@ class FakeDB:
         self.ai_operations.append(dict(fields))
 
     # ---------- conversations ----------
-    def create_conversation(self, user_id, title):
+    def create_conversation(self, user_id, title, origin="agent", origin_context=None):
         cid = str(uuid.uuid4())
         row = {"conversation_id": cid, "user_id": user_id, "title": title,
-               "pinned": False, "created_at": _now(), "updated_at": _now()}
+               "pinned": False, "created_at": _now(), "updated_at": _now(),
+               "origin": origin, "origin_context": origin_context,
+               "selected_message_id": None}
         self.conversations[cid] = row
         self.conversation_messages[cid] = []
         return dict(row)
@@ -317,12 +320,14 @@ class FakeDB:
             return None
         return dict(row)
 
-    def list_conversations(self, user_id, limit=12):
+    def list_conversations(self, user_id, limit=12, *, origin=None, search="", offset=0):
         rows = [c for c in self.conversations.values()
-                if str(c["user_id"]) == str(user_id)]
+                if str(c["user_id"]) == str(user_id)
+                and (origin is None or c["origin"] == origin)
+                and search.lower() in c["title"].lower()]
         # Pinned first, then most recent — the same ordering as the SQL index.
         rows.sort(key=lambda c: (bool(c.get("pinned")), c["updated_at"]), reverse=True)
-        return [dict(c) for c in rows[:limit]]
+        return [dict(c) for c in rows[offset:offset + limit]]
 
     def rename_conversation(self, user_id, conversation_id, title):
         row = self.conversations.get(str(conversation_id))
@@ -350,9 +355,11 @@ class FakeDB:
         thread = self.conversation_messages.setdefault(str(conversation_id), [])
         row = {"message_id": str(uuid.uuid4()), "seq": len(thread) + 1,
                "role": role, "content": content,
+               "parent_message_id": self.conversations[str(conversation_id)]["selected_message_id"],
                "citations": citations or [], "sources": sources or [],
                "tool_calls": tool_calls or [], "usage": usage or {}}
         thread.append(row)
+        self.conversations[str(conversation_id)]["selected_message_id"] = row["message_id"]
         return {"message_id": row["message_id"], "seq": row["seq"]}
 
     def delete_conversation(self, user_id, conversation_id):
@@ -445,7 +452,7 @@ class FakeDB:
 def db(monkeypatch):
     """In-memory repository + stubbed embedding/LLM. Returns the FakeDB instance."""
     fake = FakeDB()
-    from repositories import agent_runs
+    from repositories import agent_runs, conversation_versions
     runs = {}
 
     def run_create(run_id, owner):
@@ -471,6 +478,68 @@ def db(monkeypatch):
     monkeypatch.setattr(agent_runs, "status", run_status)
     monkeypatch.setattr(agent_runs, "request_stop", run_stop)
     monkeypatch.setattr(agent_runs, "finish", run_finish)
+
+    def version_messages(owner, cid):
+        return fake.get_conversation_messages(cid) if fake.get_conversation(owner, cid) else None
+
+    def version_append(owner, cid, question, result, *, mode="new", source_id=None,
+                       expected_head=None):
+        convo = fake.get_conversation(owner, cid)
+        if not convo:
+            return None
+        head = convo["selected_message_id"]
+        parent = expected_head if mode == "new" else head
+        if mode != "new":
+            source = next((m for m in fake.get_conversation_messages(cid)
+                           if m["message_id"] == source_id and m["role"] == "user"), None)
+            if not source:
+                return None
+            parent = source_id if mode == "regenerate" else source["parent_message_id"]
+        if mode != "regenerate":
+            prompt = fake.append_message(cid, "user", question)
+            thread = fake.conversation_messages[str(cid)]
+            thread[-1]["parent_message_id"] = parent
+            parent = prompt["message_id"]
+        answer = fake.append_message(cid, "assistant", result.get("answer"),
+                                     citations=result.get("citations"),
+                                     sources=result.get("sources"),
+                                     tool_calls=result.get("tool_calls"),
+                                     usage=result.get("usage"))
+        thread = fake.conversation_messages[str(cid)]
+        thread[-1]["parent_message_id"] = parent
+        selected = str(head) == str(expected_head) if expected_head else head is None
+        if not selected:
+            fake.conversations[str(cid)]["selected_message_id"] = head
+        return selected
+
+    def version_select(owner, cid, mid):
+        if not fake.get_conversation(owner, cid):
+            return False
+        rows = fake.get_conversation_messages(cid)
+        descendants = {mid}
+        for row in rows:
+            if row["parent_message_id"] in descendants:
+                descendants.add(row["message_id"])
+        answers = [r for r in rows if r["message_id"] in descendants
+                   and r["role"] == "assistant"]
+        if not answers:
+            return False
+        fake.conversations[str(cid)]["selected_message_id"] = answers[-1]["message_id"]
+        return True
+
+    def record_search(owner, query, mode):
+        fake.search_history[(owner, query, mode)] = {
+            "query": query, "mode": mode, "updated_at": _now()}
+
+    def searches(owner, *, search="", limit=12, offset=0):
+        rows = [r for (uid, _, _), r in fake.search_history.items()
+                if uid == owner and search.lower() in r["query"].lower()]
+        return rows[offset:offset + limit]
+
+    for name, method in (("messages", version_messages), ("append", version_append),
+                         ("select", version_select), ("record_search", record_search),
+                         ("searches", searches)):
+        monkeypatch.setattr(conversation_versions, name, method)
     for name in dir(FakeDB):
         if name.startswith("_") or name in FAKE_ONLY_HELPERS:
             continue

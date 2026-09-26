@@ -9,7 +9,7 @@ from config import EMBEDDING_MODEL
 from middleware.capabilities import require_capability, require_quota
 from middleware.auth import current_tier, current_user_id
 from routes.helpers import form_or_json
-from services import quota_service, search_service, telemetry_service
+from services import quota_service, search_service, telemetry_service, conversation_service
 
 bp = Blueprint("search", __name__)
 
@@ -32,6 +32,8 @@ def search_page():
             results = search_service.semantic_search(query, top_k=20)
         else:
             results = search_service.keyword_search(query, page=page)
+        if page == 1:
+            conversation_service.record_search(current_user_id(), query, mode)
 
     # Only for an empty box. Once there are results, a panel of other things to
     # search is a distraction from the thing they just searched for.
