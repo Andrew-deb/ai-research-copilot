@@ -220,6 +220,7 @@
   var railLauncher = null;
   var railScrim = null;
   var sourceCount = 0;
+  var expandRail = null;
 
   function setDrawer(open) {
     if (!rail) { return; }
@@ -331,6 +332,7 @@
       try { localStorage.setItem("rc-rail-collapsed", collapsed ? "1" : "0"); }
       catch (e) { /* ignore */ }
     }
+    expandRail = function () { setCollapsed(false); };
 
     toggle.addEventListener("click", function () {
       // The same control means "close" in a drawer and "collapse" in a column.
@@ -392,10 +394,13 @@
     ol.className = "chat-citations" + (numbered ? "" : " is-plain");
     items.forEach(function (c) {
       var li = document.createElement("li");
-      if (numbered && c.number) { li.value = c.number; }
+      if (numbered && c.number) {
+        li.value = c.number;
+        li.dataset.citationNumber = String(c.number);
+      }
 
       var a = document.createElement("a");
-      a.href = "/paper/" + c.paper_id;
+      a.href = "/paper/" + encodeURIComponent(c.paper_id);
       a.textContent = c.title;
       li.appendChild(a);
 
@@ -469,6 +474,7 @@
     rail.classList.remove("is-empty");
     sourceCount += cited.length || consulted.length;
     updateLauncher();
+    return group;
   }
 
   // Enough to judge a source without opening it: what it is, when, where, and
@@ -483,6 +489,186 @@
     }
     return bits.join(" · ");
   }
+
+  /* Citation numbers belong to one answer. Link only numbers that its verified
+     mapping contains, after Markdown has been sanitized; never parse HTML or
+     turn a number from another response into a paper link. */
+  var preview = null;
+  var previewAnchor = null;
+  var previewTimer = null;
+
+  function dismissPreview() {
+    clearTimeout(previewTimer);
+    if (preview) { preview.remove(); }
+    preview = null;
+    previewAnchor = null;
+  }
+
+  function schedulePreviewDismissal() {
+    clearTimeout(previewTimer);
+    previewTimer = setTimeout(function () {
+      if (preview && !preview.contains(document.activeElement) &&
+          previewAnchor !== document.activeElement) { dismissPreview(); }
+    }, 180);
+  }
+
+  function showSource(group, number) {
+    dismissPreview();
+    if (!group) { return; }
+    if (window.matchMedia("(max-width: 1100px)").matches) { setDrawer(true); }
+    else if (expandRail) { expandRail(); }
+    var item = group.querySelector('[data-citation-number="' + number + '"]');
+    if (!item) { return; }
+    // Wait for the drawer to enter the viewport before scrolling its body.
+    requestAnimationFrame(function () {
+      item.scrollIntoView({ block: "center", behavior: "smooth" });
+      item.classList.add("is-highlighted");
+      var link = item.querySelector("a");
+      if (link) { link.focus({ preventScroll: true }); }
+      setTimeout(function () { item.classList.remove("is-highlighted"); }, 2800);
+    });
+  }
+
+  function openPreview(anchor, citation, group) {
+    if (previewAnchor === anchor && preview) { return; }
+    dismissPreview();
+    previewAnchor = anchor;
+    var box = document.createElement("div");
+    box.className = "chat-citation-preview";
+    box.setAttribute("role", "dialog");
+    box.setAttribute("aria-label", "Paper preview");
+
+    var title = document.createElement("strong");
+    title.className = "chat-preview-title";
+    title.textContent = citation.title || "Paper";
+    box.appendChild(title);
+
+    var details = [];
+    if (Array.isArray(citation.authors) && citation.authors.length) {
+      details.push(citation.authors.slice(0, 3).map(function (author) {
+        return typeof author === "string" ? author : author.display_name || author.name || "";
+      }).filter(Boolean).join(", "));
+    }
+    if (citation.publication_year) { details.push(String(citation.publication_year)); }
+    if (details.length) {
+      var meta = document.createElement("span");
+      meta.className = "chat-preview-meta";
+      meta.textContent = details.join(" · ");
+      box.appendChild(meta);
+    }
+
+    var excerpt = document.createElement("p");
+    excerpt.className = "chat-preview-excerpt";
+    var summary = citation.tldr || citation.abstract_excerpt;
+    excerpt.textContent = summary ? String(summary) : "No summary available for this paper.";
+    box.appendChild(excerpt);
+    if (summary) {
+      var kind = document.createElement("span");
+      kind.className = "chat-preview-kind";
+      kind.textContent = citation.tldr ? "Source summary" : "Abstract excerpt";
+      box.insertBefore(kind, excerpt);
+    }
+
+    var actions = document.createElement("div");
+    actions.className = "chat-preview-actions";
+    var open = document.createElement("a");
+    open.href = anchor.href;
+    open.target = "_blank";
+    open.rel = "noopener noreferrer";
+    open.textContent = "Open paper";
+    actions.appendChild(open);
+    if (group) {
+      var reveal = document.createElement("button");
+      reveal.type = "button";
+      reveal.textContent = "Show in sources";
+      reveal.addEventListener("click", function () { showSource(group, citation.number); });
+      actions.appendChild(reveal);
+    }
+    var close = document.createElement("button");
+    close.type = "button";
+    close.className = "chat-preview-close";
+    close.setAttribute("aria-label", "Close paper preview");
+    close.textContent = "×";
+    close.addEventListener("click", function () { dismissPreview(); anchor.focus(); });
+    box.appendChild(actions);
+    box.appendChild(close);
+    box.addEventListener("mouseenter", function () { clearTimeout(previewTimer); });
+    box.addEventListener("mouseleave", schedulePreviewDismissal);
+    box.addEventListener("focusout", schedulePreviewDismissal);
+    document.body.appendChild(box);
+    preview = box;
+
+    var rect = anchor.getBoundingClientRect();
+    var width = box.offsetWidth;
+    var height = box.offsetHeight;
+    box.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)) + "px";
+    box.style.top = (rect.bottom + height + 8 <= window.innerHeight
+      ? rect.bottom + 6 : Math.max(8, rect.top - height - 6)) + "px";
+  }
+
+  function linkCitations(answer, citations, group) {
+    if (!answer || !Array.isArray(citations) || !citations.length) { return; }
+    var mapped = Object.create(null);
+    citations.forEach(function (c) {
+      if (Number.isSafeInteger(Number(c.number)) && Number(c.number) > 0 &&
+          c.paper_id && c.title) { mapped[String(c.number)] = c; }
+    });
+    var walker = document.createTreeWalker(answer, NodeFilter.SHOW_TEXT, {
+      acceptNode: function (node) {
+        if (node.parentElement.closest("a, code, pre, button")) {
+          return NodeFilter.FILTER_REJECT;
+        }
+        return /\[\d+\]/.test(node.nodeValue) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+      },
+    });
+    var nodes = [];
+    while (walker.nextNode()) { nodes.push(walker.currentNode); }
+    nodes.forEach(function (node) {
+      var text = node.nodeValue;
+      var re = /\[(\d+)\]/g;
+      var match, start = 0, fragment = document.createDocumentFragment();
+      while ((match = re.exec(text))) {
+        let citation = mapped[String(Number(match[1]))];
+        if (!citation) { continue; }
+        fragment.appendChild(document.createTextNode(text.slice(start, match.index)));
+        let link = document.createElement("a");
+        link.className = "chat-inline-citation";
+        link.href = "/paper/" + encodeURIComponent(citation.paper_id);
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        link.textContent = match[0];
+        link.setAttribute("aria-label", "Paper " + citation.number + ": " + citation.title);
+        link.addEventListener("mouseenter", function () { openPreview(link, citation, group); });
+        link.addEventListener("mouseleave", schedulePreviewDismissal);
+        link.addEventListener("focus", function () { openPreview(link, citation, group); });
+        link.addEventListener("blur", schedulePreviewDismissal);
+        link.addEventListener("click", function (event) {
+          if (!window.matchMedia("(hover: hover) and (pointer: fine)").matches) {
+            event.preventDefault();
+            openPreview(link, citation, group);
+            if (preview) { preview.querySelector(".chat-preview-close").focus(); }
+          }
+        });
+        fragment.appendChild(link);
+        start = re.lastIndex;
+      }
+      if (start) {
+        fragment.appendChild(document.createTextNode(text.slice(start)));
+        node.replaceWith(fragment);
+      }
+    });
+  }
+
+  document.addEventListener("keydown", function (event) {
+    if (event.key === "Escape" && preview) { dismissPreview(); }
+  });
+  document.addEventListener("pointerdown", function (event) {
+    if (preview && !preview.contains(event.target) && event.target !== previewAnchor) {
+      dismissPreview();
+    }
+  });
+  window.addEventListener("scroll", dismissPreview, true);
+  window.addEventListener("resize", dismissPreview);
 
   /* ---------------------------------------------------------------- send */
 
@@ -608,8 +794,9 @@
     trace.finish();
     rememberConversation(result, question);
     if (result.answer) {
-      addAnswer(result.answer);
-      addSources(result, question);
+      var answer = addAnswer(result.answer);
+      var sources = addSources(result, question);
+      linkCitations(answer, result.citations, sources);
     }
     if (result.message) { addNotice(result.message); }
     if (!result.answer && !result.message) {
@@ -730,8 +917,9 @@
         addUserMessage(message.content || "");
       } else if (message.role === "assistant") {
         replayTrace(message);
-        if (message.content) { addAnswer(message.content); }
-        addSources(message, "");
+        var answer = message.content ? addAnswer(message.content) : null;
+        var sources = addSources(message, "");
+        linkCitations(answer, message.citations, sources);
       } else {
         addNotice(message.content || "");
       }
