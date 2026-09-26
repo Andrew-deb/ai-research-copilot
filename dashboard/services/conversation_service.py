@@ -29,6 +29,12 @@ TITLE_CHARS = 60
 
 RECENT_LIMIT = 12
 
+# Model context is deliberately smaller than stored history. A long-running
+# research chat should not resend every old turn on every request; recent
+# conversational continuity is useful, unbounded prompt growth is not.
+AGENT_CONTEXT_MESSAGES = 6
+AGENT_CONTEXT_CHARS = 12000
+
 # Openers that say nothing about the subject. "Can you compare X and Y" and
 # "Compare X and Y" are the same conversation, and only one of them reads well
 # in a 240px sidebar.
@@ -214,6 +220,64 @@ def load(user_id: str | None, conversation_id: str) -> dict | None:
         "title": conversation["title"],
         "messages": messages,
     }
+
+
+def agent_context(user_id: str | None, conversation_id: str | None,
+                  max_messages: int = AGENT_CONTEXT_MESSAGES,
+                  max_chars: int = AGENT_CONTEXT_CHARS) -> list[dict]:
+    """
+    Recent user/assistant text for the next model turn.
+
+    This is not the replay envelope. Citations, sources, tool calls and usage
+    stay in storage/UI; routine follow-ups such as "summarize that" need the
+    words that were exchanged, not another copy of every metadata object.
+
+    Ownership is checked before any message rows are read. A missing, stale or
+    foreign conversation id simply supplies no context, matching record_turn's
+    existing behaviour of starting a fresh conversation instead of leaking or
+    refusing.
+    """
+    if not user_id or not conversation_id:
+        return []
+
+    try:
+        conversation = lakebase.get_conversation(user_id, conversation_id)
+        if not conversation:
+            return []
+
+        rows = lakebase.get_conversation_messages(conversation_id)
+        usable = [
+            {"role": row["role"], "content": row.get("content") or ""}
+            for row in rows
+            if row.get("role") in ("user", "assistant") and row.get("content")
+        ]
+
+        # Work backwards so the newest exchange wins when the character budget
+        # is tight, then restore chronological order for the model.
+        chosen: list[dict] = []
+        chars = 0
+        for message in reversed(usable):
+            content = message["content"]
+            remaining = max_chars - chars
+            if remaining <= 0:
+                break
+
+            if len(content) > remaining:
+                # Keep the tail of an oversized old message: follow-ups tend to
+                # refer to conclusions/last bullets, and the newest material is
+                # more useful than its opening boilerplate.
+                content = content[-remaining:]
+
+            chosen.append({"role": message["role"], "content": content})
+            chars += len(content)
+
+            if len(chosen) >= max_messages:
+                break
+
+        return list(reversed(chosen))
+    except Exception:
+        logger.exception("Could not load agent conversation context")
+        return []
 
 
 def rename(user_id: str | None, conversation_id: str, title: str) -> dict | None:
