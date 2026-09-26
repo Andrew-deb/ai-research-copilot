@@ -503,6 +503,59 @@ def test_the_reserve_is_taken_out_of_the_deadline(wired, monkeypatch):
     assert result["answer"] == "Answered without searching."
 
 
+def test_post_evidence_planner_timeout_falls_back_to_synthesis(wired, monkeypatch):
+    """Once papers are found, a slow planner should spend the reserve writing
+    from those papers rather than failing the whole turn."""
+    from exceptions import LLMTimeoutError
+
+    calls = []
+
+    def fake_chat(messages, tools, **kwargs):
+        calls.append(kwargs)
+        if len(calls) == 1:
+            return {"content": "", "tool_calls": [
+                _tool_call("search_papers", '{"query": "rag"}')
+            ]}
+        if len(calls) == 2:
+            raise LLMTimeoutError("planner timed out")
+        return {
+            "content": (
+                "The papers report retrieval and grounding limits [1].\n\n"
+                "```citations\n1 = p1\n```"
+            )
+        }
+
+    monkeypatch.setattr(agent_service.llm_client, "chat_with_tools", fake_chat)
+    monkeypatch.setattr(agent_service, "POST_EVIDENCE_PLANNER_SECONDS", 15)
+
+    result = agent_service.ask("q", tier="anonymous")
+
+    assert result["status"] == agent_service.STATUS_OK
+    assert result["answer"].startswith("The papers report")
+    assert [c["paper_id"] for c in result["citations"]] == ["p1"]
+    assert len(wired["calls"]) == 1
+    assert len(calls) == 3
+    assert calls[1]["timeout"] <= 15
+    assert calls[2]["tool_choice"] == "none"
+
+
+def test_first_planner_timeout_still_fails_without_evidence(wired, monkeypatch):
+    """Fallback is evidence-driven: before any tool result exists there is
+    nothing grounded to synthesize from."""
+    from exceptions import LLMTimeoutError
+
+    def timeout(*args, **kwargs):
+        raise LLMTimeoutError("planner timed out")
+
+    monkeypatch.setattr(agent_service.llm_client, "chat_with_tools", timeout)
+
+    result = agent_service.ask("q", tier="anonymous")
+
+    assert result["status"] == agent_service.STATUS_NOT_CONNECTED
+    assert result["sources"] == []
+    assert "timed out" in result["message"]
+
+
 def test_only_a_genuinely_empty_answer_gets_an_explanation(wired, monkeypatch):
     monkeypatch.setattr(agent_service.config, "AGENT_MAX_TOOL_CALLS", 1)
     wired["turns"] = [
@@ -834,6 +887,28 @@ def test_the_llm_client_honours_a_caller_supplied_timeout(monkeypatch):
 
     llm_client.chat_with_tools([{"role": "user", "content": "hi"}], [], timeout=12.5)
     assert captured["timeout"] == 12.5
+
+
+def test_tool_choice_is_forwarded_to_openrouter_payload(monkeypatch):
+    """Final synthesis can keep schemas while explicitly forbidding tool calls."""
+    import llm_client
+
+    captured = {}
+
+    def fake_post(payload, timeout=None, usage=None):
+        captured.update(payload)
+        return {"choices": [{"message": {"content": "done"}}]}
+
+    monkeypatch.setattr(llm_client, "_post", fake_post)
+
+    llm_client.chat_with_tools(
+        [{"role": "user", "content": "answer now"}],
+        [{"type": "function", "function": {"name": "search_papers"}}],
+        tool_choice="none",
+    )
+
+    assert captured["tool_choice"] == "none"
+    assert captured["tools"]
 
 
 def test_openrouter_call_has_a_true_wall_clock_deadline(monkeypatch):
