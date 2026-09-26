@@ -152,6 +152,7 @@ def test_prompt_allows_language_work_without_tools():
     assert "summarize" in followups
     assert "without calling a tool" in followups
     assert "new evidence" in followups
+    assert "Do not re-run research" in followups
 
 
 def test_tools_are_resent_on_every_turn(wired):
