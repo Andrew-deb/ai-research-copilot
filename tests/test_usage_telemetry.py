@@ -125,8 +125,11 @@ def test_tokens_are_counted_even_when_the_body_carries_an_error(monkeypatch):
                                             "completion_tokens": 0, "cost": 0.0004},
                     "error": {"message": "rate limited upstream"}}
 
+    async def fake_request(payload, timeout):
+        return Resp()
+
     monkeypatch.setattr(llm_client, "OPENROUTER_API_KEY", "test-key")
-    monkeypatch.setattr(llm_client.requests, "post", lambda *a, **k: Resp())
+    monkeypatch.setattr(llm_client, "_request_openrouter", fake_request)
 
     tally = llm_client.Usage()
     with pytest.raises(ExternalAPIError):
