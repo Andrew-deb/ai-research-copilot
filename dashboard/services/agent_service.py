@@ -714,7 +714,7 @@ def ask(question: str, *, tier: str, user_id: str | None = None,
                     "Stop searching now and answer from the tool results already "
                     "in this conversation. Do not call any more tools. Ground the "
                     "answer only in those results and include the required "
-                    "```citations` mapping from citation numbers to paper_id."
+                    "citations block mapping citation numbers to paper_id."
                 ),
             })
             _emit(on_event, type="status", phase="writing")
