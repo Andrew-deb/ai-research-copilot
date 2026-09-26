@@ -1049,6 +1049,38 @@ h1, h2, h3,
   transition: opacity .12s ease, color .12s ease, background .12s ease;
 }
 .nav-chat-menu svg { width: 15px; height: 15px; }
+.history-filters {
+  display: flex;
+  gap: 3px;
+  padding: 6px 8px 10px;
+  overflow-x: auto;
+}
+.history-filter {
+  flex: none;
+  border: 0;
+  border-radius: 6px;
+  padding: 5px 7px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.history-filter.is-active, .history-filter:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.history-filter:focus-visible { outline: 2px solid var(--brand); }
+.history-origin-mark { flex: none; font-size: 12px; color: var(--text-muted); }
+.history-more {
+  margin: 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 7px 11px;
+  background: var(--surface-2);
+  color: var(--text);
+  cursor: pointer;
+}
 .nav-chat-row:hover .nav-chat-menu,
 .nav-chat-menu:focus-visible,
 .nav-chat-row.menu-open .nav-chat-menu { opacity: 1; }

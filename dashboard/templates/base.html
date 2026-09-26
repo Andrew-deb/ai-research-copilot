@@ -177,9 +177,22 @@
          emptiness. #}
       {% if is_authenticated %}
       <div class="nav-section nav-section-scroll">
-        <h2 class="nav-label">Recent chats</h2>
+        <h2 class="nav-label">Recent activity</h2>
+        <div class="history-filters" role="group" aria-label="History type">
+          {% for kind in ('all', 'agent', 'assistant', 'search') %}
+            <button type="button" class="history-filter {{ 'is-active' if kind == 'all' }}"
+                    data-history-kind="{{ kind }}" aria-pressed="{{ 'true' if kind == 'all' else 'false' }}">{{ kind | capitalize }}</button>
+          {% endfor %}
+        </div>
+        <div id="nav-history-results">
         {% if recent_chats %}
           {% for chat in recent_chats %}
+            {% if chat.kind == 'search' %}
+              <a href="{{ chat.url }}" class="nav-item nav-item-history-search"
+                 title="Search · {{ chat.mode }}" aria-label="Search: {{ chat.title }}">
+                {{ icon('search') }}<span>{{ chat.title }}</span>
+              </a>
+            {% else %}
             {# The row wraps the link so the delete control can sit beside it
                without being inside it — a button nested in an anchor is a
                button you cannot click without also following the link. #}
@@ -188,10 +201,12 @@
                to read it back out of a URL. #}
             <div class="nav-chat-row {{ 'active' if request.view_args and request.view_args.get('conversation_id') == chat.conversation_id }} {{ 'pinned' if chat.pinned }}"
                  data-conversation="{{ chat.conversation_id }}"
-                 data-pinned="{{ '1' if chat.pinned else '0' }}">
+                 data-pinned="{{ '1' if chat.pinned else '0' }}"
+                 data-origin="{{ chat.origin }}"
+                 title="Started in {{ chat.origin | capitalize }}{{ ' · ' + chat.origin_context if chat.origin_context else '' }}">
               <a href="{{ url_for('chat.conversation', conversation_id=chat.conversation_id) }}"
                  class="nav-item nav-item-chat">
-                {{ icon('chat') }}<span class="nav-chat-title">{{ chat.title }}</span>
+                {{ icon('spark' if chat.origin == 'assistant' else 'chat') }}<span class="nav-chat-title">{{ chat.title }}</span>
               </a>
               {# A button, not a marker: the icon says the row is pinned, and the
                  obvious thing to do with it is click it to unpin. #}
@@ -204,12 +219,14 @@
                 {{ icon('dots') }}
               </button>
             </div>
+            {% endif %}
           {% endfor %}
         {% else %}
           {# Honest placeholder: conversation storage arrives with the agent, and
              inventing a message schema to fill a sidebar would get its shape wrong. #}
           <p class="nav-empty">No recent chats yet</p>
         {% endif %}
+        </div>
       </div>
       {% endif %}
     </nav>
@@ -311,25 +328,25 @@
         <button type="button" class="icon-btn" id="chat-search-close" aria-label="Close">&#215;</button>
       </div>
       <div class="dialog-body">
-        <h3 class="dialog-label">Recent chats</h3>
-        {% if recent_chats %}
+        <div class="history-filters" role="group" aria-label="Search history type">
+          {% for kind in ('all', 'agent', 'assistant', 'search') %}
+            <button type="button" class="history-filter {{ 'is-active' if kind == 'all' }}"
+                    data-search-kind="{{ kind }}" aria-pressed="{{ 'true' if kind == 'all' else 'false' }}">{{ kind | capitalize }}</button>
+          {% endfor %}
+        </div>
+        <h3 class="dialog-label">History</h3>
           <ul class="dialog-list" id="chat-search-results">
             {% for chat in recent_chats %}
               <li>
-                <a href="{{ url_for('chat.conversation', conversation_id=chat.conversation_id) }}"
+                <a href="{{ chat.url }}"
                    data-title="{{ chat.title | lower }}">
-                  {{ icon('chat') }}<span>{{ chat.title }}</span>
+                  {{ icon('search' if chat.kind == 'search' else 'chat') }}<span>{{ chat.title }}</span>
                 </a>
               </li>
             {% endfor %}
           </ul>
-          <p class="dialog-empty" id="chat-search-none" hidden>No chats match that.</p>
-        {% else %}
-          <p class="dialog-empty">
-            No chats yet. Conversations appear here once the research assistant is
-            connected.
-          </p>
-        {% endif %}
+          <p class="dialog-empty" id="chat-search-none" {{ 'hidden' if recent_chats }}>No chats match that.</p>
+        <button type="button" id="chat-search-more" class="history-more" hidden>Load more</button>
       </div>
     </div>
   </div>

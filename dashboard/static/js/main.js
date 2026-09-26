@@ -166,11 +166,53 @@
   const searchInput = document.getElementById("chat-search-input");
   const searchResults = document.getElementById("chat-search-results");
   const searchNone = document.getElementById("chat-search-none");
+  const searchMore = document.getElementById("chat-search-more");
+  const searchKinds = searchScrim ? searchScrim.querySelectorAll("[data-search-kind]") : [];
+  let historyKind = "all";
+  let historyOffset = 0;
+  let searchRequest = 0;
+
+  async function loadHistory(append = false) {
+    if (!searchResults) { return; }
+    const serial = ++searchRequest;
+    const offset = append ? historyOffset : 0;
+    const query = searchInput ? searchInput.value.trim() : "";
+    try {
+      const response = await fetch("/chat/history?" + new URLSearchParams({
+        kind: historyKind, q: query, limit: "30", offset: String(offset),
+      }));
+      if (!response.ok) { throw new Error("History unavailable"); }
+      const body = await response.json();
+      if (serial !== searchRequest) { return; }
+      if (!append) { searchResults.replaceChildren(); }
+      body.entries.forEach(function (entry) {
+        const item = document.createElement("li");
+        const link = document.createElement("a");
+        link.href = entry.url;
+        link.title = entry.kind === "search" ? "Search · " + entry.mode :
+          "Started in " + entry.origin + (entry.origin_context ? " · " + entry.origin_context : "");
+        const label = document.createElement("span");
+        label.textContent = entry.title;
+        link.appendChild(label);
+        item.appendChild(link);
+        searchResults.appendChild(item);
+      });
+      historyOffset = offset + body.entries.length;
+      if (searchNone) {
+        searchNone.textContent = "No history matches that search.";
+        searchNone.hidden = historyOffset !== 0;
+      }
+      if (searchMore) { searchMore.hidden = body.entries.length < 30; }
+    } catch (e) {
+      if (searchNone) { searchNone.hidden = false; searchNone.textContent = "Could not load history."; }
+    }
+  }
 
   function openChatSearch() {
     if (!searchScrim) { return; }
     searchScrim.hidden = false;
     if (searchInput) { searchInput.focus(); searchInput.select(); }
+    loadHistory();
   }
   function closeChatSearch() {
     if (searchScrim) { searchScrim.hidden = true; }
@@ -186,20 +228,25 @@
     });
   }
 
-  if (searchInput && searchResults) {
+  if (searchInput) {
+    let timer;
     searchInput.addEventListener("input", function () {
-      const q = searchInput.value.trim().toLowerCase();
-      let shown = 0;
-      searchResults.querySelectorAll("li").forEach(function (li) {
-        const link = li.querySelector("a");
-        const title = link ? (link.dataset.title || "") : "";
-        const match = !q || title.indexOf(q) !== -1;
-        li.hidden = !match;
-        if (match) { shown += 1; }
-      });
-      if (searchNone) { searchNone.hidden = shown !== 0; }
+      clearTimeout(timer);
+      timer = setTimeout(function () { loadHistory(); }, 180);
     });
   }
+  searchKinds.forEach(function (button) {
+    button.addEventListener("click", function () {
+      historyKind = button.dataset.searchKind;
+      searchKinds.forEach(function (other) {
+        const active = other === button;
+        other.classList.toggle("is-active", active);
+        other.setAttribute("aria-pressed", active ? "true" : "false");
+      });
+      loadHistory();
+    });
+  });
+  if (searchMore) { searchMore.addEventListener("click", function () { loadHistory(true); }); }
 
   // ---------- Fetch helpers ----------
   function csrfToken() {

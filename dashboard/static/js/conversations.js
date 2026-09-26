@@ -15,6 +15,73 @@
   if (!list || !menu) { return; }
 
   var openFor = null;   // the row the menu currently belongs to
+  var historyResults = document.getElementById("nav-history-results");
+  var filters = list.querySelectorAll("[data-history-kind]");
+
+  function renderEntry(entry) {
+    if (entry.kind === "search") {
+      var searchLink = document.createElement("a");
+      searchLink.className = "nav-item nav-item-history-search";
+      searchLink.href = entry.url;
+      searchLink.title = "Search · " + entry.mode;
+      searchLink.textContent = "⌕  " + entry.title;
+      return searchLink;
+    }
+    var row = document.createElement("div");
+    row.className = "nav-chat-row" + (entry.pinned ? " pinned" : "");
+    row.dataset.conversation = entry.conversation_id;
+    row.dataset.pinned = entry.pinned ? "1" : "0";
+    row.dataset.origin = entry.origin;
+    row.title = "Started in " + entry.origin +
+      (entry.origin_context ? " · " + entry.origin_context : "");
+    var link = document.createElement("a");
+    link.className = "nav-item nav-item-chat";
+    link.href = entry.url;
+    var title = document.createElement("span");
+    title.className = "nav-chat-title";
+    title.textContent = entry.title;
+    var mark = document.createElement("span");
+    mark.className = "history-origin-mark";
+    mark.setAttribute("aria-hidden", "true");
+    mark.textContent = entry.origin === "assistant" ? "✦" : "◉";
+    link.appendChild(mark);
+    link.appendChild(title);
+    row.appendChild(link);
+    if (entry.pinned) { renderPinMarker(row, true); }
+    var menuButton = document.createElement("button");
+    menuButton.type = "button";
+    menuButton.className = "nav-chat-menu";
+    menuButton.setAttribute("aria-haspopup", "menu");
+    menuButton.setAttribute("aria-expanded", "false");
+    menuButton.setAttribute("aria-label", "Conversation actions");
+    menuButton.textContent = "⋯";
+    row.appendChild(menuButton);
+    return row;
+  }
+
+  filters.forEach(function (button) {
+    button.addEventListener("click", function () {
+      closeMenu();
+      filters.forEach(function (other) {
+        var active = other === button;
+        other.classList.toggle("is-active", active);
+        other.setAttribute("aria-pressed", active ? "true" : "false");
+      });
+      fetch("/chat/history?kind=" + encodeURIComponent(button.dataset.historyKind) + "&limit=12")
+        .then(function (res) { if (!res.ok) { throw new Error(); } return res.json(); })
+        .then(function (body) {
+          historyResults.replaceChildren();
+          body.entries.forEach(function (entry) { historyResults.appendChild(renderEntry(entry)); });
+          if (!body.entries.length) {
+            var empty = document.createElement("p");
+            empty.className = "nav-empty";
+            empty.textContent = "No history in this filter yet.";
+            historyResults.appendChild(empty);
+          }
+        })
+        .catch(function () { if (window.RC) { window.RC.toast("Could not load history.", "danger"); } });
+    });
+  });
 
   function csrf() {
     var tag = document.querySelector('meta[name="csrf-token"]');
