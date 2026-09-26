@@ -486,6 +486,129 @@ def test_pinned_conversations_come_first(client, db, answering):
     assert titles[0] == "Older"
 
 
+def test_edit_branches_before_prompt_and_preserves_old_evidence(client, db, answering):
+    first = client.post("/chat/ask", json={"question": "original"}, headers=XHR).get_json()
+    cid = first["conversation_id"]
+    client.post("/chat/ask", json={"question": "later", "conversation_id": cid}, headers=XHR)
+    original = db.conversation_messages[cid][0]["message_id"]
+
+    changed = client.post("/chat/ask", json={
+        "question": "revised", "conversation_id": cid,
+        "action": "edit", "source_message_id": original}, headers=XHR).get_json()
+    assert changed["conversation_id"] == cid
+    selected = conversation_service.load(db.conversations[cid]["user_id"], cid)
+    assert [m["content"] for m in selected["messages"]] == ["revised", "Because [1]."]
+    assert len(db.conversation_messages[cid]) == 6
+    assert selected["messages"][1]["citations"][0]["paper_id"] == "p1"
+
+    selected_old = client.post(
+        f"/chat/{cid}/versions/{original}/select", headers=XHR)
+    assert selected_old.status_code == 200
+    old = conversation_service.load(db.conversations[cid]["user_id"], cid)
+    assert [m["content"] for m in old["messages"]][:2] == ["original", "Because [1]."]
+    assert old["messages"][2]["content"] == "later"
+
+
+def test_regenerate_keeps_prompt_and_previous_answer(client, db, answering):
+    cid = client.post("/chat/ask", json={"question": "initial"}, headers=XHR).get_json()["conversation_id"]
+    original = db.conversation_messages[cid][0]["message_id"]
+    client.post("/chat/ask", json={"question": "initial", "conversation_id": cid,
+                                    "action": "regenerate", "source_message_id": original}, headers=XHR)
+    rows = db.conversation_messages[cid]
+    assert [m["role"] for m in rows] == ["user", "assistant", "assistant"]
+    active = conversation_service.load(db.conversations[cid]["user_id"], cid)["messages"]
+    assert len(active) == 2
+    assert len(active[1]["versions"]) == 2
+    owner = db.conversations[cid]["user_id"]
+    assert [m["content"] for m in conversation_service.agent_context(owner, cid)] == [
+        "initial", "Because [1]."]
+
+
+def test_regenerate_cannot_change_its_source_question(client, db, answering):
+    cid = client.post("/chat/ask", json={"question": "original"}, headers=XHR).get_json()["conversation_id"]
+    prompt = db.conversation_messages[cid][0]["message_id"]
+    resp = client.post("/chat/ask", json={"question": "different",
+                        "conversation_id": cid, "action": "regenerate",
+                        "source_message_id": prompt}, headers=XHR)
+    assert resp.status_code == 400
+    assert len(db.conversation_messages[cid]) == 2
+
+
+def test_history_filters_query_before_limit(client, db, answering):
+    owner = client.post("/chat/ask", json={"question": "special topic"},
+                        headers=XHR).get_json()["conversation_id"]
+    user = db.conversations[owner]["user_id"]
+    import datetime
+    db.conversations[owner]["updated_at"] -= datetime.timedelta(days=1)
+    for index in range(15):
+        db.create_conversation(user, f"Other {index}")
+    res = client.get("/chat/history?kind=agent&q=special&limit=5")
+    assert [entry["conversation_id"] for entry in res.get_json()["entries"]] == [owner]
+    assert client.get("/chat/history?kind=assistant").get_json()["entries"] == []
+
+
+def test_search_history_is_a_query_not_a_chat(client, db, answering):
+    cid = client.post("/chat/ask", json={"question": "topic"}, headers=XHR).get_json()["conversation_id"]
+    owner = db.conversations[cid]["user_id"]
+    conversation_service.record_search(owner, "quantum biology", "keyword")
+    results = client.get("/chat/history?kind=search&q=quantum").get_json()["entries"]
+    assert len(results) == 1
+    assert results[0]["kind"] == "search"
+    assert results[0]["url"].startswith("/search?")
+    assert db.conversation_messages[cid][0]["content"] == "topic"
+
+
+def test_opening_assistant_thread_keeps_its_origin(client, db, answering):
+    cid = client.post("/chat/ask", json={"question": "topic"}, headers=XHR).get_json()["conversation_id"]
+    owner = db.conversations[cid]["user_id"]
+    assistant = db.create_conversation(owner, "Side panel research", origin="assistant",
+                                       origin_context="Library")
+    aid = assistant["conversation_id"]
+    assert [row["conversation_id"] for row in conversation_service.recent(
+        owner, kind="assistant")] == [aid]
+    assert client.get(f"/chat/{aid}").status_code == 200
+    assert db.conversations[aid]["origin"] == "assistant"
+
+
+def test_regenerate_refuses_a_response_that_performed_a_write(client, db, answering):
+    cid = client.post("/chat/ask", json={"question": "save note"}, headers=XHR).get_json()["conversation_id"]
+    prompt = db.conversation_messages[cid][0]["message_id"]
+    db.conversation_messages[cid][1]["tool_calls"] = [{"name": "save_note", "ok": True}]
+    result = client.post("/chat/ask", json={"question": "save note",
+                          "conversation_id": cid, "action": "regenerate",
+                          "source_message_id": prompt}, headers=XHR)
+    assert result.status_code == 400
+    assert len(db.conversation_messages[cid]) == 2
+
+
+def test_another_user_cannot_select_a_version(client, db, answering):
+    cid = client.post("/chat/ask", json={"question": "private"}, headers=XHR).get_json()["conversation_id"]
+    answer_id = db.conversation_messages[cid][1]["message_id"]
+    other = db.get_or_create_user(email="other@example.test", display_name="Other")
+    with client.session_transaction() as sess:
+        original = sess.get("user_id")
+        sess["user_id"] = other["user_id"]
+    assert client.post(f"/chat/{cid}/versions/{answer_id}/select", headers=XHR).status_code == 404
+    assert client.get(f"/chat/{cid}").status_code == 404
+    with client.session_transaction() as sess:
+        if original:
+            sess["user_id"] = original
+        else:
+            sess.pop("user_id", None)
+
+
+def test_finished_run_cannot_replace_a_newer_selection(client, db, answering):
+    cid = client.post("/chat/ask", json={"question": "first"}, headers=XHR).get_json()["conversation_id"]
+    owner = db.conversations[cid]["user_id"]
+    prepared = conversation_service.prepare_turn(owner, cid)
+    client.post("/chat/ask", json={"question": "second", "conversation_id": cid}, headers=XHR)
+    newer = db.conversations[cid]["selected_message_id"]
+    conversation_service.record_turn(owner, cid, "late", agent_service.envelope(
+        "late", answer="A delayed answer."), expected_head=prepared["expected_head"])
+    assert db.conversations[cid]["selected_message_id"] == newer
+    assert db.conversation_messages[cid][-1]["content"] == "A delayed answer."
+
+
 def test_the_sidebar_marks_a_pinned_conversation(client, db, answering):
     cid = client.post("/chat/ask", json={"question": "why?"},
                       headers=XHR).get_json()["conversation_id"]

@@ -852,15 +852,16 @@ def get_topic_context(topic_name: str) -> dict | None:
 # Conversations (Phase 3.4)
 # =============================================================================
 
-def create_conversation(user_id: str, title: str) -> dict:
+def create_conversation(user_id: str, title: str, origin: str = "agent",
+                        origin_context: str | None = None) -> dict:
     """Start a conversation. The title comes from the first question."""
     return run_write(
         """
-        INSERT INTO conversations (user_id, title)
-        VALUES (%s, %s)
+        INSERT INTO conversations (user_id, title, origin, origin_context)
+        VALUES (%s, %s, %s, %s)
         RETURNING conversation_id, user_id, title, created_at, updated_at;
         """,
-        (user_id, title),
+        (user_id, title, origin, origin_context),
         returning=True,
     )
 
@@ -875,7 +876,8 @@ def get_conversation(user_id: str, conversation_id: str) -> dict | None:
     """
     rows = run_query(
         """
-        SELECT conversation_id, user_id, title, created_at, updated_at
+        SELECT conversation_id, user_id, title, origin, origin_context,
+               selected_message_id, created_at, updated_at
           FROM conversations
          WHERE conversation_id = %s AND user_id = %s;
         """,
@@ -884,7 +886,8 @@ def get_conversation(user_id: str, conversation_id: str) -> dict | None:
     return rows[0] if rows else None
 
 
-def list_conversations(user_id: str, limit: int = 12) -> list[dict]:
+def list_conversations(user_id: str, limit: int = 12, *, origin: str | None = None,
+                       search: str = "", offset: int = 0) -> list[dict]:
     """
     The sidebar's history: pinned first, then most recently used.
 
@@ -894,13 +897,14 @@ def list_conversations(user_id: str, limit: int = 12) -> list[dict]:
     """
     return run_query(
         """
-        SELECT conversation_id, title, pinned, created_at, updated_at
+        SELECT conversation_id, title, origin, origin_context, pinned, created_at, updated_at
           FROM conversations
-         WHERE user_id = %s
+         WHERE user_id = %s AND (%s IS NULL OR origin = %s)
+           AND title ILIKE '%%' || %s || '%%'
          ORDER BY pinned DESC, updated_at DESC
-         LIMIT %s;
+         LIMIT %s OFFSET %s;
         """,
-        (user_id, limit),
+        (user_id, origin, origin, search, limit, offset),
     )
 
 

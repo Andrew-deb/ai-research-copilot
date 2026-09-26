@@ -28,7 +28,7 @@ from flask import (Blueprint, Response, abort, jsonify, redirect,
 import llm_client
 import suggestions
 from exceptions import ResearchCopilotError
-from middleware.auth import current_tier, current_user_id, current_quota_scope
+from middleware.auth import current_tier, current_user_id, current_quota_scope, require_user_id
 from middleware.capabilities import AGENT_QUERY, consume_quota, require_capability, tier_can
 from routes.helpers import form_or_json, wants_json
 from services import (agent_service, conversation_service, quota_service,
@@ -101,6 +101,26 @@ def conversation(conversation_id: str):
         starters=suggestions.AGENT_STARTERS,
         initial_prompt="",
     )
+
+
+@bp.get("/chat/history")
+def history():
+    """Filter in storage before pagination, including entries beyond the sidebar."""
+    owner = require_user_id()
+    kind = request.args.get("kind", "all")
+    query = (request.args.get("q") or "").strip()[:120]
+    limit = min(max(request.args.get("limit", 12, type=int), 1), 50)
+    offset = min(max(request.args.get("offset", 0, type=int), 0), 1000)
+    return jsonify({"entries": conversation_service.recent(
+        owner, limit=limit, kind=kind, search=query, offset=offset)})
+
+
+@bp.post("/chat/<conversation_id>/versions/<uuid:message_id>/select")
+def select_version(conversation_id, message_id):
+    if not conversation_service.select_version(current_user_id(), conversation_id,
+                                                str(message_id)):
+        abort(404)
+    return jsonify({"conversation_id": conversation_id, "selected": str(message_id)})
 
 
 @bp.post("/chat/<conversation_id>/rename")
@@ -177,11 +197,24 @@ def ask():
     # Validated here, not inside the turn: once a stream is open the status code
     # is already spent, and a 400 delivered as a stream event is a bad request
     # the browser was told to treat as success.
-    payload = form_or_json("question", "conversation_id")
+    payload = form_or_json("question", "conversation_id", "action", "source_message_id")
     question = agent_service.validate_question(payload.get("question") or "")
     conversation_id = (payload.get("conversation_id") or "").strip() or None
     tier = current_tier()
     user_id = current_user_id()
+    mode = payload.get("action") or "new"
+    source_id = payload.get("source_message_id") or ""
+    if not isinstance(mode, str) or not isinstance(source_id, str):
+        abort(400)
+    mode = mode.strip()
+    source_id = source_id.strip() or None
+    if mode not in ("new", "edit", "regenerate"):
+        abort(400)
+    if mode != "new" and (not user_id or not conversation_id or not source_id):
+        abort(400)
+    prepared = conversation_service.prepare_turn(user_id, conversation_id, mode, source_id)
+    if mode == "regenerate" and question != prepared["original_question"]:
+        abort(400, description="Regeneration must use the original prompt.")
 
     if not agent_service.is_connected():
         # Validates first, so a malformed question is still a 400 rather than
@@ -197,7 +230,8 @@ def ask():
         agent_runs.create(run_id, owner)
         return Response(
             stream_with_context(_stream_turn(question, tier, user_id, conversation_id,
-                                             run_id=run_id, owner=owner)),
+                                             run_id=run_id, owner=owner,
+                                             prepared=prepared, mode=mode, source_id=source_id)),
             mimetype="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
@@ -208,8 +242,10 @@ def ask():
             },
         )
 
-    result = _run_turn(question, tier, user_id, conversation_id)
-    return jsonify(_with_conversation(result, user_id, conversation_id, question))
+    result = _run_turn(question, tier, user_id, conversation_id,
+                       prepared=prepared)
+    return jsonify(_with_conversation(result, user_id, conversation_id, question,
+                                     prepared=prepared, mode=mode, source_id=source_id))
 
 
 @bp.post("/chat/runs/<uuid:run_id>/stop")
@@ -242,7 +278,7 @@ def _wants_stream() -> bool:
 
 def _run_turn(question: str, tier: str, user_id: str | None,
               conversation_id: str | None = None, on_event=None,
-              should_stop=None) -> dict:
+              should_stop=None, prepared=None) -> dict:
     """
     One measured turn. Shared by the JSON and streaming paths.
 
@@ -254,8 +290,8 @@ def _run_turn(question: str, tier: str, user_id: str | None,
     tally = llm_client.Usage()
     with telemetry_service.measure(quota_service.AGENT_QUERY, tier, user_id) as op:
         try:
-            history = conversation_service.agent_context(
-                user_id, conversation_id)
+            history = (prepared["history"] if prepared is not None else
+                       conversation_service.agent_context(user_id, conversation_id))
             options = {"tier": tier, "user_id": user_id,
                        "conversation_history": history, "on_event": on_event,
                        "usage": tally}
@@ -282,7 +318,8 @@ def _run_turn(question: str, tier: str, user_id: str | None,
 
 
 def _with_conversation(result: dict, user_id: str | None,
-                       conversation_id: str | None, question: str) -> dict:
+                       conversation_id: str | None, question: str, *,
+                       prepared=None, mode: str = "new", source_id=None) -> dict:
     """
     Persist the turn and tell the page where it landed.
 
@@ -290,7 +327,9 @@ def _with_conversation(result: dict, user_id: str | None,
     conversation a turn belongs to is a routing concern, and agent_service has
     no business knowing about storage.
     """
-    stored = conversation_service.record_turn(user_id, conversation_id, question, result)
+    stored = conversation_service.record_turn(
+        user_id, conversation_id, question, result, mode=mode, source_id=source_id,
+        expected_head=prepared["expected_head"] if prepared else None)
     return dict(result, conversation_id=stored)
 
 
@@ -299,7 +338,8 @@ def _sse(payload: dict) -> str:
 
 
 def _stream_turn(question: str, tier: str, user_id: str | None,
-                 conversation_id: str | None = None, *, run_id=None, owner=None):
+                 conversation_id: str | None = None, *, run_id=None, owner=None,
+                 prepared=None, mode="new", source_id=None):
     """
     Run the turn on a worker thread and relay its progress as it happens.
 
@@ -321,13 +361,14 @@ def _stream_turn(question: str, tier: str, user_id: str | None,
             result = _run_turn(
                 question, tier, user_id, conversation_id, on_event=events.put,
                 should_stop=(lambda: agent_runs.status(run_id, owner) == "stop_requested")
-                if run_id else None)
+                if run_id else None, prepared=prepared)
             terminal = agent_runs.finish(run_id, owner) if run_id else "completed"
             if terminal == "stopped" or result.get("status") == agent_service.STATUS_STOPPED:
                 result = dict(result, status=agent_service.STATUS_STOPPED,
                               message="Stopped. Work already completed may have used your allowance.")
             outcome["result"] = (_with_conversation(
-                result, user_id, conversation_id, question) if result.get("answer")
+                result, user_id, conversation_id, question, prepared=prepared,
+                mode=mode, source_id=source_id) if result.get("answer")
                                  else result)
         except ResearchCopilotError as exc:
             terminal = agent_runs.finish(run_id, owner, failed=True) if run_id else "failed"
