@@ -606,6 +606,14 @@ def _collect_citations(result, found: list[dict], seen: set[str]) -> None:
             # vanished. The instruction was wrong, not the model.
             "citation_count": row.get("citation_count"),
             "similarity": row.get("similarity"),
+            # Persist a bounded, source-authored excerpt with the turn. Previews
+            # then work on replay without a network request or a fresh model run.
+            "tldr": str(row["tldr"])[:360] if row.get("tldr") else None,
+            "abstract_excerpt": str(row["abstract"])[:360] if row.get("abstract") else None,
+            "authors": [str(author.get("display_name") or author.get("name"))[:100]
+                        for author in row.get("authors", [])[:3]
+                        if isinstance(author, dict) and (author.get("display_name") or author.get("name"))]
+                       if isinstance(row.get("authors"), list) else [],
         })
         # Deliberately not carried: influence_score (Semantic Scholar's
         # influentialCitationCount). It cannot be labelled in two words without
