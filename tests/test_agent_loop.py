@@ -124,6 +124,36 @@ def test_the_answer_is_read_from_reasoning_when_content_is_empty(wired):
     assert result["answer"] == "Here are the results."
 
 
+def test_conversation_history_is_sent_before_the_new_question(wired):
+    wired["turns"] = [{"content": "Short version."}]
+
+    result = agent_service.ask(
+        "Summarize your previous response",
+        tier="authenticated",
+        conversation_history=[
+            {"role": "user", "content": "Explain RAG"},
+            {"role": "assistant", "content": "RAG retrieves evidence before generation."},
+        ],
+    )
+
+    assert result["answer"] == "Short version."
+    assert wired["calls"] == []
+    assert [m["role"] for m in wired["last_messages"]] == [
+        "system", "user", "assistant", "user"
+    ]
+    assert wired["last_messages"][-2]["content"].startswith("RAG retrieves")
+    assert wired["last_messages"][-1]["content"] == "Summarize your previous response"
+
+
+def test_prompt_allows_language_work_without_tools():
+    prompt = agent_service.build_system_prompt("authenticated")
+    followups = prompt.split("## Conversation follow-ups")[1].split("## Citing")[0]
+
+    assert "summarize" in followups
+    assert "without calling a tool" in followups
+    assert "new evidence" in followups
+
+
 def test_tools_are_resent_on_every_turn(wired):
     """
     Dropping them once the model has its results looks like an optimisation and
