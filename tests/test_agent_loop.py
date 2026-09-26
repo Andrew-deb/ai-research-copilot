@@ -799,7 +799,10 @@ def test_openrouter_http_error_keeps_provider_detail(monkeypatch, caplog):
         def json(self):
             return {"error": {"message": "No endpoints found for this model"}}
 
-    monkeypatch.setattr(llm_client.requests, "post", lambda *a, **k: FakeResponse())
+    async def fake_request(payload, timeout):
+        return FakeResponse()
+
+    monkeypatch.setattr(llm_client, "_request_openrouter", fake_request)
     monkeypatch.setattr(llm_client, "OPENROUTER_API_KEY", "test-key")
 
     with pytest.raises(ExternalAPIError) as excinfo:
@@ -811,8 +814,7 @@ def test_openrouter_http_error_keeps_provider_detail(monkeypatch, caplog):
 
 
 def test_the_llm_client_honours_a_caller_supplied_timeout(monkeypatch):
-    """The plumbing, at the far end: what the loop hands down has to reach
-    requests, or the bound is decorative."""
+    """The caller's remaining budget must reach the cancellable HTTP layer."""
     import llm_client
 
     captured = {}
@@ -820,18 +822,39 @@ def test_the_llm_client_honours_a_caller_supplied_timeout(monkeypatch):
     class FakeResponse:
         status_code = 200
 
-        def raise_for_status(self):
-            pass
-
         def json(self):
             return {"choices": [{"message": {"content": "ok"}}]}
 
-    def fake_post(url, **kwargs):
-        captured["timeout"] = kwargs.get("timeout")
+    async def fake_request(payload, timeout):
+        captured["timeout"] = timeout
         return FakeResponse()
 
-    monkeypatch.setattr(llm_client.requests, "post", fake_post)
+    monkeypatch.setattr(llm_client, "_request_openrouter", fake_request)
     monkeypatch.setattr(llm_client, "OPENROUTER_API_KEY", "test-key")
 
     llm_client.chat_with_tools([{"role": "user", "content": "hi"}], [], timeout=12.5)
     assert captured["timeout"] == 12.5
+
+
+def test_openrouter_call_has_a_true_wall_clock_deadline(monkeypatch):
+    """A provider that stays active forever must still be cancelled at the
+    caller's total deadline, rather than keeping Alfred on Thinking indefinitely."""
+    import asyncio
+    import time
+
+    import llm_client
+    from exceptions import ExternalAPIError
+
+    async def never_finishes(payload, timeout):
+        await asyncio.sleep(60)
+
+    monkeypatch.setattr(llm_client, "_request_openrouter", never_finishes)
+    monkeypatch.setattr(llm_client, "OPENROUTER_API_KEY", "test-key")
+
+    started = time.monotonic()
+    with pytest.raises(ExternalAPIError) as excinfo:
+        llm_client._post({"messages": []}, timeout=0.02)
+    elapsed = time.monotonic() - started
+
+    assert "wall-clock deadline" in str(excinfo.value)
+    assert elapsed < 0.5
