@@ -177,12 +177,21 @@
          emptiness. #}
       {% if is_authenticated %}
       <div class="nav-section nav-section-scroll">
-        <h2 class="nav-label">Recent activity</h2>
-        <div class="history-filters" role="group" aria-label="History type">
-          {% for kind in ('all', 'agent', 'assistant', 'search') %}
-            <button type="button" class="history-filter {{ 'is-active' if kind == 'all' }}"
-                    data-history-kind="{{ kind }}" aria-pressed="{{ 'true' if kind == 'all' else 'false' }}">{{ kind | capitalize }}</button>
-          {% endfor %}
+        <div class="nav-history-heading">
+          <h2 class="nav-label">Recent activity</h2>
+          <button type="button" class="history-filter-toggle" id="history-filter-toggle"
+                  aria-label="Filter recent activity" aria-haspopup="true" aria-expanded="false"
+                  aria-controls="history-filter-menu" title="Filter recent activity">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M7 12h10m-7 6h4"/></svg>
+          </button>
+          <div class="history-filter-menu" id="history-filter-menu" hidden role="group" aria-label="Filter recent activity">
+            {% for kind in ('all', 'agent', 'assistant', 'search') %}
+              <button type="button" class="history-filter-option {{ 'is-active' if kind == 'all' }}"
+                      data-history-kind="{{ kind }}" aria-pressed="{{ 'true' if kind == 'all' else 'false' }}">
+                <span>{{ kind | capitalize }}</span><span class="history-filter-check" aria-hidden="true">✓</span>
+              </button>
+            {% endfor %}
+          </div>
         </div>
         <div id="nav-history-results">
         {% if recent_chats %}
