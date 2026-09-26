@@ -32,70 +32,86 @@
     });
   }
 
-  // ---------- Sidebar (mobile) ----------
+  // Desktop preference and mobile drawer state are independent.
   const sidebar = document.getElementById("sidebar");
   const sidebarToggle = document.getElementById("sidebar-toggle");
   const scrim = document.getElementById("sidebar-scrim");
-  function closeSidebar() {
-    if (sidebar) { sidebar.classList.remove("open"); }
-    if (scrim) { scrim.hidden = true; }
-  }
-  if (sidebarToggle && sidebar) {
-    sidebarToggle.addEventListener("click", function () {
-      const open = sidebar.classList.toggle("open");
-      if (scrim) { scrim.hidden = !open; }
-    });
-  }
-  if (scrim) { scrim.addEventListener("click", closeSidebar); }
-  document.addEventListener("keydown", function (e) {
-    if (e.key !== "Escape") { return; }
-    // Innermost layer first: a dialog over the sidebar should close alone.
-    const dialog = document.getElementById("chat-search-scrim");
-    if (dialog && !dialog.hidden) { dialog.hidden = true; return; }
-    closeSidebar();
-  });
-
-  // Ctrl/Cmd+K is what every product with this dialog uses.
-  document.addEventListener("keydown", function (e) {
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
-      e.preventDefault();
-      const opener = document.getElementById("chat-search-open");
-      if (opener) { opener.click(); }
-    }
-  });
-
-  // ---------- Sidebar collapse (desktop) ----------
-  // Separate from the mobile toggle above: that one slides an off-canvas panel
-  // in and out, this one hides a panel that is always there. The preference is
-  // remembered, because re-collapsing it on every page load would make the
-  // control feel broken.
   const shell = document.querySelector(".app-shell");
   const collapseBtn = document.getElementById("sidebar-collapse");
+  const mobile = window.matchMedia("(max-width: 900px)");
   const COLLAPSE_KEY = "rc-sidebar-collapsed";
 
+  function syncNavigation() {
+    if (!sidebar || !shell) { return; }
+    const open = sidebar.classList.contains("open");
+    const collapsed = shell.classList.contains("sidebar-collapsed");
+    sidebar.inert = mobile.matches && !open;
+    if (scrim) { scrim.hidden = !mobile.matches || !open; }
+    const main = document.querySelector(".main-col");
+    if (main) { main.inert = mobile.matches && open; }
+    document.body.classList.toggle("navigation-open", mobile.matches && open);
+    if (sidebarToggle) { sidebarToggle.setAttribute("aria-expanded", String(mobile.matches ? open : !collapsed)); }
+    if (collapseBtn) {
+      const label = mobile.matches ? "Close navigation" : (collapsed ? "Expand navigation" : "Collapse navigation");
+      collapseBtn.setAttribute("aria-label", label);
+      collapseBtn.title = label;
+      collapseBtn.setAttribute("aria-expanded", String(mobile.matches ? open : !collapsed));
+    }
+  }
+  function closeSidebar(restoreFocus) {
+    if (!sidebar) { return; }
+    const wasOpen = sidebar.classList.contains("open");
+    sidebar.classList.remove("open");
+    syncNavigation();
+    if (wasOpen && restoreFocus && sidebarToggle) { sidebarToggle.focus(); }
+  }
   function setCollapsed(collapsed) {
     if (!shell) { return; }
     shell.classList.toggle("sidebar-collapsed", collapsed);
     try { localStorage.setItem(COLLAPSE_KEY, collapsed ? "1" : "0"); } catch (e) {}
+    syncNavigation();
   }
-
   try {
-    if (localStorage.getItem(COLLAPSE_KEY) === "1") { setCollapsed(true); }
+    if (shell) { shell.classList.toggle("sidebar-collapsed", localStorage.getItem(COLLAPSE_KEY) === "1"); }
   } catch (e) {}
-
-  if (collapseBtn) {
-    collapseBtn.addEventListener("click", function () {
-      setCollapsed(!shell.classList.contains("sidebar-collapsed"));
-    });
-  }
-
-  // The topbar control brings a collapsed sidebar back, so a visitor who hides it
-  // is never stranded without navigation.
-  if (sidebarToggle && shell) {
+  syncNavigation();
+  if (sidebarToggle && sidebar) {
     sidebarToggle.addEventListener("click", function () {
-      if (shell.classList.contains("sidebar-collapsed")) { setCollapsed(false); }
+      if (!mobile.matches) { setCollapsed(false); return; }
+      sidebar.classList.add("open");
+      syncNavigation();
+      if (collapseBtn) { collapseBtn.focus(); }
     });
   }
+  if (collapseBtn && shell) {
+    collapseBtn.addEventListener("click", function () {
+      if (mobile.matches) { closeSidebar(true); }
+      else { setCollapsed(!shell.classList.contains("sidebar-collapsed")); }
+    });
+  }
+  if (scrim) { scrim.addEventListener("click", function () { closeSidebar(true); }); }
+  mobile.addEventListener("change", function () {
+    const focusWasInSidebar = sidebar && sidebar.contains(document.activeElement);
+    closeSidebar(false);
+    if (mobile.matches && focusWasInSidebar && sidebarToggle) { sidebarToggle.focus(); }
+  });
+  document.addEventListener("keydown", function (e) {
+    const dialog = document.getElementById("chat-search-scrim");
+    if (e.key === "Escape") {
+      if (dialog && !dialog.hidden) { closeChatSearch(); return; }
+      closeSidebar(true);
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+      const opener = document.getElementById("chat-search-open");
+      if (opener && !opener.closest("[inert]")) { e.preventDefault(); opener.click(); }
+    }
+    if (e.key === "Tab" && mobile.matches && sidebar && sidebar.classList.contains("open") && (!dialog || dialog.hidden)) {
+      const items = Array.from(sidebar.querySelectorAll('a[href], button, [tabindex="0"]')).filter(function (el) { return el.getClientRects().length && !el.disabled; });
+      const first = items[0], last = items[items.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+  });
 
   // ---------- Chat history search dialog ----------
   // Filters conversation titles by keyword. Deliberately NOT the corpus search:
@@ -114,6 +130,7 @@
   }
   function closeChatSearch() {
     if (searchScrim) { searchScrim.hidden = true; }
+    if (searchOpen) { searchOpen.focus(); }
   }
 
   if (searchOpen) { searchOpen.addEventListener("click", openChatSearch); }

@@ -789,12 +789,12 @@ input:focus, textarea:focus, select:focus {
 }
 
 /* Desktop collapse. The shell is flex with a fixed sidebar and a margin-offset
-   main column, so hiding the panel means reclaiming that margin — not changing a
+   main column, so collapsing the panel leaves a compact navigation rail — not changing a
    grid template. Breakpoint matches the existing one at 901px: below it the
    sidebar is already off-canvas and this must not interfere. */
 @media (min-width: 901px) {
-  .app-shell.sidebar-collapsed .sidebar { display: none; }
-  .app-shell.sidebar-collapsed .main-col { margin-left: 0; }
+  .app-shell.sidebar-collapsed .sidebar { width: 64px; }
+  .app-shell.sidebar-collapsed .main-col { margin-left: 64px; }
 }
 
 /* =========================================================================
@@ -819,11 +819,9 @@ h1, h2, h3,
    workspace links out of reach. */
 .nav-section-scroll { flex: 1; min-height: 0; overflow-y: auto; }
 
-/* The bug this fixes: collapsing hid the sidebar, and the only control that
-   brings it back was display:none above 900px — so the panel could be closed
-   and never reopened. */
+/* The rail retains its own expand control; no duplicate topbar toggle. */
 @media (min-width: 901px) {
-  .app-shell.sidebar-collapsed .sidebar-toggle { display: grid; }
+  .app-shell.sidebar-collapsed .sidebar-toggle { display: none; }
 }
 
 /* =========================================================================
@@ -1157,3 +1155,46 @@ h1, h2, h3,
 .chat-menu button.is-danger { color: var(--danger); }
 .chat-menu button.is-danger svg { color: var(--danger); }
 .chat-menu button.is-danger:hover { background: var(--danger-tint); }
+
+/* Alfred identity and compact desktop navigation. Mobile remains a drawer. */
+.brand-portrait { width: 36px; height: 36px; object-fit: contain; flex: none; background: #fff; border-radius: 9px; }
+.sidebar-brand { padding: 0 10px; gap: 7px; border-bottom: 0; min-width: 0; }
+.sidebar-head { flex: none; }
+.sidebar-nav { min-height: 0; overflow-y: auto; }
+.sidebar-signout { display: flex; align-items: center; justify-content: center; gap: 8px; }
+.sidebar-signout .icon { width: 17px; height: 17px; }
+.guest-card .icon { display: none; }
+:where(a, button, [tabindex]):focus-visible { outline: 2px solid var(--brand); outline-offset: 3px; }
+.navigation-open { overflow: hidden; }
+@media (min-width: 901px) {
+  .sidebar-collapsed .sidebar-head { flex-direction: column; padding: 10px 0 0; gap: 4px; }
+  .sidebar-collapsed .sidebar-brand { height: 42px; padding: 0; }
+  .sidebar-collapsed .sidebar-head-actions { flex-direction: column-reverse; }
+  .sidebar-collapsed .brand-name,
+  .sidebar-collapsed .nav-label,
+  .sidebar-collapsed .nav-section-scroll,
+  .sidebar-collapsed .nav-item > span,
+  .sidebar-collapsed .sidebar-btn > span,
+  .sidebar-collapsed .nav-text,
+  .sidebar-collapsed .user-name,
+  .sidebar-collapsed .sidebar-signout > span,
+  .sidebar-collapsed .guest-note,
+  .sidebar-collapsed .guest-card .btn > span { display: none; }
+  .sidebar-collapsed .sidebar-nav { padding: 8px; }
+  .sidebar-collapsed .nav-item,
+  .sidebar-collapsed .sidebar-btn { justify-content: center; padding: 12px 0; }
+  .sidebar-collapsed .sidebar-cta { justify-content: center; margin: 8px; padding: 10px 0; }
+  .sidebar-collapsed .sidebar-footer { padding: 8px; align-items: center; }
+  .sidebar-collapsed .sidebar-footer form { width: 100%; }
+  .sidebar-collapsed .user-chip { padding: 6px; }
+  .sidebar-collapsed .guest-card { padding: 0; border: 0; }
+  .sidebar-collapsed .guest-card .icon { display: inline-block; width: 20px; height: 20px; }
+  .sidebar-collapsed .guest-card .btn { padding: 10px; }
+  .sidebar-collapsed [data-tooltip]:is(:hover, :focus-visible)::after {
+    content: attr(data-tooltip); position: fixed; left: 70px; margin-top: 0;
+    padding: 7px 10px; border: 1px solid var(--border); border-radius: var(--radius-sm);
+    background: var(--surface); color: var(--text); box-shadow: var(--shadow);
+    font-size: 12px; font-weight: 400; white-space: nowrap; z-index: 80; pointer-events: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) { .sidebar { transition: none; } }

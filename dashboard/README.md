@@ -160,3 +160,21 @@ Notes:
 |-------|-----|-------|
 | `database` | `lakebase-url` | Lakebase Postgres connection URL |
 | `openrouter` | `api-key` | OpenRouter API key (RAG synthesis) |
+
+## Alfred navigation and branding (September 2026)
+
+The shared shell now identifies the product as Alfred. Above 900 px the sidebar
+collapses to a 64 px icon rail, retaining navigation, signed-in history search,
+and account identity/logout. The desktop preference uses `rc-sidebar-collapsed`.
+At smaller widths the sidebar is an off-canvas drawer; closing it makes it inert,
+and opening it makes the main column inert. Escape closes the drawer and restores
+focus. Mobile open state does not overwrite the desktop preference.
+
+Brand originals and their intended uses are documented in `static/img/alfred/`.
+The account avatar remains informational until the Profile & Settings phase.
+These changes use the existing Jinja/CSS/vanilla JavaScript architecture and do
+not alter authentication, quotas, agent execution, or database schemas.
+
+Earlier deployment/authentication descriptions above are historical. The current
+application uses Render, Google OAuth and Flask sessions, with backend MCP access;
+consult current configuration and middleware before changing those boundaries.
