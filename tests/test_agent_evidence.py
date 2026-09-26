@@ -118,6 +118,9 @@ def test_citations_are_collected_from_the_full_result(wired):
     citation = agent_service.ask("q", tier="anonymous")["citations"][0]
     assert citation["venue"] == "arXiv"
     assert citation["citation_count"] == 747
+    assert citation["tldr"] == "A survey."
+    assert citation["abstract_excerpt"] == "x" * 360
+    assert citation["authors"] == ["Someone"] * 3
 
 
 # ---------------------------------------------------------------------------

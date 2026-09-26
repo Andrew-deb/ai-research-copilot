@@ -123,6 +123,64 @@
 .chat-msg-assistant strong { font-weight: 600; color: var(--text); }
 .chat-msg-assistant em { font-style: italic; }
 .chat-msg-assistant a { color: var(--brand-tint-fg); text-decoration: underline; }
+.chat-msg-assistant .chat-inline-citation {
+  display: inline-block;
+  padding: 0 3px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  font-size: .85em;
+  font-weight: 600;
+  text-decoration: none;
+}
+.chat-inline-citation:hover, .chat-inline-citation:focus-visible {
+  outline: 2px solid var(--brand-tint-fg);
+  outline-offset: 2px;
+}
+
+.chat-citation-preview {
+  position: fixed;
+  z-index: 90;
+  width: min(340px, calc(100vw - 16px));
+  max-height: calc(100vh - 16px);
+  overflow-y: auto;
+  padding: 18px;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.chat-preview-title { display: block; padding-right: 20px; font-size: 14px; line-height: 1.35; }
+.chat-preview-meta, .chat-preview-kind {
+  display: block;
+  margin-top: 8px;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+.chat-preview-kind { margin-top: 14px; font-weight: 600; }
+.chat-preview-excerpt { margin: 4px 0 14px; color: var(--text-muted); }
+.chat-preview-actions { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; }
+.chat-preview-actions a, .chat-preview-actions button {
+  border: 0;
+  background: transparent;
+  color: var(--brand-tint-fg);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.chat-preview-close {
+  position: absolute;
+  top: 6px;
+  right: 10px;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 22px;
+  cursor: pointer;
+}
 
 .chat-msg-assistant hr {
   margin: 22px 0;
@@ -497,6 +555,12 @@
    it, and these are precisely the ones it does not. */
 .chat-citations.is-plain { list-style: none; padding-left: 0; }
 .chat-citations a { color: var(--text); }
+.chat-citations li.is-highlighted {
+  border-radius: 5px;
+  background: var(--surface-2);
+  outline: 2px solid var(--brand-tint-fg);
+  outline-offset: 3px;
+}
 
 /* On its own line under the title: year, venue and citation count together run
    longer than most titles, and trailing them inline pushed the interesting part
