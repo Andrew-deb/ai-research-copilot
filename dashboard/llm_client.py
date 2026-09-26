@@ -10,10 +10,11 @@ one code path. The model is whatever OPENROUTER_MODEL names — the original
 `openai/gpt-oss-120b:free` was retired by OpenRouter and now 404s.
 """
 
+import asyncio
 import logging
 import time
 
-import requests
+import httpx
 
 from config import OPENROUTER_API_KEY, OPENROUTER_BASE_URL, OPENROUTER_MODEL
 from exceptions import ExternalAPIError
@@ -94,20 +95,40 @@ def is_available() -> bool:
     return bool(OPENROUTER_API_KEY)
 
 
+async def _request_openrouter(payload: dict, timeout: float):
+    """
+    Perform one OpenRouter HTTP request.
+
+    This helper is async so the caller can wrap the entire operation in
+    asyncio.wait_for(). HTTP client read/connect timeouts protect individual
+    socket operations; wait_for provides the separate wall-clock deadline the
+    agent budget actually means.
+    """
+    socket_timeout = httpx.Timeout(
+        timeout=timeout,
+        connect=min(10.0, timeout),
+        read=timeout,
+        write=min(10.0, timeout),
+        pool=min(10.0, timeout),
+    )
+    async with httpx.AsyncClient(timeout=socket_timeout) as client:
+        return await client.post(
+            f"{OPENROUTER_BASE_URL}/chat/completions",
+            headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}", **_HEADERS_EXTRA},
+            json={"model": OPENROUTER_MODEL, **payload},
+        )
+
+
 def _post(payload: dict, timeout: float | None = None,
           usage: Usage | None = None) -> dict:
     """
-    One OpenRouter call. Raises ExternalAPIError on anything that is not a 2xx.
+    One OpenRouter call with two independent timeout protections.
 
-    `timeout` lets a caller working to a deadline hand down what is left of it.
-    Measured the hard way: a free-tier call hung and the whole turn ran **775
-    seconds** without completing a single LLM turn, because the agent's
-    wall-clock deadline is only checked between turns and this one never
-    returned. Render's gunicorn would have killed the worker at 120s.
-
-    Note this bounds each socket operation, not the total — `requests` has no
-    total-request cap — but it turns an unbounded hang into a bounded one, and
-    the caller can shrink it as its own budget runs down.
+    httpx bounds connect/read/write/pool waits. asyncio.wait_for bounds the
+    whole operation by wall clock, which is the guarantee the agent deadline
+    needs. The previous requests timeout only measured socket inactivity, so an
+    upstream that kept the connection active could leave Alfred "Thinking..."
+    for minutes despite a nominal ~55-second planner budget.
     """
     if not OPENROUTER_API_KEY:
         raise ExternalAPIError("OPENROUTER_API_KEY is not configured.")
@@ -115,7 +136,7 @@ def _post(payload: dict, timeout: float | None = None,
     effective_timeout = timeout or _TIMEOUT_SECONDS
     started = time.monotonic()
     logger.info(
-        "OpenRouter request start model=%s timeout=%.1fs messages=%d tools=%d",
+        "OpenRouter request start model=%s hard_timeout=%.1fs messages=%d tools=%d",
         OPENROUTER_MODEL,
         effective_timeout,
         len(payload.get("messages") or []),
@@ -123,13 +144,27 @@ def _post(payload: dict, timeout: float | None = None,
     )
 
     try:
-        resp = requests.post(
-            f"{OPENROUTER_BASE_URL}/chat/completions",
-            headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}", **_HEADERS_EXTRA},
-            json={"model": OPENROUTER_MODEL, **payload},
+        resp = asyncio.run(asyncio.wait_for(
+            _request_openrouter(payload, effective_timeout),
             timeout=effective_timeout,
+        ))
+    except TimeoutError as exc:
+        elapsed = time.monotonic() - started
+        logger.error(
+            "OpenRouter wall-clock timeout after %.2fs model=%s limit=%.1fs",
+            elapsed, OPENROUTER_MODEL, effective_timeout,
         )
-    except requests.RequestException as exc:
+        raise ExternalAPIError(
+            f"LLM request exceeded its {effective_timeout:.1f}s wall-clock deadline."
+        ) from exc
+    except httpx.TimeoutException as exc:
+        elapsed = time.monotonic() - started
+        logger.error(
+            "OpenRouter socket timeout after %.2fs model=%s: %s",
+            elapsed, OPENROUTER_MODEL, exc,
+        )
+        raise ExternalAPIError(f"LLM request timed out: {exc}") from exc
+    except httpx.HTTPError as exc:
         elapsed = time.monotonic() - started
         logger.error("OpenRouter request failed after %.2fs: %s", elapsed, exc)
         raise ExternalAPIError(f"LLM request failed: {exc}") from exc
@@ -137,9 +172,8 @@ def _post(payload: dict, timeout: float | None = None,
     elapsed = time.monotonic() - started
 
     # Read the provider body BEFORE classifying an HTTP error. OpenRouter often
-    # explains a routing/model failure in JSON, and calling raise_for_status()
-    # first reduced a useful error such as "no endpoints found" to a generic
-    # "404 Not Found", which hid the actual production failure.
+    # explains a routing/model failure in JSON; preserving that detail is what
+    # made the retired-model failure diagnosable in production.
     try:
         body = resp.json()
     except ValueError:
@@ -160,9 +194,6 @@ def _post(payload: dict, timeout: float | None = None,
             detail_text[:500],
         )
 
-        # A rejected request may still report usage. Keep it in calibration
-        # telemetry if OpenRouter supplied it, just as we do for HTTP 200 error
-        # bodies below.
         if usage is not None and isinstance(body, dict):
             usage.add(body)
 
@@ -189,14 +220,10 @@ def _post(payload: dict, timeout: float | None = None,
         response_usage.get("completion_tokens"),
         len(((body.get("choices") or [{}])[0].get("message") or {}).get("tool_calls") or []),
     )
-    # Counted before the error check: a 200 carrying an error object can still
-    # have burned input tokens, and an operation that failed expensively is
-    # exactly the one calibration must not miss.
+
     if usage is not None:
         usage.add(body)
 
-    # OpenRouter can answer 200 with an error object in the body — a provider
-    # rate limit arrives this way, so a status check alone misses it.
     if "error" in body:
         message = str(body["error"])
         logger.error("OpenRouter returned an error body: %s", message[:300])
