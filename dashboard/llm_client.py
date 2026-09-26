@@ -17,7 +17,7 @@ import time
 import httpx
 
 from config import OPENROUTER_API_KEY, OPENROUTER_BASE_URL, OPENROUTER_MODEL
-from exceptions import ExternalAPIError
+from exceptions import ExternalAPIError, LLMTimeoutError
 
 logger = logging.getLogger(__name__)
 
@@ -154,7 +154,7 @@ def _post(payload: dict, timeout: float | None = None,
             "OpenRouter wall-clock timeout after %.2fs model=%s limit=%.1fs",
             elapsed, OPENROUTER_MODEL, effective_timeout,
         )
-        raise ExternalAPIError(
+        raise LLMTimeoutError(
             f"LLM request exceeded its {effective_timeout:.1f}s wall-clock deadline."
         ) from exc
     except httpx.TimeoutException as exc:
@@ -163,7 +163,7 @@ def _post(payload: dict, timeout: float | None = None,
             "OpenRouter socket timeout after %.2fs model=%s: %s",
             elapsed, OPENROUTER_MODEL, exc,
         )
-        raise ExternalAPIError(f"LLM request timed out: {exc}") from exc
+        raise LLMTimeoutError(f"LLM request timed out: {exc}") from exc
     except httpx.HTTPError as exc:
         elapsed = time.monotonic() - started
         logger.error("OpenRouter request failed after %.2fs: %s", elapsed, exc)
@@ -248,7 +248,8 @@ def message_text(message: dict) -> str:
 def chat_with_tools(messages: list[dict], tools: list[dict],
                     temperature: float = 0.2, max_tokens: int = 1024,
                     timeout: float | None = None,
-                    usage: Usage | None = None) -> dict:
+                    usage: Usage | None = None,
+                    tool_choice: str | dict | None = None) -> dict:
     """
     One turn of a tool-calling conversation. Returns the raw assistant message.
 
@@ -264,6 +265,8 @@ def chat_with_tools(messages: list[dict], tools: list[dict],
     payload = {"messages": messages, "temperature": temperature, "max_tokens": max_tokens}
     if tools:
         payload["tools"] = tools
+    if tool_choice is not None:
+        payload["tool_choice"] = tool_choice
 
     body = _post(payload, timeout=timeout, usage=usage)
     try:

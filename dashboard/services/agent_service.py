@@ -37,7 +37,12 @@ import time
 
 import config
 import llm_client
-from exceptions import CapabilityDeniedError, ExternalAPIError, ValidationError
+from exceptions import (
+    CapabilityDeniedError,
+    ExternalAPIError,
+    LLMTimeoutError,
+    ValidationError,
+)
 from middleware.capabilities import (
     LIBRARY_WRITE,
     NOTES_WRITE,
@@ -61,6 +66,13 @@ STATUS_NOT_CONNECTED = "not_connected"
 # 20 leaves room for one without pushing the total past the web server's own
 # timeout.
 SYNTHESIS_RESERVE_SECONDS = 20
+
+# Once useful evidence exists, another planning turn is optional rather than
+# worth the whole remaining research budget. Measured in production, the first
+# planner took ~4s, search took ~15s, then the second planner consumed the
+# remaining ~35s and timed out. Cap post-evidence planning so Alfred can fall
+# back to writing from evidence it already has.
+POST_EVIDENCE_PLANNER_SECONDS = 15
 
 
 # ---------------------------------------------------------------------------
@@ -685,47 +697,81 @@ def ask(question: str, *, tier: str, user_id: str | None = None,
     deadline = time.monotonic() + config.AGENT_DEADLINE_SECONDS
 
     def plan(call_tool) -> None:
+        def synthesize(reason: str) -> None:
+            """
+            Stop researching and write from evidence already in the conversation.
+
+            Keep the tool schemas in the request because dropping them entirely
+            made an earlier provider emit raw tool-call XML. `tool_choice=none`
+            is the stronger contract: the current OpenRouter model sees the same
+            schema context but is not allowed to spend the reserved writing turn
+            asking for another tool.
+            """
+            state["stopped"] = reason
+            messages.append({
+                "role": "user",
+                "content": (
+                    "Stop searching now and answer from the tool results already "
+                    "in this conversation. Do not call any more tools. Ground the "
+                    "answer only in those results and include the required "
+                    "citations block mapping citation numbers to paper_id."
+                ),
+            })
+            _emit(on_event, type="status", phase="writing")
+            synthesis_timeout = _remaining(deadline)
+            logger.info(
+                "Agent synthesis start reason=%s timeout=%.1fs sources=%d",
+                reason, synthesis_timeout, len(found),
+            )
+            message = llm_client.chat_with_tools(
+                messages,
+                schemas,
+                timeout=synthesis_timeout,
+                max_tokens=config.AGENT_MAX_TOKENS,
+                usage=usage,
+                tool_choice="none",
+            )
+            state["llm_turns"] += 1
+            state["answer"] = _clean(llm_client.message_text(message))
+            logger.info(
+                "Agent synthesis complete reason=%s answer=%s",
+                reason, bool(state["answer"]),
+            )
+
         while True:
-            # Both stopping conditions lead to the same place: one final turn
-            # with no tools offered, so the model writes an answer from what it
-            # already found.
-            #
-            # The deadline reserves room for that turn rather than firing at the
-            # limit. Measured: a run that searched five times and then ran out
-            # of clock returned 75 seconds of work, 23 papers, and an empty
-            # answer. Stopping the search is not the same as giving up.
+            # Both stopping conditions lead to a final synthesis turn. The
+            # deadline reserves room for that turn rather than firing at the
+            # limit. Stopping research is not the same as giving up.
             out_of_time = time.monotonic() > deadline - SYNTHESIS_RESERVE_SECONDS
             out_of_calls = len(tool_calls) >= config.AGENT_MAX_TOOL_CALLS
 
             if out_of_time or out_of_calls:
-                state["stopped"] = "deadline" if out_of_time else "tool_ceiling"
-                # Tools are still offered on this turn, and the instruction to
-                # stop goes in a message instead. Sending an empty tool list is
-                # what makes this model emit raw <tool_call> XML as prose —
-                # measured before the loop was written, and then walked into
-                # anyway by the first version of this branch.
-                messages.append({
-                    "role": "user",
-                    "content": ("Stop searching now and answer from the results you "
-                                "already have. Do not call any more tools. Cite each "
-                                "paper by its `citation` number."),
-                })
-                _emit(on_event, type="status", phase="writing")
-                message = llm_client.chat_with_tools(
-                    messages, schemas, timeout=_remaining(deadline),
-                    max_tokens=config.AGENT_MAX_TOKENS, usage=usage)
-                state["llm_turns"] += 1
-                state["answer"] = _clean(llm_client.message_text(message))
+                synthesize("deadline" if out_of_time else "tool_ceiling")
                 return
 
             planner_timeout = _research_remaining(deadline)
+            if found:
+                planner_timeout = min(
+                    planner_timeout, POST_EVIDENCE_PLANNER_SECONDS)
             logger.info(
-                "Agent planner start turn=%d timeout=%.1fs tools_seen=%d",
-                state["llm_turns"] + 1, planner_timeout, len(schemas),
+                "Agent planner start turn=%d timeout=%.1fs tools_seen=%d sources=%d",
+                state["llm_turns"] + 1, planner_timeout, len(schemas), len(found),
             )
-            message = llm_client.chat_with_tools(
-                messages, schemas, timeout=planner_timeout,
-                max_tokens=config.AGENT_MAX_TOKENS, usage=usage)
+            try:
+                message = llm_client.chat_with_tools(
+                    messages, schemas, timeout=planner_timeout,
+                    max_tokens=config.AGENT_MAX_TOKENS, usage=usage)
+            except LLMTimeoutError as exc:
+                if not found:
+                    raise
+                logger.warning(
+                    "Agent planner timed out after evidence; falling back to "
+                    "synthesis sources=%d error=%s",
+                    len(found), exc,
+                )
+                synthesize("planner_timeout")
+                return
+
             state["llm_turns"] += 1
             requested = message.get("tool_calls") or []
             logger.info(
@@ -824,6 +870,8 @@ def ask(question: str, *, tier: str, user_id: str | None = None,
                         "Try a narrower question.",
             "tool_ceiling": "The assistant reached its tool limit for one question. "
                             "Try asking for one thing at a time.",
+            "planner_timeout": "The assistant found sources but ran out of time "
+                               "while composing the answer. Try a narrower question.",
         }.get(state["stopped"], "The assistant could not produce an answer.")
 
     logger.info(
