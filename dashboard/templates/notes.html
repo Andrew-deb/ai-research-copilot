@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Notes — Alfred{% endblock %}
+{% block topbar_title %}Notes{% endblock %}
+
+{% block content %}
+<h1 class="page-title">Your notes</h1>
+<p class="page-lead">
+  Everything you have written, newest first, grouped by the paper it is about.
+</p>
+
+{% if not papers %}
+  {# Notes could be written from a paper's page long before there was anywhere
+     to read them back, and the dashboard counted them the whole time - a number
+     pointing at nothing you could open. The empty state says where to start
+     rather than leaving the page looking broken. #}
+  <p class="empty-state">
+    No notes yet. Open any paper and write one from its page — they collect here,
+    and the assistant can add them for you if you ask it to.
+  </p>
+{% endif %}
+
+{% for paper in papers %}
+  <section class="panel note-group">
+    <h2 class="note-paper-title">
+      <a href="{{ url_for('search.paper_detail', paper_id=paper.paper_id) }}">{{ paper.title }}</a>
+    </h2>
+    <p class="note-paper-meta">
+      {{ paper.venue or 'Unknown venue' }}{% if paper.publication_year %} · {{ paper.publication_year }}{% endif %}
+      · {{ paper.notes | length }} note{{ '' if paper.notes | length == 1 else 's' }}
+    </p>
+
+    <ul class="note-list">
+      {% for note in paper.notes %}
+        <li class="note-item">
+          <p class="note-text">{{ note.note_text }}</p>
+          <time class="note-date" datetime="{{ note.created_at }}">
+            {{ note.created_at.strftime('%d %b %Y') if note.created_at.strftime else note.created_at }}
+          </time>
+        </li>
+      {% endfor %}
+    </ul>
+  </section>
+{% endfor %}
+{% endblock %}

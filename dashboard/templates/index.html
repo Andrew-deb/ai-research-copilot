@@ -19,10 +19,21 @@
     <span class="stat-value">{{ stats.papers_completed }}</span>
     <span class="stat-label">Papers completed</span>
   </a>
+  {# A link now, like its three neighbours — it was the one card you could not
+     click, because until the notes page existed the number led nowhere. Still
+     inert for an anonymous visitor, whose count is always zero and whose click
+     would only reach a capability prompt. #}
+  {% if is_authenticated %}
+  <a class="stat-card" href="{{ url_for('progress.notes') }}">
+    <span class="stat-value">{{ stats.notes_written }}</span>
+    <span class="stat-label">Notes written</span>
+  </a>
+  {% else %}
   <div class="stat-card">
     <span class="stat-value">{{ stats.notes_written }}</span>
     <span class="stat-label">Notes written</span>
   </div>
+  {% endif %}
 </section>
 
 <div class="dash-columns">
