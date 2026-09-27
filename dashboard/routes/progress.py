@@ -16,6 +16,21 @@ def board():
     return render_template("progress.html", board=data)
 
 
+@bp.get("/notes")
+@require_capability("notes:write")
+def notes():
+    """
+    Everything you have written, in one place.
+
+    Gated on notes:write rather than a read capability because there is no such
+    thing as reading someone else's notes here - the page only ever shows your
+    own, and an anonymous visitor has none and no way to make any. Sending them
+    to the capability prompt is more honest than an empty page.
+    """
+    return render_template("notes.html",
+                           papers=progress_service.all_notes(current_user_id()))
+
+
 @bp.post("/paper/<paper_id>/status")
 @require_capability("progress:write")
 def set_status(paper_id: str):
