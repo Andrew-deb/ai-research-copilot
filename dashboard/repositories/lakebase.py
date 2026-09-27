@@ -784,6 +784,35 @@ def save_note(user_id: str, paper_id: str, note_text: str) -> dict:
     )
 
 
+def get_all_notes(user_id: str, limit: int = 200) -> list[dict]:
+    """
+    Every note this person has written, newest first, with enough of the paper
+    to recognise it.
+
+    Joined rather than fetched per note: a notes page is a list of notes ABOUT
+    papers, and a note without its title is unreadable - "the thing I wrote in
+    March" tells you nothing. One query rather than one per row, because the
+    count is unbounded and a page that issues fifty queries to render fifty
+    lines is a page that stops working once somebody uses it properly.
+
+    INNER JOIN, not LEFT: notes.paper_id is NOT NULL and cascades on delete, so
+    a note with no paper cannot exist. A LEFT JOIN would invite a null-title row
+    that the schema forbids.
+    """
+    return run_query(
+        """
+        SELECT n.note_id, n.note_text, n.created_at,
+               p.paper_id, p.title, p.venue, p.publication_year
+          FROM notes n
+          JOIN papers p ON p.paper_id = n.paper_id
+         WHERE n.user_id = %s
+         ORDER BY n.created_at DESC
+         LIMIT %s;
+        """,
+        (user_id, limit),
+    )
+
+
 def get_notes_for_paper(user_id: str, paper_id: str) -> list[dict]:
     return run_query(
         "SELECT * FROM notes WHERE user_id = %s AND paper_id = %s ORDER BY created_at DESC;",
