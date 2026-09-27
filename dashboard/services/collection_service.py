@@ -69,14 +69,32 @@ def _require_writable_collection(collection_id: str, user_id: str | None) -> dic
 
 def list_collections(user_id: str | None) -> list[dict]:
     """
-    Curated examples first, then the caller's own.
+    Curated examples first, then the caller's own, as one list.
 
-    An anonymous visitor sees only the curated ones, which is what makes the page
-    worth opening at all rather than an empty shell with a sign-in prompt.
+    Kept for callers that want everything without caring which is which.
+    `collections_for` is what the page uses, because the page does care.
+    """
+    split = collections_for(user_id)
+    return split["examples"] + split["own"]
+
+
+def collections_for(user_id: str | None) -> dict[str, list[dict]]:
+    """
+    The caller's own collections and the curated examples, kept apart.
+
+    They used to arrive concatenated, under a heading that read "Your
+    collections" once you signed in - so the page showed three collections you
+    had never made and told you they were yours.
+
+    The examples exist so the page is worth opening before you have made
+    anything; that is the whole reason an anonymous visitor sees them. Once you
+    have your own, they have done their job and stop being shown, because a
+    library should be your library rather than yours plus a permanent sample.
     """
     curated = [{**c, "is_curated": True} for c in lakebase.get_curated_collections()]
-    own = lakebase.get_collections(user_id) if user_id else []
-    return curated + [c for c in own if not c.get("is_curated")]
+    own = [c for c in (lakebase.get_collections(user_id) if user_id else [])
+           if not c.get("is_curated")]
+    return {"own": own, "examples": [] if own else curated}
 
 
 def create_collection(user_id: str, name: str, description: str | None = None) -> dict:
