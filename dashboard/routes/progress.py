@@ -1,10 +1,10 @@
 """dashboard/routes/progress.py — Reading progress board and note annotations."""
 
-from flask import Blueprint, render_template, request, url_for
+from flask import Blueprint, jsonify, render_template, request, url_for
 
 from middleware.capabilities import require_capability, require_quota
 from middleware.auth import current_user_id
-from routes.helpers import action_response, form_or_json
+from routes.helpers import action_response, form_or_json, wants_json
 from services import progress_service
 
 bp = Blueprint("progress", __name__)
@@ -27,8 +27,72 @@ def notes():
     own, and an anonymous visitor has none and no way to make any. Sending them
     to the capability prompt is more honest than an empty page.
     """
-    return render_template("notes.html",
-                           papers=progress_service.all_notes(current_user_id()))
+    groups = progress_service.all_notes(current_user_id())
+    summary = progress_service.notes_summary(groups)
+
+    # The slide-over panel reads the same route rather than a parallel one, so
+    # the page and the panel can never show different notes - one query, one
+    # shape, negotiated by Accept. A second endpoint would be a second place to
+    # remember when the shape changes.
+    if wants_json():
+        return jsonify({"papers": groups, "summary": summary})
+
+    return render_template("notes.html", papers=groups, summary=summary)
+
+
+@bp.post("/notes")
+@require_capability("notes:write")
+def create_note():
+    """
+    Write a note that is not about any particular paper.
+
+    `paper_id` is accepted but optional, so the same endpoint serves the panel
+    opened from a paper page - where a note should attach to what you are
+    reading - and the notes page itself, where there is nothing to attach to.
+    """
+    data = form_or_json("note_text", "paper_id", "title")
+    note = progress_service.save_note(current_user_id(),
+                                      (data.get("paper_id") or "").strip() or None,
+                                      data["note_text"],
+                                      data.get("title"))
+    return action_response(
+        {"note": {"note_id": str(note["note_id"]), "note_text": note["note_text"]}},
+        redirect_to=url_for("progress.notes"),
+        flash_message="Note saved.",
+    )
+
+
+@bp.post("/notes/<note_id>")
+@require_capability("notes:write")
+def edit_note(note_id: str):
+    """Revise a note. 404 when it is not yours - see progress_service."""
+    data = form_or_json("note_text", "title")
+    note = progress_service.update_note(current_user_id(), note_id,
+                                        data["note_text"], data.get("title"))
+    return action_response(
+        {"note": note},
+        redirect_to=url_for("progress.notes"),
+        flash_message="Note updated.",
+    )
+
+
+@bp.post("/notes/<note_id>/delete")
+@require_capability("notes:write")
+def remove_note(note_id: str):
+    """
+    Delete a note.
+
+    POST rather than DELETE, and its own URL rather than a method override,
+    because the page submits it as a plain form - the same reason the rest of
+    this blueprint does. The browser confirms first; this does not, because a
+    confirmation the server cannot see is not a confirmation it can enforce.
+    """
+    progress_service.delete_note(current_user_id(), note_id)
+    return action_response(
+        {"deleted": note_id},
+        redirect_to=url_for("progress.notes"),
+        flash_message="Note deleted.",
+    )
 
 
 @bp.post("/paper/<paper_id>/status")
