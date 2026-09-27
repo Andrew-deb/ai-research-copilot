@@ -56,5 +56,33 @@ def save_note(user_id: str, paper_id: str, note_text: str) -> dict:
     return lakebase.save_note(user_id, paper_id, note_text.strip())
 
 
+def all_notes(user_id: str) -> list[dict]:
+    """
+    Everything this person has written, for the notes page.
+
+    Grouped by paper here rather than in the template, because "what did I say
+    about this paper" is the question the page answers and Jinja is a poor place
+    to do it. Order is preserved: papers appear by their most recent note, so
+    what you were last thinking about is at the top.
+    """
+    grouped: dict[str, dict] = {}
+    for note in lakebase.get_all_notes(user_id):
+        key = str(note["paper_id"])
+        if key not in grouped:
+            grouped[key] = {
+                "paper_id": key,
+                "title": note["title"],
+                "venue": note.get("venue"),
+                "publication_year": note.get("publication_year"),
+                "notes": [],
+            }
+        grouped[key]["notes"].append({
+            "note_id": str(note["note_id"]),
+            "note_text": note["note_text"],
+            "created_at": note["created_at"],
+        })
+    return list(grouped.values())
+
+
 def list_notes(user_id: str, paper_id: str) -> list[dict]:
     return lakebase.get_notes_for_paper(user_id, paper_id)
