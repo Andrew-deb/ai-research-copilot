@@ -776,16 +776,21 @@ def get_progress_for_paper(user_id: str, paper_id: str) -> dict | None:
 # Notes
 # =============================================================================
 
-def save_note(user_id: str, paper_id: str | None, note_text: str) -> dict:
-    """A note, optionally about a paper. `paper_id` is nullable — see sql/16."""
+def save_note(user_id: str, paper_id: str | None, note_text: str,
+              title: str | None = None) -> dict:
+    """A note, optionally about a paper and optionally named. See sql/16, sql/17."""
     return run_write(
-        "INSERT INTO notes (user_id, paper_id, note_text) VALUES (%s, %s, %s) RETURNING *;",
-        (user_id, paper_id, note_text),
+        """
+        INSERT INTO notes (user_id, paper_id, note_text, title)
+        VALUES (%s, %s, %s, %s) RETURNING *;
+        """,
+        (user_id, paper_id, note_text, title),
         returning=True,
     )
 
 
-def update_note(user_id: str, note_id: str, note_text: str) -> dict | None:
+def update_note(user_id: str, note_id: str, note_text: str,
+                title: str | None = None) -> dict | None:
     """
     Revise a note. Returns None when it is not this person's to revise.
 
@@ -796,11 +801,11 @@ def update_note(user_id: str, note_id: str, note_text: str) -> dict | None:
     """
     return run_write(
         """
-        UPDATE notes SET note_text = %s, updated_at = now()
+        UPDATE notes SET note_text = %s, title = %s, updated_at = now()
          WHERE note_id = %s AND user_id = %s
         RETURNING *;
         """,
-        (note_text, note_id, user_id),
+        (note_text, title, note_id, user_id),
         returning=True,
     )
 
@@ -823,8 +828,8 @@ def get_note(user_id: str, note_id: str) -> dict | None:
     """One note of this person's, with its paper when it has one."""
     rows = run_query(
         """
-        SELECT n.note_id, n.note_text, n.created_at, n.updated_at,
-               n.paper_id, p.title, p.venue, p.publication_year
+        SELECT n.note_id, n.note_text, n.title, n.created_at, n.updated_at,
+               n.paper_id, p.title AS paper_title, p.venue, p.publication_year
           FROM notes n
           LEFT JOIN papers p ON p.paper_id = n.paper_id
          WHERE n.note_id = %s AND n.user_id = %s;
@@ -853,8 +858,8 @@ def get_all_notes(user_id: str, limit: int = 200) -> list[dict]:
     """
     return run_query(
         """
-        SELECT n.note_id, n.note_text, n.created_at, n.updated_at,
-               n.paper_id, p.title, p.venue, p.publication_year
+        SELECT n.note_id, n.note_text, n.title, n.created_at, n.updated_at,
+               n.paper_id, p.title AS paper_title, p.venue, p.publication_year
           FROM notes n
           LEFT JOIN papers p ON p.paper_id = n.paper_id
          WHERE n.user_id = %s
