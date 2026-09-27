@@ -1345,3 +1345,251 @@ h1, h2, h3,
 }
 
 .note-date { color: var(--text-muted); font-size: 11.5px; }
+
+/* A label that only a screen reader reads. The notes textareas need naming
+   without a visible label above every box — `display: none` would take them out
+   of the accessibility tree too, which is the opposite of the point. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* --- Notes: composing and revising ---------------------------------------- */
+
+.notes-summary {
+  color: var(--text-muted);
+  font-size: 12.5px;
+  margin: -16px 0 22px;
+  font-family: var(--mono);
+}
+
+.note-words { color: var(--text-subtle); font-size: 12px; font-family: var(--mono); }
+
+/* Over the limit the count turns, because a note that cannot be saved should
+   say so before the submit rather than after it. */
+.note-words.is-over { color: var(--danger, #e5484d); }
+
+.note-meta {
+  color: var(--text-muted);
+  font-size: 11.5px;
+  margin: 4px 0 0;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.note-edited { font-style: italic; }
+
+/* Revealed on hover and on keyboard focus both — hover alone would put Edit and
+   Delete out of reach of anyone not using a mouse. */
+.note-actions {
+  display: flex;
+  gap: 4px;
+  margin-top: 8px;
+  opacity: 0;
+  transition: opacity .12s ease;
+}
+.note-item:hover .note-actions,
+.note-item:focus-within .note-actions { opacity: 1; }
+
+@media (hover: none) {
+  /* No hover to reveal them with. */
+  .note-actions { opacity: 1; }
+}
+
+.note-group .inline-form { display: inline; }
+.note-paper-title-standalone { color: var(--text-muted); font-weight: 500; }
+
+/* --- The notes panel, docked ------------------------------------------------
+   Docked, not floating. The panel takes its own column and `.main-col` gives
+   up that width, so the paper you are writing about simply gets narrower and
+   stays readable — you can keep reading, scrolling and clicking while the
+   panel is open, which is the whole point of writing a note *here* rather than
+   on a separate page.
+
+   This is the exact mirror of the sidebar: fixed to its edge, with the main
+   column carrying a margin the same width. It was an overlay with a scrim
+   first, and a scrim is a statement that the page behind it is unusable until
+   you deal with this — the opposite of what a notes panel is for. */
+
+:root { --notes-w: 392px; }
+
+.notes-panel {
+  position: fixed;
+  inset: 0 0 0 auto;
+  z-index: 40;                      /* the sidebar's layer, not a modal's */
+  width: var(--notes-w);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+}
+
+/* `[hidden]` loses to the author `display: flex` above — the same rule that
+   once left a renamed conversation's old title on screen beside the field
+   replacing it. */
+.notes-panel[hidden] { display: none; }
+
+/* The page gives up the width rather than being covered by it. */
+body.notes-docked .main-col { margin-right: var(--notes-w); }
+
+.notes-panel-head {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 12px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.notes-panel-head h2 { font-size: 13.5px; margin: 0; flex: 1; }
+
+/* --- The two views ---------------------------------------------------------
+   Recent notes first; the + at the top LEFT swaps the panel for a notepad.
+   The notepad REPLACES the list rather than appearing beneath it, so the
+   writing surface gets the whole panel and there is only ever one thing to
+   read. The back arrow takes the +'s position, so the control you want is
+   always in the same place. */
+
+.notes-view { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.notes-view[hidden] { display: none; }
+
+.notes-panel-list { flex: 1; min-height: 0; overflow-y: auto; padding: 14px; }
+
+.notes-pad { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
+.notes-pad-attach {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+.notes-pad-attach-name { color: var(--text); }
+
+.notes-pad-title {
+  flex-shrink: 0;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 14px 16px 6px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 15.5px;
+  font-weight: 600;
+}
+.notes-pad-title:focus { outline: none; }
+
+/* Grows into the panel rather than being a fixed box with the rest blank:
+   the notepad IS the view, so the writing surface takes what is left. */
+.notes-pad-body {
+  flex: 1;
+  min-height: 0;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 8px 16px 14px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13.5px;
+  line-height: 1.7;
+  resize: none;
+}
+.notes-pad-body:focus { outline: none; }
+
+.notes-pad-foot {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 11px 14px;
+  border-top: 1px solid var(--border);
+}
+
+.btn-link {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-size: inherit;
+  color: var(--brand-tint-fg);
+  cursor: pointer;
+  text-decoration: underline;
+}
+.btn-link.btn-danger { color: var(--danger); }
+
+.notes-panel-group + .notes-panel-group { margin-top: 18px; }
+.notes-panel-group h3 {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--text-muted);
+  margin: 0 0 8px;
+}
+
+.notes-panel-note {
+  border-left: 2px solid var(--border-strong);
+  padding: 2px 0 2px 12px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.notes-panel-note + .notes-panel-note { margin-top: 12px; }
+.notes-panel-note p { margin: 0; white-space: pre-wrap; }
+.notes-panel-note-title { font-weight: 600; margin-bottom: 2px; }
+
+/* Too narrow to dock: the panel covers the page instead, because 392px of
+   panel and 0px of paper is not a split worth keeping. */
+@media (max-width: 900px) {
+  .notes-panel { width: 100vw; border-left: 0; z-index: 60; }
+  body.notes-docked .main-col { margin-right: 0; }
+}
+
+/* --- The Notes page, on the panel's two views ------------------------------ */
+
+.notes-page-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 22px;
+}
+.notes-page-head .page-title { margin: 0 0 4px; }
+.notes-page-head .notes-summary { margin: 0; }
+
+/* The + reads as the primary action; the back arrow that replaces it does not,
+   so it keeps the plain icon-button look. */
+.icon-btn-solid {
+  background: var(--brand);
+  color: var(--brand-fg);
+  border-color: var(--brand);
+}
+.icon-btn-solid:hover { background: var(--brand-hover); border-color: var(--brand-hover); }
+
+.notes-page-pad {
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  overflow: hidden;
+}
+/* Flex, so the [hidden] attribute needs saying explicitly here too. */
+.notes-page-pad[hidden] { display: none; }
+
+.notes-page-pad .notes-pad-body { height: 320px; resize: vertical; }
+
+.note-title { font-weight: 600; margin: 0 0 3px; font-size: 13.5px; }
+
+/* A note is prose, and prose set across the full width is unreadable — the
+   measure matters more here than on any other page in the app. */
+.notes-page { max-width: 760px; }
