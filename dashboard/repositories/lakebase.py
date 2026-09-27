@@ -776,12 +776,62 @@ def get_progress_for_paper(user_id: str, paper_id: str) -> dict | None:
 # Notes
 # =============================================================================
 
-def save_note(user_id: str, paper_id: str, note_text: str) -> dict:
+def save_note(user_id: str, paper_id: str | None, note_text: str) -> dict:
+    """A note, optionally about a paper. `paper_id` is nullable — see sql/16."""
     return run_write(
         "INSERT INTO notes (user_id, paper_id, note_text) VALUES (%s, %s, %s) RETURNING *;",
         (user_id, paper_id, note_text),
         returning=True,
     )
+
+
+def update_note(user_id: str, note_id: str, note_text: str) -> dict | None:
+    """
+    Revise a note. Returns None when it is not this person's to revise.
+
+    The owner is in the WHERE clause rather than checked beforehand: a read,
+    then a decision, then a write is three steps with room between them, and
+    only the database can make the check and the change the same act. A note
+    belonging to somebody else simply matches nothing.
+    """
+    return run_write(
+        """
+        UPDATE notes SET note_text = %s, updated_at = now()
+         WHERE note_id = %s AND user_id = %s
+        RETURNING *;
+        """,
+        (note_text, note_id, user_id),
+        returning=True,
+    )
+
+
+def delete_note(user_id: str, note_id: str) -> bool:
+    """
+    Remove a note. True when one was removed, False when there was none to
+    remove — which covers both "already gone" and "never yours", deliberately:
+    telling a stranger which of those it was reveals that the note exists.
+    """
+    row = run_write(
+        "DELETE FROM notes WHERE note_id = %s AND user_id = %s RETURNING note_id;",
+        (note_id, user_id),
+        returning=True,
+    )
+    return row is not None
+
+
+def get_note(user_id: str, note_id: str) -> dict | None:
+    """One note of this person's, with its paper when it has one."""
+    rows = run_query(
+        """
+        SELECT n.note_id, n.note_text, n.created_at, n.updated_at,
+               n.paper_id, p.title, p.venue, p.publication_year
+          FROM notes n
+          LEFT JOIN papers p ON p.paper_id = n.paper_id
+         WHERE n.note_id = %s AND n.user_id = %s;
+        """,
+        (note_id, user_id),
+    )
+    return rows[0] if rows else None
 
 
 def get_all_notes(user_id: str, limit: int = 200) -> list[dict]:
@@ -795,16 +845,18 @@ def get_all_notes(user_id: str, limit: int = 200) -> list[dict]:
     count is unbounded and a page that issues fifty queries to render fifty
     lines is a page that stops working once somebody uses it properly.
 
-    INNER JOIN, not LEFT: notes.paper_id is NOT NULL and cascades on delete, so
-    a note with no paper cannot exist. A LEFT JOIN would invite a null-title row
-    that the schema forbids.
+    LEFT JOIN, not INNER. This said the opposite until sql/16 made paper_id
+    nullable, and the reasoning was sound while it held: a note without a paper
+    could not exist, so an INNER JOIN lost nothing. Now a standalone note is a
+    deliberate kind of note, and an INNER JOIN would silently drop every one of
+    them from the page that exists to show them.
     """
     return run_query(
         """
-        SELECT n.note_id, n.note_text, n.created_at,
-               p.paper_id, p.title, p.venue, p.publication_year
+        SELECT n.note_id, n.note_text, n.created_at, n.updated_at,
+               n.paper_id, p.title, p.venue, p.publication_year
           FROM notes n
-          JOIN papers p ON p.paper_id = n.paper_id
+          LEFT JOIN papers p ON p.paper_id = n.paper_id
          WHERE n.user_id = %s
          ORDER BY n.created_at DESC
          LIMIT %s;
