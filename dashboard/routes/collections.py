@@ -12,8 +12,10 @@ bp = Blueprint("collections", __name__)
 
 @bp.get("/collections")
 def list_collections():
-    collections = collection_service.list_collections(current_user_id())
-    return render_template("collections.html", collections=collections)
+    split = collection_service.collections_for(current_user_id())
+    return render_template("collections.html",
+                           collections=split["own"],
+                           examples=split["examples"])
 
 
 @bp.post("/collections")
