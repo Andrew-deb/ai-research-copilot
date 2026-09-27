@@ -17,6 +17,7 @@
     {% if collection.is_curated %}<span class="tag">Shared example</span>{% endif %}
     {% if collection.papers and editable %}
       <form method="post" action="{{ url_for('collections.generate_plan', collection_id=collection.collection_id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button type="submit" class="btn btn-primary">Generate reading plan</button>
       </form>
     {% endif %}
@@ -50,6 +51,7 @@
           </div>
           {% if editable %}
             <form method="post" action="{{ url_for('collections.remove_paper', collection_id=collection.collection_id, paper_id=paper.paper_id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button type="submit" class="btn btn-ghost btn-danger" title="Remove from collection">Remove</button>
             </form>
           {% endif %}
