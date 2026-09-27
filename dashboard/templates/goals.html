@@ -11,6 +11,7 @@
   <h2>New goal</h2>
   {% if can(CAP.goals_write) %}
   <form class="stack-form" method="post" action="{{ url_for('goals.create_goal') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label>Title
       <input type="text" name="title" required maxlength="300" placeholder="e.g. Understand diffusion models">
     </label>
@@ -50,6 +51,7 @@
               {% endif %}
             </button>
             <form method="post" action="{{ url_for('goals.update_status', goal_id=goal.goal_id) }}" class="inline-form">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <select name="status" onchange="this.form.requestSubmit()">
                 {% for opt in ['active', 'completed', 'archived'] %}
                   <option value="{{ opt }}" {{ 'selected' if goal.status == opt }}>{{ opt }}</option>
