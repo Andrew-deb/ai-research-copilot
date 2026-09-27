@@ -20,7 +20,10 @@ _PAPER_FIELDS = (
     "paperId,externalIds,title,abstract,year,venue,"
     "citationCount,influentialCitationCount,tldr,openAccessPdf,authors"
 )
-_CITATION_FIELDS = "paperId,externalIds,title,abstract,year,citationCount,tldr,intents,contexts"
+# venue included: a citing paper is shown in the same lists as any other, and a
+# projection that omits it produces the same "Unknown venue" row by a different
+# route.
+_CITATION_FIELDS = "paperId,externalIds,title,abstract,year,venue,citationCount,tldr,intents,contexts"
 _RECOMMENDATION_FIELDS = "paperId,externalIds,title,abstract,year,venue,citationCount,tldr"
 
 
@@ -42,9 +45,17 @@ def _get(endpoint: str, params: dict | None = None) -> dict:
     return resp.json()
 
 
-def _post(endpoint: str, body: dict) -> dict:
+def _post(endpoint: str, body: dict, params: dict | None = None) -> dict:
+    """
+    POST with an optional query string.
+
+    S2 takes `fields` as a QUERY parameter on every endpoint, including the ones
+    that read their input from a JSON body. Putting it in the body instead is
+    silently ignored - the request succeeds and returns the default projection.
+    """
     time.sleep(S2_RATE_LIMIT_DELAY)
-    resp = requests.post(f"{S2_BASE_URL}{endpoint}", headers={**_headers(), "Content-Type": "application/json"}, json=body, timeout=15)
+    resp = requests.post(f"{S2_BASE_URL}{endpoint}", headers={**_headers(), "Content-Type": "application/json"},
+                         json=body, params=params or {}, timeout=15)
     resp.raise_for_status()
     return resp.json()
 
@@ -136,7 +147,14 @@ def get_recommendations(s2_paper_id: str, limit: int = 5) -> list[dict]:
     Requires a valid S2 paper ID (not DOI). Returns empty list if not found.
     """
     try:
-        data = _post("/recommendations/v1/papers", {"positivePaperIds": [s2_paper_id], "negativePaperIds": []})
+        # `fields` is not optional in practice. Without it S2 returns paperId and
+        # title and nothing else, so every recommended paper was stored with a
+        # null venue, year, abstract and citation count - the dashboard's
+        # "Unknown venue" rows. _RECOMMENDATION_FIELDS existed for this call the
+        # whole time and was never passed to it.
+        data = _post("/recommendations/v1/papers",
+                     {"positivePaperIds": [s2_paper_id], "negativePaperIds": []},
+                     params={"fields": _RECOMMENDATION_FIELDS})
     except requests.HTTPError as e:
         if e.response is not None and e.response.status_code == 404:
             return []
