@@ -1298,3 +1298,50 @@ h1, h2, h3,
   .profile-menu { left: 0; max-width: calc(100vw - 24px); }
 }
 @media (prefers-reduced-motion: reduce) { .sidebar { transition: none; } }
+
+/* --- Notes -----------------------------------------------------------------
+   Notes could be written from a paper's page long before there was anywhere to
+   read them back. Grouped by paper, because "what did I say about this one" is
+   the question being asked — a flat reverse-chronological list would scatter
+   three thoughts about the same paper across three months of scrolling. */
+
+.panel-intro {
+  color: var(--text-muted);
+  font-size: 13px;
+  margin: 0 0 16px;
+  max-width: 60ch;
+}
+
+.note-group + .note-group { margin-top: 16px; }
+
+.note-paper-title { font-size: 15px; margin: 0 0 4px; }
+.note-paper-title a { color: var(--text); text-decoration: none; }
+.note-paper-title a:hover { color: var(--brand-tint-fg); }
+
+.note-paper-meta {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin: 0 0 14px;
+}
+
+.note-list { list-style: none; margin: 0; padding: 0; }
+
+/* A left rule rather than a card: these are one person's marginalia, and boxing
+   each line gave a page of five notes the weight of a page of five documents. */
+.note-item {
+  border-left: 2px solid var(--border-strong);
+  padding: 2px 0 2px 14px;
+}
+.note-item + .note-item { margin-top: 14px; }
+
+.note-text {
+  margin: 0 0 4px;
+  /* Preserved, because a note is written the way it is written. Collapsing the
+     line breaks out of someone's list of three points makes it one paragraph
+     they did not write. */
+  white-space: pre-wrap;
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
+.note-date { color: var(--text-muted); font-size: 11.5px; }
