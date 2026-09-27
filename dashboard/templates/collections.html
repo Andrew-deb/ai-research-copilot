@@ -11,6 +11,7 @@
 <section class="panel">
   <h2>New collection</h2>
   <form class="stack-form" method="post" action="{{ url_for('collections.create_collection') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label>Name
       <input type="text" name="name" required maxlength="200" placeholder="e.g. Transformer Foundations">
     </label>
@@ -31,20 +32,44 @@
 </section>
 {% endif %}
 
+{% macro collection_grid(items) %}
+  <div class="collection-grid">
+    {% for c in items %}
+      <a class="collection-card" href="{{ url_for('collections.collection_detail', collection_id=c.collection_id) }}">
+        <h3>{{ c.name }}</h3>
+        {% if c.description %}<p>{{ c.description }}</p>{% endif %}
+        <span class="collection-count">{{ c.paper_count }} paper{{ '' if c.paper_count == 1 else 's' }}</span>
+      </a>
+    {% endfor %}
+  </div>
+{% endmacro %}
+
+{# Own and curated are separate sections rather than one list. Concatenated
+   under "Your collections", the page showed a signed-in person three
+   collections they had never made and called them theirs. #}
+{% if collections %}
 <section class="panel">
   <h2>{{ 'Collections' if not can(CAP.library_write) else 'Your collections' }}</h2>
-  {% if collections %}
-    <div class="collection-grid">
-      {% for c in collections %}
-        <a class="collection-card" href="{{ url_for('collections.collection_detail', collection_id=c.collection_id) }}">
-          <h3>{{ c.name }}</h3>
-          {% if c.description %}<p>{{ c.description }}</p>{% endif %}
-          <span class="collection-count">{{ c.paper_count }} paper{{ '' if c.paper_count == 1 else 's' }}</span>
-        </a>
-      {% endfor %}
-    </div>
-  {% else %}
-    <p class="empty">No collections yet — create one above.</p>
-  {% endif %}
+  {{ collection_grid(collections) }}
 </section>
+{% endif %}
+
+{% if examples %}
+<section class="panel">
+  {# Shown only while you have none of your own: they exist so the page is worth
+     opening before you have made anything, not as a permanent fixture. #}
+  <h2>Example collections</h2>
+  <p class="panel-intro">
+    Curated reading lists to show what a collection looks like. Make your own
+    above and these make way for it.
+  </p>
+  {{ collection_grid(examples) }}
+</section>
+{% endif %}
+
+{% if not collections and not examples %}
+<section class="panel">
+  <p class="empty">No collections yet — create one above.</p>
+</section>
+{% endif %}
 {% endblock %}
