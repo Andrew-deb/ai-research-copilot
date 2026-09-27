@@ -6,8 +6,8 @@ envelope is what the UI renders and what conversation storage will have to
 persist, so deciding it after an agent existed would have meant changing a live
 path and a schema at the same time.
 
-**Writes are switched off** — see WRITE_TOOLS_ENABLED. The agent reads; it does
-not yet save, create or modify anything.
+**Writes are on for signed-in callers** — see WRITE_TOOLS_ENABLED. Anonymous
+callers remain read-only, enforced by TOOL_CAPABILITIES rather than by the gate.
 
 Two behaviours here exist because of measurements against the live provider
 rather than from reasoning about how models ought to work:
@@ -116,18 +116,28 @@ TOOL_CAPABILITIES: dict[str, str | None] = {
 READ_ONLY_TOOLS = tuple(name for name, cap in TOOL_CAPABILITIES.items() if cap is None)
 WRITE_TOOLS = tuple(name for name, cap in TOOL_CAPABILITIES.items() if cap is not None)
 
-# Phase 3.4 ships read-only, deliberately.
+# 3.4 shipped read-only because identity propagation was unproven end to end.
+# A fault in it would have written a signed-in user's collections and notes onto
+# the demo account, silently — the failure the MCP server's default-user
+# fallback was hiding rather than preventing.
 #
-# Identity propagation is built and tested here, but it has not yet been proven
-# end to end against the deployed server. Until it has, a fault in it would
-# write a signed-in user's collections and notes onto the demo account, silently
-# — which is exactly the failure the MCP server's default-user fallback was
-# hiding. Nothing writes until the header is verified.
+# It is proven now. `mcp_traces.user_id` carries the acting account for tool
+# calls made on behalf of signed-in people, and distinct users appear as
+# distinct rows rather than all arriving as the demo profile. That was the
+# condition this gate was waiting on, so it opens.
 #
-# This is a *phase* gate and is kept separate from TOOL_CAPABILITIES, which
+# Two things had to be true, not one. The header had to bind (it does), and the
+# MCP server had to refuse a write it cannot attribute rather than fall back —
+# its six write tools now call require_current_user_id(), which raises. A gate
+# opened while the server still fell back would simply move the silent failure
+# somewhere less visible.
+#
+# This remains a *phase* gate, kept separate from TOOL_CAPABILITIES, which
 # answers the different question of whether a tier is permitted at all. The two
-# are checked independently for the same reason capability and quota are.
-WRITE_TOOLS_ENABLED = False
+# are checked independently for the same reason capability and quota are: an
+# anonymous caller is refused by capability here regardless of this flag, so
+# turning it on widens what signed-in people can do and nothing else.
+WRITE_TOOLS_ENABLED = True
 
 
 def tools_for_tier(tier: str) -> tuple[str, ...]:
@@ -291,6 +301,46 @@ def _base_prompt() -> str:
     return _prompt_cache
 
 
+def _actions_guidance(can_write: bool) -> str:
+    """
+    What the model may do beyond answering, in this session.
+
+    Two audiences, and the difference matters to the person reading the reply. A
+    signed-out visitor being told "you can't save" should hear that signing in
+    fixes it; there is no point in a refusal that hides the remedy.
+
+    The confirmation rule is deliberately asymmetric. Creating a collection or
+    saving a note is additive and trivially undone by hand, so asking first
+    would make the assistant tedious to use. Removing a paper or overwriting a
+    note destroys something the person may not be able to reconstruct, and the
+    model is acting on an interpretation of their words rather than on a button
+    they pressed — so that half asks first. The cost of a needless question is a
+    moment; the cost of a wrong deletion is someone's reading list.
+    """
+    if not can_write:
+        return (
+            "## Saving\n\n"
+            "You cannot save, create, modify or delete anything in this session, "
+            "because the person you are helping is not signed in. If they ask you "
+            "to, say so in one sentence and mention that signing in enables it, "
+            "then offer what you can do instead — finding, comparing and "
+            "explaining all still work."
+        )
+    return (
+        "## Saving and changing things\n\n"
+        "You can save to this person's library: create collections, add papers, "
+        "record reading status, save notes and build reading plans. Do it when "
+        "they ask, without narrating each step.\n\n"
+        "Before anything that REMOVES or OVERWRITES — taking a paper out of a "
+        "collection, replacing an existing note — confirm with them first, in "
+        "one short question, and wait for an answer. Adding is easy to undo by "
+        "hand; removing may not be, and you are acting on your reading of what "
+        "they meant rather than on a button they pressed.\n\n"
+        "Never save something as a way of being helpful when they did not ask "
+        "for it. Their library is theirs."
+    )
+
+
 def build_system_prompt(tier: str) -> str:
     """
     The base prompt plus the tools this caller may actually use.
@@ -302,6 +352,9 @@ def build_system_prompt(tier: str) -> str:
     """
     available = callable_tools(tier)
     lines = "\n".join(f"- {name}" for name in available)
+    # Derived from the catalog rather than from the tier or the gate, so the
+    # prompt cannot disagree with what the session can actually call.
+    can_write = any(TOOL_CAPABILITIES[name] is not None for name in available)
     return (
         f"{_base_prompt()}\n\n"
         "---\n\n"
@@ -309,8 +362,7 @@ def build_system_prompt(tier: str) -> str:
         "This list overrides any tool catalog above it. Only these may be "
         "called; any other name will be refused:\n\n"
         f"{lines}\n\n"
-        "You cannot currently save, create, modify or delete anything. If asked "
-        "to, say so briefly and offer what you can do instead.\n\n"
+        f"{_actions_guidance(can_write)}\n\n"
         "## Conversation follow-ups\n\n"
         "Tool restrictions apply to external data access and actions, not to "
         "ordinary language work on content already present in this conversation. "
