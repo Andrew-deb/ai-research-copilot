@@ -78,7 +78,19 @@ def create_app() -> Flask:
     # browser attaches the session cookie itself. SameSite=Lax blocks the common
     # cross-site form POST, but it is one mitigation rather than a control, so
     # every state-changing request carries a token as well.
-    CSRFProtect(app)
+    #
+    # Registered AFTER register_auth below, and the order is load-bearing. Flask
+    # runs before_request hooks in registration order, so with CSRF ahead of
+    # identity a rejected POST aborted before g.user was ever resolved — and the
+    # 400 page rendered the signed-out shell, "Log in" and "You're viewing the
+    # demo workspace", to someone who had been signed in the whole time. The
+    # error told them the wrong thing about themselves while the actual fault
+    # was a missing token in the form.
+    #
+    # Resolving identity first costs one session read on a request that may be
+    # refused anyway. Knowing who someone is before deciding whether to refuse
+    # them is worth that, and every error page past this point can address them
+    # correctly.
 
     # Applied in every environment, with TRUSTED_PROXY_HOPS deciding how much of
     # the forwarded headers to believe - 0 locally, where it is a pass-through,
@@ -96,6 +108,9 @@ def create_app() -> Flask:
 
     init_oauth(app)
     register_auth(app)
+
+    CSRFProtect(app)
+
     register_capabilities(app)
     register_chat_context(app)
     register_shell_context(app)
