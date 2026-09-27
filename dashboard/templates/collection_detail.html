@@ -37,7 +37,7 @@
   {% if collection.papers %}
     <ol class="reading-list {{ 'js-sortable' if editable }}">
       {% for paper in collection.papers %}
-        <li class="reading-item" data-paper-id="{{ paper.paper_id }}" draggable="{{ 'true' if editable else 'false' }}">
+        <li class="reading-item {{ 'is-editable' if editable else 'is-static' }}" data-paper-id="{{ paper.paper_id }}" draggable="{{ 'true' if editable else 'false' }}">
           {% if editable %}<span class="drag-handle" title="Drag to reorder">⠿</span>{% endif %}
           <span class="seq">{{ paper.sequence_order }}</span>
           <div class="reading-item-body">
