@@ -637,7 +637,17 @@ def test_no_viewport_arithmetic_survives_on_desktop():
 
     desktop = _chat_css().split("@media (max-width: 1100px)")[0]
     declarations = _re.sub(r"/\*.*?\*/", "", desktop, flags=_re.S)
-    assert "100vh" not in declarations
+
+    # Exempting `position: fixed`, because such an element is laid out against
+    # the viewport itself - 100vh there is its containing block, not a guess at
+    # the height of the topbar and the footer. The citation preview is one: a
+    # floating popover that has to clamp to the screen. Banning the string
+    # outright failed on it while the layout this guards was still correct.
+    offenders = [
+        block for block in _re.findall(r"\{[^{}]*\}", declarations)
+        if "100vh" in block and "position: fixed" not in block
+    ]
+    assert offenders == [], f"viewport arithmetic in flow layout: {offenders}"
 
 
 def test_both_composer_pages_ask_for_the_fill():

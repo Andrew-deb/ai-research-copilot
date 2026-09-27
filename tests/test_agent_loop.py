@@ -197,20 +197,36 @@ def test_a_tool_result_is_appended_before_the_next_turn(wired):
 # What the agent may not do
 # ---------------------------------------------------------------------------
 
-def test_a_write_tool_is_never_invoked_this_phase(wired):
+def test_an_anonymous_write_never_reaches_the_transport(wired):
     """
-    The refusal must stop the CALL, not merely be reported afterwards. 3.4 is
-    read-only until identity propagation is proven against the live server.
+    The refusal must stop the CALL, not merely be reported afterwards.
+
+    This used to assert the same thing for every tier, because the phase gate
+    was shut. The gate is open now, so the claim narrows to the one that was
+    always the real guarantee: an anonymous visitor has no account to write to,
+    and a write on their behalf could only land on somebody else's.
     """
     wired["turns"] = [
         {"content": "", "tool_calls": [_tool_call("save_note", '{"note_text": "x"}')]},
-        {"content": "I cannot save notes yet."},
+        {"content": "You will need to sign in for that."},
     ]
-    result = agent_service.ask("save this", tier="authenticated")
+    result = agent_service.ask("save this", tier="anonymous")
 
     assert wired["calls"] == []                      # nothing reached the transport
     assert result["tool_calls"][0]["ok"] is False
-    assert "cannot save" in result["tool_calls"][0]["error"].lower()
+    assert "log in" in result["tool_calls"][0]["error"].lower()
+
+
+def test_a_signed_in_write_does_reach_the_transport(wired):
+    """The other half, and the point of the phase: it actually works now."""
+    wired["turns"] = [
+        {"content": "", "tool_calls": [_tool_call("save_note", '{"note_text": "x"}')]},
+        {"content": "Saved."},
+    ]
+    result = agent_service.ask("save this", tier="authenticated")
+
+    assert [c[0] for c in wired["calls"]] == ["save_note"]
+    assert result["tool_calls"][0]["ok"] is True
 
 
 def test_a_refused_tool_does_not_kill_the_turn(wired):
@@ -238,11 +254,18 @@ def test_an_unknown_tool_is_refused_without_reaching_the_transport(wired):
     assert result["tool_calls"][0]["ok"] is False
 
 
-def test_write_tools_are_not_offered_to_the_model(wired):
-    """Enforcement is ensure_callable; this is the usability half of it."""
+def test_write_tools_are_not_offered_to_an_anonymous_session(wired):
+    """
+    Enforcement is ensure_callable; this is the usability half of it. A tier
+    that cannot save a note is never told the tool exists, so the model does not
+    spend a turn attempting it and apologising.
+    """
     wired["turns"] = [{"content": "Answer."}]
-    agent_service.ask("q", tier="authenticated")
-    assert wired["schemas_sent"][0] == ["search_papers"]
+    agent_service.ask("q", tier="anonymous")
+
+    offered = wired["schemas_sent"][0]
+    assert "save_note" not in offered
+    assert not any(agent_service.TOOL_CAPABILITIES.get(n) for n in offered)
 
 
 def test_the_prompt_lists_only_the_callable_tools():
@@ -250,10 +273,43 @@ def test_the_prompt_lists_only_the_callable_tools():
     system_prompt.md documents all 13. Handing that to a session where six are
     unavailable invites the model to try one and spend a turn apologising.
     """
+    anonymous = agent_service.build_system_prompt("anonymous")
+    section = anonymous.split("Tools available in THIS session")[1]
+    assert "search_papers" in section
+    assert "save_note" not in section
+
+    signed_in = agent_service.build_system_prompt("authenticated")
+    section = signed_in.split("Tools available in THIS session")[1]
+    assert "save_note" in section
+
+
+def test_the_prompt_tells_each_tier_what_it_can_do_about_saving():
+    """
+    A refusal that hides the remedy is worse than no refusal. A signed-out
+    visitor should hear that signing in is the fix; a signed-in one should not
+    be told they cannot do something they can.
+    """
+    anonymous = agent_service.build_system_prompt("anonymous")
+    assert "not signed in" in anonymous
+    assert "signing in" in anonymous
+
+    signed_in = agent_service.build_system_prompt("authenticated")
+    assert "cannot save" not in signed_in
+
+
+def test_destructive_actions_are_confirmed_but_additive_ones_are_not():
+    """
+    The asymmetry is the whole rule. Asking before every save would make the
+    assistant tedious; not asking before a removal risks destroying a reading
+    list the person cannot reconstruct, on the model's reading of what they
+    meant rather than on a button they pressed.
+    """
     prompt = agent_service.build_system_prompt("authenticated")
-    session_section = prompt.split("Tools available in THIS session")[1]
-    assert "search_papers" in session_section
-    assert "save_note" not in session_section
+    guidance = prompt.split("Saving and changing things")[1][:900]
+
+    assert "REMOVES" in guidance or "OVERWRITES" in guidance
+    assert "confirm" in guidance.lower()
+    assert "wait for an answer" in guidance.lower()
 
 
 # ---------------------------------------------------------------------------
