@@ -27,7 +27,8 @@ from mcp.server.fastmcp import FastMCP
 from starlette.responses import JSONResponse
 
 from config import MCP_SERVER_NAME, MCP_SERVER_VERSION
-from middleware.request_context import get_current_user_id
+from middleware.request_context import (get_current_user_id,
+                                        require_current_user_id)
 from middleware.trace_middleware import trace_tool
 from services import collection_service, discovery_service, planning_service, progress_service
 
@@ -110,6 +111,29 @@ def explain_topic(topic: str) -> dict:
 # =============================================================================
 # 2. Collection Management Tools
 # =============================================================================
+# WRITES - attributed or refused
+#
+# Two accessors, and which one a tool uses is the whole of its safety.
+#
+#   get_current_user_id()      falls back to the demo account when nobody is
+#                              bound. Reads use it - list_collections and
+#                              get_collection_details below - because that
+#                              fallback is what lets an anonymous visitor browse
+#                              the curated collections.
+#
+#   require_current_user_id()  raises instead. Every WRITE uses it.
+#
+# Because for a write the fallback is not a convenience but a trap: it returns a
+# real, WRITABLE account, so an unattributed write does not fail. It lands on the
+# demo profile, with no error raised and nothing in the logs, where the person
+# who made it will never look for it. Refusing loudly is the only safe
+# direction, and a refused save is a far smaller problem than a save that went
+# somewhere nobody can find.
+#
+# This holds independently of the dashboard's own checks. The dashboard already
+# refuses anonymous writes at two layers, but "our caller validated it" is not
+# something a server should have to assume about itself.
+# =============================================================================
 
 @mcp.tool()
 @trace_tool("create_collection")
@@ -118,7 +142,7 @@ def create_collection(name: str, description: Optional[str] = None) -> dict:
     Create a new curated paper collection/syllabus for the researcher.
     """
     return collection_service.create_collection(
-        user_id=get_current_user_id(),
+        user_id=require_current_user_id(),
         name=name,
         description=description
     )
@@ -155,7 +179,7 @@ def add_paper_to_collection(collection_id: str, paper_id: str, sequence_order: i
         collection_id=collection_id,
         paper_id=paper_id,
         sequence_order=sequence_order,
-        user_id=get_current_user_id()
+        user_id=require_current_user_id()
     )
 
 
@@ -168,7 +192,7 @@ def remove_paper_from_collection(collection_id: str, paper_id: str) -> dict:
     return collection_service.remove_paper_from_collection(
         collection_id=collection_id,
         paper_id=paper_id,
-        user_id=get_current_user_id()
+        user_id=require_current_user_id()
     )
 
 
@@ -185,7 +209,7 @@ def generate_reading_plan(collection_id: str) -> dict:
     """
     return planning_service.generate_reading_plan(
         collection_id=collection_id,
-        user_id=get_current_user_id()
+        user_id=require_current_user_id()
     )
 
 
@@ -200,7 +224,7 @@ def mark_paper_status(paper_id: str, status: str) -> dict:
     Update reading status for a paper ('not_started', 'reading', 'completed', 'skipped').
     """
     return progress_service.mark_paper_status(
-        user_id=get_current_user_id(),
+        user_id=require_current_user_id(),
         paper_id=paper_id,
         status=status
     )
@@ -213,7 +237,7 @@ def save_note(paper_id: str, note_text: str) -> dict:
     Save a researcher note or annotation on a paper for future synthesis and semantic search.
     """
     return progress_service.save_note(
-        user_id=get_current_user_id(),
+        user_id=require_current_user_id(),
         paper_id=paper_id,
         note_text=note_text
     )
