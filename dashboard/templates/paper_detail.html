@@ -6,7 +6,9 @@
 {% block content %}
 <article class="paper-detail" data-paper-id="{{ paper.paper_id }}">
   <a class="backlink" href="javascript:history.back()">← Back</a>
-  <h1 class="paper-detail-title">{{ paper.title }}</h1>
+  {# data-paper-title is read by notes-panel.js, so a note written from here
+     says what it is attaching to by name rather than "this paper". #}
+  <h1 class="paper-detail-title" data-paper-title="{{ paper.title }}">{{ paper.title }}</h1>
 
   <div class="paper-meta">
     {% if authors %}{{ authors | map(attribute='display_name') | join(', ') }} · {% endif %}
