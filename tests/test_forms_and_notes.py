@@ -149,7 +149,12 @@ def test_notes_are_grouped_under_their_paper(client, db):
         db.save_note(user, str(paper["paper_id"]), text)
 
     body = client.get("/notes").get_data(as_text=True)
-    assert body.count("A Paper") == 1          # one heading, not one per note
+
+    # Counted as headings rather than as occurrences of the string: the paper's
+    # title also rides on each note as a data attribute now, so a raw count
+    # measures the markup rather than what the reader sees.
+    headings = re.findall(r'<h2 class="note-paper-title[^"]*">(.*?)</h2>', body, re.S)
+    assert sum(1 for h in headings if "A Paper" in h) == 1
     assert "first thought" in body and "second thought" in body
 
 

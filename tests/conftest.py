@@ -286,12 +286,39 @@ class FakeDB:
         self.progress[(user_id, paper_id)] = row
         return dict(row)
 
-    def save_note(self, user_id, paper_id, note_text):
+    def save_note(self, user_id, paper_id, note_text, title=None):
         nid = str(uuid.uuid4())
         row = {"note_id": nid, "user_id": user_id, "paper_id": paper_id,
-               "note_text": note_text, "created_at": _now()}
+               "note_text": note_text, "title": title,
+               "created_at": _now(), "updated_at": _now()}
         self.notes[nid] = row
         return dict(row)
+
+    def update_note(self, user_id, note_id, note_text, title=None):
+        row = self.notes.get(str(note_id))
+        if not row or str(row["user_id"]) != str(user_id):
+            return None
+        row["note_text"] = note_text
+        row["title"] = title
+        # Mirrors `updated_at = now()`: advanced past created_at so the "edited"
+        # marker is testable without sleeping.
+        row["updated_at"] = _now() + datetime.timedelta(minutes=1)
+        return dict(row)
+
+    def delete_note(self, user_id, note_id):
+        row = self.notes.get(str(note_id))
+        if not row or str(row["user_id"]) != str(user_id):
+            return False
+        del self.notes[str(note_id)]
+        return True
+
+    def get_note(self, user_id, note_id):
+        row = self.notes.get(str(note_id))
+        if not row or str(row["user_id"]) != str(user_id):
+            return None
+        paper = self.papers.get(str(row["paper_id"])) or {}
+        return {**row, "paper_title": paper.get("title"), "venue": paper.get("venue"),
+                "publication_year": paper.get("publication_year")}
 
     def get_all_notes(self, user_id, limit=200):
         """Every note by this user, joined to its paper, newest first."""
@@ -301,7 +328,7 @@ class FakeDB:
         for note in rows[:limit]:
             paper = self.papers.get(str(note["paper_id"]), {})
             joined.append({**note,
-                           "title": paper.get("title"),
+                           "paper_title": paper.get("title"),
                            "venue": paper.get("venue"),
                            "publication_year": paper.get("publication_year")})
         return joined
