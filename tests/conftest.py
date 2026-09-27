@@ -293,6 +293,19 @@ class FakeDB:
         self.notes[nid] = row
         return dict(row)
 
+    def get_all_notes(self, user_id, limit=200):
+        """Every note by this user, joined to its paper, newest first."""
+        rows = [n for n in self.notes.values() if str(n["user_id"]) == str(user_id)]
+        rows.sort(key=lambda n: n["created_at"], reverse=True)
+        joined = []
+        for note in rows[:limit]:
+            paper = self.papers.get(str(note["paper_id"]), {})
+            joined.append({**note,
+                           "title": paper.get("title"),
+                           "venue": paper.get("venue"),
+                           "publication_year": paper.get("publication_year")})
+        return joined
+
     # ---------- usage counters ----------
     def increment_usage(self, scope, scope_id, metric):
         key = (scope, scope_id, metric)
