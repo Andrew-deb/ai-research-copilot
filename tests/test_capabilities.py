@@ -514,7 +514,13 @@ def test_new_research_chat_leads_to_the_composer_you_are_near(anon_client):
     workspace = anon_client.get("/dashboard").get_data(as_text=True)
 
     def cta_target(body):
-        return re.search(r'<a class="sidebar-cta[^"]*" href="([^"]+)"', body).group(1)
+        # Matched on the tag rather than on attribute order. The original
+        # pattern required `class` to be the FIRST attribute, so putting
+        # aria-label and data-tooltip ahead of it broke this test while the
+        # markup and the behaviour were both correct.
+        tag = re.search(r'<a\b[^>]*class="sidebar-cta[^"]*"[^>]*>', body)
+        assert tag, "no sidebar CTA in this shell"
+        return re.search(r'href="([^"]+)"', tag.group(0)).group(1)
 
     assert cta_target(public) == "/"
     assert cta_target(workspace) == "/chat"
