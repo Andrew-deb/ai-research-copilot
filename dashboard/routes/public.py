@@ -18,7 +18,7 @@ marketing page, or the reverse — which is the kind of state bug that only show
 up after someone uses the back button.
 """
 
-from flask import Blueprint, render_template
+from flask import Blueprint, jsonify, render_template, request
 
 from config import (
     ANON_AGENT_PER_DAY,
@@ -30,7 +30,8 @@ from config import (
     USER_RAG_PER_DAY,
     USER_SEARCH_PER_DAY,
 )
-from middleware.auth import current_user_id
+from middleware.auth import current_tier, current_user_id
+from services import command_service
 
 bp = Blueprint("public", __name__)
 
@@ -67,6 +68,19 @@ def register_shell_context(app) -> None:
 @bp.get("/about")
 def about():
     return render_template("about.html")
+
+
+@bp.get("/command")
+def command_palette():
+    """
+    What the palette shows for a query. JSON only — it has no page of its own.
+
+    Not metered. Every lookup behind it is a plain keyword query, and metering
+    navigation would spend somebody's search allowance on finding their way
+    around their own application.
+    """
+    query = (request.args.get("q") or "").strip()
+    return jsonify(command_service.search(query, current_tier(), current_user_id()))
 
 
 @bp.get("/help")
