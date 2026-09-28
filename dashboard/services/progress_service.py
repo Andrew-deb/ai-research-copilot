@@ -290,6 +290,42 @@ def to_markdown(groups: list[dict]) -> str:
     return "\n".join(out).rstrip() + "\n"
 
 
+def export_one(user_id: str, note_id: str) -> dict:
+    """
+    One note as a Markdown document, with a filename taken from its own name.
+
+    Reuses `to_markdown` on a group of one rather than growing a second
+    renderer: a single note and a library of them should come out looking the
+    same, and two renderers drift.
+
+    404 when it is not theirs, as everywhere else in this module.
+    """
+    row = lakebase.get_note(user_id, note_id)
+    if not row:
+        raise PaperNotFoundError("That note could not be found.")
+
+    group = _group([row])
+    return {"markdown": to_markdown(group), "filename": _filename(row)}
+
+
+def _filename(note: dict) -> str:
+    """
+    A filename a person can read in a folder listing.
+
+    Built from the note's title, or its first line when it has none, because
+    forty files called `note.md` are forty files nobody can tell apart. Only
+    letters, digits, spaces and dashes survive: everything else is either
+    illegal on some filesystem or a path separator, and a filename is not a
+    place to find out which.
+    """
+    import re
+
+    stem = (note.get("title") or "").strip() or display_title(note)
+    stem = re.sub(r"[^A-Za-z0-9 \-]+", "", stem).strip()
+    stem = re.sub(r"\s+", "-", stem)[:60].strip("-")
+    return f"{stem or 'note'}.md"
+
+
 def tag_cloud(user_id: str) -> list[dict]:
     """Every tag in use, commonest first, for the filter row."""
     return [{"tag": row["tag"], "notes": row["notes"]}
