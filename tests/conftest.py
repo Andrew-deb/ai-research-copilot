@@ -636,6 +636,55 @@ def db(monkeypatch):
     monkeypatch.setattr(llm_module, "chat", lambda *a, **k: "Synthesised answer [1].")
     monkeypatch.setattr(llm_module, "is_available", lambda: True)
 
+    # The palette's two lookups are raw SQL against several tables at once —
+    # one UNION rather than four round trips — so they go through run_query
+    # directly and are NOT covered by the method-by-method patching above.
+    # Unfaked, they reach the real Lakebase: the palette tests were doing so,
+    # which is why unrelated connection tests started failing beside them.
+    from repositories import palette as palette_repo
+
+    def fake_palette_search(query, user_id):
+        needle = (query or "").lower()
+        rows = []
+        for paper in fake.papers.values():
+            if needle in (paper.get("title") or "").lower():
+                rows.append({"kind": "paper", "id": str(paper["paper_id"]),
+                             "label": paper["title"], "detail": paper.get("venue") or ""})
+        for c in fake.collections.values():
+            mine = user_id and str(c["user_id"]) == str(user_id)
+            if needle in (c.get("name") or "").lower() and (mine or c.get("is_curated")):
+                rows.append({"kind": "collection", "id": str(c["collection_id"]),
+                             "label": c["name"], "detail": c.get("description") or ""})
+        if user_id:
+            for n in fake.notes.values():
+                if str(n["user_id"]) != str(user_id):
+                    continue
+                text = f"{n.get('title') or ''} {n.get('note_text') or ''}".lower()
+                if needle in text:
+                    paper = fake.papers.get(str(n.get("paper_id"))) or {}
+                    rows.append({"kind": "note", "id": str(n["note_id"]),
+                                 "label": n.get("title") or (n["note_text"] or "")[:60],
+                                 "detail": paper.get("title") or "Not about a paper"})
+            for v in fake.conversations.values():
+                if str(v["user_id"]) == str(user_id) and needle in (v.get("title") or "").lower():
+                    rows.append({"kind": "conversation", "id": str(v["conversation_id"]),
+                                 "label": v["title"], "detail": ""})
+        return rows
+
+    def fake_palette_recent(user_id):
+        rows = [{"kind": "paper", "id": str(p["paper_id"]), "label": p["title"],
+                 "detail": p.get("venue") or ""}
+                for p in list(fake.papers.values())[:5]]
+        if user_id:
+            rows += [{"kind": "note", "id": str(n["note_id"]),
+                      "label": n.get("title") or (n["note_text"] or "")[:60],
+                      "detail": "Not about a paper"}
+                     for n in fake.notes.values() if str(n["user_id"]) == str(user_id)][:5]
+        return rows[:8]
+
+    monkeypatch.setattr(palette_repo, "search", fake_palette_search)
+    monkeypatch.setattr(palette_repo, "recent", fake_palette_recent)
+
     # The identity cache is process-global — clear it so a user row from a prior
     # test's FakeDB never leaks into this one.
     auth_module._USER_CACHE.clear()
