@@ -145,14 +145,54 @@ def test_the_panel_can_pin_too():
 # Export
 # ---------------------------------------------------------------------------
 
-def test_notes_come_back_as_a_markdown_file(client, db):
-    progress_service.save_note(_me(client, db), None, "the retriever is the weak point")
+def test_a_note_comes_back_as_its_own_markdown_file(client, db):
+    """
+    Per note, not per library. An export of everything is a backup; what
+    somebody reaches for mid-work is THIS note, and a file holding forty others
+    makes them go and find it again.
+    """
+    from services import progress_service
+    note = progress_service.save_note(_me(client, db), None,
+                                      "the retriever is the weak point")
 
-    resp = client.get("/notes/export")
+    resp = client.get(f"/notes/{note['note_id']}/export")
     assert resp.status_code == 200
     assert "text/markdown" in resp.headers["Content-Type"]
     assert "attachment" in resp.headers["Content-Disposition"]
-    assert "notes.md" in resp.headers["Content-Disposition"]
+
+
+def test_the_file_is_named_after_the_note(client, db):
+    """Forty files called note.md are forty files nobody can tell apart."""
+    from services import progress_service
+    note = progress_service.save_note(_me(client, db), None, "body",
+                                      "Retriever ablations")
+
+    disposition = client.get(f"/notes/{note['note_id']}/export")         .headers["Content-Disposition"]
+    assert "Retriever-ablations.md" in disposition
+
+
+def test_an_untitled_note_still_gets_a_readable_name(client, db):
+    from services import progress_service
+    note = progress_service.save_note(_me(client, db), None,
+                                      "The retriever is the weak point.")
+
+    disposition = client.get(f"/notes/{note['note_id']}/export")         .headers["Content-Disposition"]
+    assert "note.md" not in disposition          # not the fallback
+    assert "retriever" in disposition.lower()
+
+
+def test_a_hostile_title_cannot_escape_the_filename(client, db):
+    """
+    A filename is not the place to discover which characters a filesystem
+    rejects — or which of them are path separators.
+    """
+    from services import progress_service
+    note = progress_service.save_note(_me(client, db), None, "body",
+                                      '../../etc/passwd "quoted"')
+
+    disposition = client.get(f"/notes/{note['note_id']}/export")         .headers["Content-Disposition"]
+    for bad in ("..", "/", "\\", '"'):
+        assert bad not in disposition.split("filename=")[1].strip('"')
 
 
 def test_the_body_survives_verbatim(client, db):
@@ -160,9 +200,10 @@ def test_the_body_survives_verbatim(client, db):
     It was written as Markdown and stays that way, so a list is still a list on
     the other side.
     """
-    progress_service.save_note(_me(client, db), None, "- first\n- second")
+    from services import progress_service
+    note = progress_service.save_note(_me(client, db), None, "- first\n- second")
 
-    text = client.get("/notes/export").get_data(as_text=True)
+    text = client.get(f"/notes/{note['note_id']}/export").get_data(as_text=True)
     assert "- first\n- second" in text
 
 
@@ -173,58 +214,52 @@ def test_what_a_note_is_about_travels_with_it(client, db):
     """
     paper = db.seed_paper(title="Attention Is All You Need", venue="NeurIPS")
     user = _me(client, db)
-    db.save_note(user, str(paper["paper_id"]), "a note", None, [])
+    note = db.save_note(user, str(paper["paper_id"]), "a note", None, [])
 
-    text = client.get("/notes/export").get_data(as_text=True)
+    text = client.get(f"/notes/{note['note_id']}/export").get_data(as_text=True)
     assert "## Attention Is All You Need" in text
     assert "NeurIPS" in text
 
 
 def test_titles_tags_and_pins_are_carried(client, db):
+    from services import progress_service
     user = _me(client, db)
     note = progress_service.save_note(user, None, "body", "A name", "methods")
     progress_service.set_pinned(user, note["note_id"], True)
 
-    text = client.get("/notes/export").get_data(as_text=True)
+    text = client.get(f"/notes/{note['note_id']}/export").get_data(as_text=True)
     assert "### A name" in text
     assert "#methods" in text
     assert "pinned" in text
 
 
-def test_the_export_follows_the_filter(client, db):
+def test_one_note_and_a_library_render_the_same_way(client, db):
     """
-    Search for "retriever", press export, and you get those notes. Handing back
-    everything would make the button mean something different from the page.
+    Reusing to_markdown on a group of one rather than growing a second
+    renderer: two renderers drift, and the output should not depend on how many
+    notes went in.
     """
+    from services import progress_service
     user = _me(client, db)
-    progress_service.save_note(user, None, "retriever ablations")
-    progress_service.save_note(user, None, "unrelated thought")
+    note = progress_service.save_note(user, None, "a note", "A name")
 
-    text = client.get("/notes/export?q=retriever").get_data(as_text=True)
-    assert "retriever ablations" in text
-    assert "unrelated thought" not in text
+    single = client.get(f"/notes/{note['note_id']}/export").get_data(as_text=True)
+    whole = progress_service.to_markdown(progress_service.all_notes(user))
 
-
-def test_the_export_link_carries_the_current_filter(client, db):
-    progress_service.save_note(_me(client, db), None, "retriever ablations")
-
-    body = client.get("/notes?q=retriever").get_data(as_text=True)
-    export = re.search(r'href="(/notes/export[^"]*)"', body)
-    assert export and "q=retriever" in export.group(1)
+    assert "### A name" in single and "### A name" in whole
 
 
-def test_an_empty_export_is_still_a_file(client, db):
-    """Nothing to export is not an error; it is an empty notebook."""
-    _me(client, db)
-    resp = client.get("/notes/export")
-
-    assert resp.status_code == 200
-    assert "# Notes" in resp.get_data(as_text=True)
-
-
-def test_nobody_exports_somebody_elses_notes(client, db):
+def test_nobody_exports_somebody_elses_note(client, db):
     _me(client, db)
     stranger = db.get_or_create_user("someone@example.com", "Someone")
-    db.save_note(stranger["user_id"], None, "not yours to download", None, [])
+    theirs = db.save_note(stranger["user_id"], None, "not yours", None, [])
 
-    assert "not yours to download" not in client.get("/notes/export").get_data(as_text=True)
+    assert client.get(f"/notes/{theirs['note_id']}/export").status_code == 404
+
+
+def test_every_note_offers_its_own_download(client, db):
+    from services import progress_service
+    note = progress_service.save_note(_me(client, db), None, "body")
+
+    body = client.get("/notes").get_data(as_text=True)
+    assert f"/notes/{note['note_id']}/export" in body
