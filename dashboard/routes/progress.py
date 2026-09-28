@@ -1,6 +1,6 @@
 """dashboard/routes/progress.py — Reading progress board and note annotations."""
 
-from flask import Blueprint, jsonify, render_template, request, url_for
+from flask import Blueprint, Response, jsonify, render_template, request, url_for
 
 from middleware.capabilities import require_capability, require_quota
 from middleware.auth import current_user_id
@@ -85,6 +85,54 @@ def edit_note(note_id: str):
         {"note": note},
         redirect_to=url_for("progress.notes"),
         flash_message="Note updated.",
+    )
+
+
+@bp.post("/notes/<note_id>/pin")
+@require_capability("notes:write")
+def pin_note(note_id: str):
+    """
+    Pin or unpin.
+
+    The wanted state is sent, not a toggle: two tabs showing the same note
+    would otherwise each flip from their own stale idea of it and land on
+    whichever arrived last.
+    """
+    data = form_or_json("pinned")
+    wanted = data.get("pinned")
+    wanted = wanted if isinstance(wanted, bool) else str(wanted).lower() in ("1", "true", "on")
+
+    note = progress_service.set_pinned(current_user_id(), note_id, wanted)
+    return action_response(
+        {"note": note},
+        redirect_to=url_for("progress.notes"),
+        flash_message="Pinned." if wanted else "Unpinned.",
+    )
+
+
+@bp.get("/notes/export")
+@require_capability("notes:write")
+def export_notes():
+    """
+    Everything currently on the page, as one Markdown file.
+
+    It exports the FILTER, not the library: if you searched for "retriever" and
+    then export, you get those notes. Exporting everything regardless would
+    make the button mean something different from what the page in front of you
+    shows, which is the kind of surprise that costs trust in an export.
+    """
+    user_id = current_user_id()
+    query = (request.args.get("q") or "").strip()
+    tags = [t for t in request.args.getlist("tag") if t.strip()]
+    scope = (request.args.get("scope") or "").strip()
+
+    groups = (progress_service.find_notes(user_id, query, tags, scope)
+              if (query or tags or scope) else progress_service.all_notes(user_id))
+
+    return Response(
+        progress_service.to_markdown(groups),
+        mimetype="text/markdown",
+        headers={"Content-Disposition": 'attachment; filename="notes.md"'},
     )
 
 
