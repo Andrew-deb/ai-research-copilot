@@ -186,7 +186,10 @@ def test_the_note_actions_are_icons(client, db):
     db.save_note(next(iter(db.users_by_id)), str(paper["paper_id"]), "a note", None)
 
     body = client.get("/notes").get_data(as_text=True)
-    actions = body.split('class="note-actions"')[1][:1200]
+    # Bounded by the block's own end rather than a character count, which
+    # silently stopped covering Delete the moment a Pin button was added ahead
+    # of it.
+    actions = body.split('class="note-actions"')[1].split('</div>')[0]
 
     assert ">Edit</button>" not in actions
     assert ">Delete</button>" not in actions
