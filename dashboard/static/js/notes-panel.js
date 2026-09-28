@@ -73,6 +73,7 @@
   /* ---------------------------------------------------------- open / close */
 
   function open() {
+    document.dispatchEvent(new CustomEvent("alfred:notes-opening"));
     panel.hidden = false;
     document.body.classList.add("notes-docked");
     if (toggle) { toggle.setAttribute("aria-expanded", "true"); }
@@ -83,7 +84,7 @@
   }
 
   function close() {
-    if (!mayLeave()) { return; }
+    if (!mayLeave()) { return false; }
 
     // Focus first, while the panel is still in the document. Hiding the element
     // focus is inside drops it to the top of the page, which for a keyboard
@@ -95,7 +96,15 @@
     document.body.classList.remove("notes-docked");
     if (toggle) { toggle.setAttribute("aria-expanded", "false"); }
     remember(false);
+    return true;
   }
+
+  // The assistant and notepad share the right edge. The shell requests this
+  // before opening Alfred; a dirty note may veto the switch.
+  window.RCNotesPanel = { close: function () {
+    if (!isOpen()) { return true; }
+    return close();
+  } };
 
   function isOpen() { return !panel.hidden; }
 

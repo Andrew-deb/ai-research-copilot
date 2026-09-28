@@ -1436,6 +1436,31 @@ h1, h2, h3,
 
 :root { --notes-w: 392px; }
 
+/* The right edge belongs to one working panel at a time. */
+:root { --assistant-w: 420px; }
+.assistant-toggle img { width: 19px; height: 19px; object-fit: contain; }
+.assistant-panel {
+  position: fixed; inset: 0 0 0 auto; z-index: 40;
+  width: var(--assistant-w); display: flex; flex-direction: column;
+  background: var(--surface); border-left: 1px solid var(--border);
+}
+.assistant-panel-head {
+  min-height: 57px; display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; border-bottom: 1px solid var(--border);
+}
+.assistant-panel-head strong { font-family: var(--font-display); font-size: 15px; }
+.assistant-context {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; color: var(--text-muted); font-size: 11px;
+}
+.assistant-panel iframe { flex: 1; min-height: 0; width: 100%; border: 0; }
+body.assistant-docked .main-col { margin-right: var(--assistant-w); }
+body.assistant-docked .dialog-scrim { z-index: 90; }
+@media (max-width: 900px) {
+  .assistant-panel { width: 100vw; z-index: 60; border-left: 0; }
+  body.assistant-docked .main-col { margin-right: 0; }
+}
+
 /* The panel's search row, revealed by the magnifier in its header. */
 .notes-search-row {
   flex-shrink: 0;

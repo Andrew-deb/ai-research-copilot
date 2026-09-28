@@ -19,13 +19,24 @@
   if (!form || !input) { return; }
 
   var page = document.querySelector(".chat-page") || document.querySelector(".landing-main");
+  var embedded = page && page.dataset.surface === "assistant";
+  var completedWrites = [];
+  var writeTools = ["create_collection", "add_paper_to_collection",
+    "remove_paper_from_collection", "generate_reading_plan", "mark_paper_status", "save_note"];
+  function tellParent(type, value) {
+    if (embedded && window.parent !== window) {
+      window.parent.postMessage({ source: "alfred-assistant", type: type, value: value }, window.location.origin);
+    }
+  }
   var stage = form.closest(".chat-stage") || form;
   var thread = document.getElementById("chat-thread");
   var pending = false;
   var activeRunId = null;
   var stopRequested = false;
   var stopButton = form.querySelector(".composer-stop");
-  var runStorageKey = "alfred-active-run";
+  var runStorageKey = embedded
+    ? "alfred-active-run:assistant:" + page.dataset.owner
+    : "alfred-active-run";
 
   function rememberRun(id) {
     try {
@@ -34,6 +45,40 @@
     } catch (e) { /* Private browsing may block storage. */ }
   }
   var conversationId = (page && page.dataset.conversation) || null;
+  var draftKey = embedded ? "alfred-panel-draft:" + page.dataset.owner : null;
+  if (embedded) {
+    try { if (!input.value) { input.value = sessionStorage.getItem(draftKey) || ""; } }
+    catch (e) { /* private mode */ }
+    input.addEventListener("input", function () {
+      try { sessionStorage.setItem(draftKey, input.value); } catch (e) { /* private mode */ }
+    });
+  }
+  function panelUrl(id) {
+    var params = new URLSearchParams();
+    if (id) { params.set("conversation_id", id); }
+    if (page.dataset.contextKind) { params.set("context_kind", page.dataset.contextKind); }
+    if (page.dataset.contextId) { params.set("context_id", page.dataset.contextId); }
+    return "/chat/assistant?" + params.toString();
+  }
+  if (embedded) {
+    window.addEventListener("message", function (event) {
+      if (event.origin !== window.location.origin || event.source !== window.parent ||
+          !event.data || event.data.source !== "alfred-shell") { return; }
+      if (event.data.type === "focus") { input.focus(); }
+      if (event.data.type === "theme") {
+        document.documentElement.dataset.theme = event.data.value === "dark" ? "dark" : "light";
+      }
+    });
+    document.addEventListener("keydown", function (event) {
+      if (event.key === "Escape" && !event.defaultPrevented &&
+          !document.querySelector(".chat-prompt-edit") &&
+          !document.querySelector(".chat-rail.is-open") &&
+          !document.querySelector(".citation-preview")) {
+        tellParent("close", null);
+      }
+    });
+    tellParent("ready", conversationId);
+  }
 
   if (thread && page) { page.classList.add("has-conversation"); }
 
@@ -732,6 +777,9 @@
       activeRunId = event.run_id;
       rememberRun(activeRunId);
       if (stopRequested) { requestStop(activeRunId); }
+    } else if (event.type === "conversation" && embedded && event.conversation_id) {
+      conversationId = event.conversation_id;
+      tellParent("conversation", conversationId);
     } else if (event.type === "status") {
       if (stopRequested) { return; }
       trace.status(event.phase);
@@ -739,6 +787,9 @@
       trace.toolStart(event.name, event.arguments);
     } else if (event.type === "tool_end") {
       trace.toolEnd(event.ok, event.found, event.error, event.label);
+      if (embedded && event.ok && writeTools.indexOf(event.name) !== -1) {
+        completedWrites.push(event.name);
+      }
     } else if (event.type === "done") {
       done(event.result);
     } else if (event.type === "error") {
@@ -760,7 +811,10 @@
       // The id travels with every turn so the second question lands in the same
       // conversation as the first, rather than starting a new one each time.
       body: JSON.stringify({ question: question, conversation_id: conversationId,
-        action: options.action || "new", source_message_id: options.source_message_id || null }),
+        action: options.action || "new", source_message_id: options.source_message_id || null,
+        surface: embedded ? "assistant" : "agent",
+        context_kind: embedded ? page.dataset.contextKind : "",
+        context_id: embedded ? page.dataset.contextId : "" }),
     });
 
     // Refusals (403 capability, 429 quota, 503 unavailable) answer JSON even
@@ -799,8 +853,14 @@
         try { event = JSON.parse(line.slice(5).trim()); } catch (e) { return; }
         handle(event, trace, function (result) {
           finishTurn(result, trace, question);
+          if (embedded && completedWrites.length) {
+            tellParent("writes", completedWrites.slice());
+            completedWrites = [];
+          }
           if (options.action && result.conversation_id && result.answer) {
-            window.location.href = "/chat/" + encodeURIComponent(result.conversation_id);
+            window.location.href = embedded
+              ? panelUrl(result.conversation_id)
+              : "/chat/" + encodeURIComponent(result.conversation_id);
           }
         });
       });
@@ -811,6 +871,10 @@
     if (!result || !result.conversation_id) { return; }
     var isNew = !conversationId;
     conversationId = result.conversation_id;
+    if (embedded) {
+      tellParent("conversation", conversationId);
+      return;
+    }
 
     // Replace rather than push: the question has already been asked, so a back
     // button that returned to the empty page would undo nothing and confuse.
@@ -863,11 +927,15 @@
   async function send(question, options) {
     options = options || {};
     if (pending) { return; }
+    completedWrites = [];
     activeRunId = null;
     stopRequested = false;
     setPending(true);
     if (options.action !== "regenerate") { addUserMessage(question); }
     if (!options.action) { input.value = ""; }
+    if (embedded && !options.action) {
+      try { sessionStorage.removeItem(draftKey); } catch (e) { /* private mode */ }
+    }
     autosize();
 
     var trace = createTrace();
@@ -986,7 +1054,9 @@
         }
         cancel.addEventListener("click", closeEditor);
         field.addEventListener("keydown", function (event) {
-          if (event.key === "Escape") { closeEditor(); edit.focus(); }
+          if (event.key === "Escape") {
+            event.preventDefault(); event.stopPropagation(); closeEditor(); edit.focus();
+          }
           if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) { save.click(); }
         });
         var buttons = document.createElement("div");
@@ -1158,6 +1228,9 @@
       addNotice(state === "completed"
         ? "Your previous run finished. Reload your conversations to see its answer."
         : state === "stopped" ? "Previous run stopped." : "Previous run ended.");
+      if (embedded && state === "completed" && conversationId) {
+        window.location.replace(panelUrl(conversationId));
+      }
     } catch (e) {
       if (!pendingNoticeShown) {
         addNotice("Could not check the previous run status. Retrying…");

@@ -425,6 +425,13 @@
           {{ icon('book') }}
         </a>
         {% endif %}
+        {% if is_workspace_shell and not ep.startswith('chat.') %}
+        <button type="button" class="icon-btn assistant-toggle" id="assistant-toggle"
+                aria-label="Open Alfred assistant" title="Alfred assistant" data-tooltip="Alfred assistant"
+                aria-controls="assistant-panel" aria-expanded="false">
+          <img src="{{ url_for('static', filename='img/alfred/favicon-magnifier.png') }}" alt="">
+        </button>
+        {% endif %}
         <button type="button" class="icon-btn theme-toggle" id="theme-toggle"
                 aria-label="Toggle colour theme" title="Toggle theme">
           <span class="theme-icon theme-icon-light">{{ icon('sun') }}</span>
@@ -432,6 +439,28 @@
         </button>
       </div>
     </header>
+
+    {% if is_workspace_shell and not ep.startswith('chat.') %}
+    <aside class="assistant-panel" id="assistant-panel" hidden aria-label="Alfred assistant"
+           data-owner="{{ current_user.user_id if is_authenticated else 'demo' }}">
+      <header class="assistant-panel-head">
+        <strong>Alfred</strong>
+        <span id="assistant-context" class="assistant-context"></span>
+        <button type="button" class="icon-btn" id="assistant-new"
+                aria-label="New assistant conversation" title="New conversation">{{ icon('plus') }}</button>
+        {% if is_authenticated %}
+        <button type="button" class="icon-btn" id="assistant-history"
+                aria-label="Assistant history" title="Search history">{{ icon('chat') }}</button>
+        {% endif %}
+        <button type="button" class="icon-btn" id="assistant-full"
+                aria-label="Open in full chat" title="Open in full chat">{{ icon('expand') }}</button>
+        <button type="button" class="icon-btn" id="assistant-close"
+                aria-label="Close Alfred assistant" title="Close Alfred assistant">{{ icon('close') }}</button>
+      </header>
+      <iframe id="assistant-frame" title="Alfred conversation" src="about:blank"></iframe>
+      <p class="assistant-update" id="assistant-update" hidden role="status"></p>
+    </aside>
+    {% endif %}
 
     {# Docked, not floating. The panel takes its own column and .main-col
        gives up that width, so the paper you are writing about stays readable
@@ -587,6 +616,7 @@
 {# Outside the signed-in block: navigating the application is not a privilege,
    and an anonymous visitor gets the destinations and the papers. #}
 <script src="{{ url_for('static', filename='js/palette.js') }}"></script>
+<script src="{{ url_for('static', filename='js/assistant.js') }}"></script>
 {% if is_authenticated %}<script src="{{ url_for('static', filename='js/conversations.js') }}"></script>
 {# notes.js FIRST: it defines window.RCNotes, which the panel and the page both
    call as they initialise. Loaded after them it would be defined a moment too
