@@ -50,6 +50,35 @@ def set_status(user_id: str, paper_id: str, status: str) -> dict:
 
 NOTE_MAX_CHARS = 10_000
 NOTE_TITLE_MAX_CHARS = 200
+NOTE_TAG_MAX_CHARS = 40
+NOTE_MAX_TAGS = 12
+
+
+def clean_tags(raw) -> list[str]:
+    """
+    Tags from a comma-separated field or a list, tidied into something a person
+    will recognise the second time they type it.
+
+    Lowercased and whitespace-collapsed, because "Lit Review", "lit review" and
+    "lit  review" are one label as far as their author is concerned, and three
+    as far as an index is concerned. Order is preserved and duplicates dropped:
+    the order somebody typed them is a weak signal, but it is the only one
+    available and alphabetising would discard it for nothing.
+    """
+    if isinstance(raw, str):
+        raw = raw.split(",")
+    seen: list[str] = []
+    for item in (raw or []):
+        tag = " ".join(str(item).lower().split())
+        if not tag or tag in seen:
+            continue
+        if len(tag) > NOTE_TAG_MAX_CHARS:
+            raise ValidationError(
+                f"Tags can be at most {NOTE_TAG_MAX_CHARS} characters ('{tag[:24]}…').")
+        seen.append(tag)
+        if len(seen) > NOTE_MAX_TAGS:
+            raise ValidationError(f"A note can carry at most {NOTE_MAX_TAGS} tags.")
+    return seen
 
 
 def _clean_title(title: str | None) -> str | None:
@@ -86,7 +115,7 @@ def display_title(note: dict) -> str:
 
 
 def save_note(user_id: str, paper_id: str | None, note_text: str,
-              title: str | None = None) -> dict:
+              title: str | None = None, tags=None) -> dict:
     """
     Write a note, about a paper or about nothing in particular.
 
@@ -105,7 +134,8 @@ def save_note(user_id: str, paper_id: str | None, note_text: str,
         raise ValidationError(f"That note is too long (max {NOTE_MAX_CHARS:,} characters).")
     if paper_id and not lakebase.get_paper(paper_id):
         raise PaperNotFoundError(f"Paper '{paper_id}' not found.")
-    return lakebase.save_note(user_id, paper_id or None, text, _clean_title(title))
+    return lakebase.save_note(user_id, paper_id or None, text,
+                              _clean_title(title), clean_tags(tags))
 
 
 def word_count(text: str | None) -> int:
@@ -127,6 +157,7 @@ def _present(note: dict) -> dict:
         "note_text": note["note_text"],
         "title": note.get("title"),
         "display_title": display_title(note),
+        "tags": list(note.get("tags") or []),
         "created_at": note["created_at"],
         "updated_at": note.get("updated_at"),
         # Revised notes say so. Equal timestamps mean it was written once and
@@ -151,8 +182,21 @@ def all_notes(user_id: str) -> list[dict]:
     or bottom, because a standalone note is an ordinary note - the absence of a
     paper is not a category of importance.
     """
+    return _group(lakebase.get_all_notes(user_id))
+
+
+def _group(rows: list[dict]) -> list[dict]:
+    """
+    Note rows, gathered under the paper each is about.
+
+    Shared by the whole list and by a filtered one, so a search result reads
+    like the page with fewer rows rather than like a different screen. Row
+    order is preserved, which is what carries the ranking through: a filtered
+    query arrives ordered by relevance, an unfiltered one by recency, and
+    grouping must not quietly re-sort either.
+    """
     grouped: dict[str | None, dict] = {}
-    for note in lakebase.get_all_notes(user_id):
+    for note in rows:
         key = str(note["paper_id"]) if note.get("paper_id") else None
         if key not in grouped:
             grouped[key] = {
@@ -170,6 +214,24 @@ def all_notes(user_id: str) -> list[dict]:
     return groups
 
 
+def find_notes(user_id: str, query: str | None = None, tags=None) -> list[dict]:
+    """
+    The notes page, narrowed.
+
+    Grouped exactly as `all_notes` groups them, so a filtered page reads like
+    the unfiltered one with fewer rows rather than like a different screen.
+    """
+    rows = lakebase.search_notes(user_id, (query or "").strip() or None,
+                                 clean_tags(tags) or None)
+    return _group(rows)
+
+
+def tag_cloud(user_id: str) -> list[dict]:
+    """Every tag in use, commonest first, for the filter row."""
+    return [{"tag": row["tag"], "notes": row["notes"]}
+            for row in lakebase.get_note_tags(user_id)]
+
+
 def notes_summary(groups: list[dict]) -> dict:
     """Totals for the page header — how much is actually here."""
     notes = [n for g in groups for n in g["notes"]]
@@ -181,7 +243,7 @@ def notes_summary(groups: list[dict]) -> dict:
 
 
 def update_note(user_id: str, note_id: str, note_text: str,
-                title: str | None = None) -> dict:
+                title: str | None = None, tags=None) -> dict:
     """
     Revise a note.
 
@@ -195,7 +257,8 @@ def update_note(user_id: str, note_id: str, note_text: str,
     if len(text) > NOTE_MAX_CHARS:
         raise ValidationError(f"That note is too long (max {NOTE_MAX_CHARS:,} characters).")
 
-    note = lakebase.update_note(user_id, note_id, text, _clean_title(title))
+    note = lakebase.update_note(user_id, note_id, text,
+                                _clean_title(title), clean_tags(tags))
     if not note:
         # Not theirs, or not there. Both are 404 to the caller: distinguishing
         # them would confirm the note exists to someone who cannot read it.

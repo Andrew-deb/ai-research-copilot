@@ -27,7 +27,14 @@ def notes():
     own, and an anonymous visitor has none and no way to make any. Sending them
     to the capability prompt is more honest than an empty page.
     """
-    groups = progress_service.all_notes(current_user_id())
+    user_id = current_user_id()
+    query = (request.args.get("q") or "").strip()
+    tags = [t for t in request.args.getlist("tag") if t.strip()]
+
+    # One call either way. A filtered page is the same page with fewer rows,
+    # not a separate search screen, so it renders through the same template.
+    groups = (progress_service.find_notes(user_id, query, tags)
+              if (query or tags) else progress_service.all_notes(user_id))
     summary = progress_service.notes_summary(groups)
 
     # The slide-over panel reads the same route rather than a parallel one, so
@@ -37,7 +44,9 @@ def notes():
     if wants_json():
         return jsonify({"papers": groups, "summary": summary})
 
-    return render_template("notes.html", papers=groups, summary=summary)
+    return render_template("notes.html", papers=groups, summary=summary,
+                           query=query, active_tags=tags,
+                           all_tags=progress_service.tag_cloud(user_id))
 
 
 @bp.post("/notes")
@@ -50,11 +59,12 @@ def create_note():
     opened from a paper page - where a note should attach to what you are
     reading - and the notes page itself, where there is nothing to attach to.
     """
-    data = form_or_json("note_text", "paper_id", "title")
+    data = form_or_json("note_text", "paper_id", "title", "tags")
     note = progress_service.save_note(current_user_id(),
                                       (data.get("paper_id") or "").strip() or None,
                                       data["note_text"],
-                                      data.get("title"))
+                                      data.get("title"),
+                                      data.get("tags"))
     return action_response(
         {"note": {"note_id": str(note["note_id"]), "note_text": note["note_text"]}},
         redirect_to=url_for("progress.notes"),
@@ -66,9 +76,10 @@ def create_note():
 @require_capability("notes:write")
 def edit_note(note_id: str):
     """Revise a note. 404 when it is not yours - see progress_service."""
-    data = form_or_json("note_text", "title")
+    data = form_or_json("note_text", "title", "tags")
     note = progress_service.update_note(current_user_id(), note_id,
-                                        data["note_text"], data.get("title"))
+                                        data["note_text"], data.get("title"),
+                                        data.get("tags"))
     return action_response(
         {"note": note},
         redirect_to=url_for("progress.notes"),
