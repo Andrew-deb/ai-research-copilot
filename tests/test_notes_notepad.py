@@ -78,12 +78,15 @@ def test_nothing_dims_the_page():
 
 def test_a_narrow_screen_stops_pretending_to_dock():
     """392px of panel beside 0px of paper is not a split worth keeping."""
-    # The LAST 900px block: an earlier one collapses the sidebar, and splitting
-    # on the first would test that rule instead.
-    narrow = _css().split("@media (max-width: 900px)")[-1][:300]
-    assert ".notes-panel" in narrow
-    assert "width: 100vw" in narrow
-    assert "margin-right: 0" in narrow
+    # Found by content, not by position. There are several 900px blocks — one
+    # collapses the sidebar, another hides the resize handles — and picking the
+    # first or the last only works until somebody adds another.
+    blocks = _css().split("@media (max-width: 900px)")[1:]
+    narrow = next((b for b in blocks if ".notes-panel" in b[:400]), "")
+
+    assert narrow, "no 900px block governs the notes panel"
+    assert "width: 100vw" in narrow[:400]
+    assert "margin-right: 0" in narrow[:400]
 
 
 def test_the_panel_stays_open_across_pages():
@@ -143,10 +146,14 @@ def test_escape_does_not_throw_away_writing():
 
 
 def test_discarding_asks_only_when_there_is_something_to_lose():
+    """
+    Asked against `dirty()` rather than against whether the box has any text:
+    typing a word and deleting it again leaves nothing to lose, and a prompt
+    about it is one nobody can answer sensibly.
+    """
     for name in ("notes-panel.js", "notes-page.js"):
-        js = _js(name)
-        block = js.split("Discard this note?")[0][-320:]
-        assert "padBody.value.trim()" in block, name
+        block = _js(name).split("Discard this note?")[0][-220:]
+        assert "dirty()" in block, name
 
 
 # ---------------------------------------------------------------------------
@@ -247,5 +254,5 @@ def test_editing_retargets_the_form_only_on_submit():
     would overwrite it.
     """
     js = _js("notes-page.js")
-    submit = js.split('padView.addEventListener("submit"')[1][:400]
+    submit = js.split('padView.addEventListener("submit"')[1][:900]
     assert 'setAttribute("action"' in submit

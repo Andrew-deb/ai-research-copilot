@@ -174,7 +174,9 @@ def test_hidden_is_not_left_to_the_browser():
     conversation's old title on screen beside the field replacing it.
     """
     css = (ROOT / "dashboard" / "static" / "css" / "base.css").read_text(encoding="utf-8")
-    assert ".notes-panel[hidden]" in css
+    # One global rule now, rather than a per-component override in each of the
+    # three places that hit this. See test_notes_panel_search.py.
+    assert "[hidden] { display: none !important; }" in css
 
 
 def test_the_page_gives_up_the_width_rather_than_being_covered():
