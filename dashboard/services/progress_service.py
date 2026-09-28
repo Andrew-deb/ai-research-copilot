@@ -214,15 +214,23 @@ def _group(rows: list[dict]) -> list[dict]:
     return groups
 
 
-def find_notes(user_id: str, query: str | None = None, tags=None) -> list[dict]:
+NOTE_SCOPES = ("paper", "standalone")
+
+
+def find_notes(user_id: str, query: str | None = None, tags=None,
+               scope: str | None = None) -> list[dict]:
     """
     The notes page, narrowed.
 
     Grouped exactly as `all_notes` groups them, so a filtered page reads like
     the unfiltered one with fewer rows rather than like a different screen.
     """
+    # An unrecognised scope is ignored rather than refused: it arrives from a
+    # URL anybody can edit, and a mistyped filter should show everything rather
+    # than an error page.
     rows = lakebase.search_notes(user_id, (query or "").strip() or None,
-                                 clean_tags(tags) or None)
+                                 clean_tags(tags) or None,
+                                 scope if scope in NOTE_SCOPES else None)
     return _group(rows)
 
 

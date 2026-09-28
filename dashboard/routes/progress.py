@@ -30,11 +30,12 @@ def notes():
     user_id = current_user_id()
     query = (request.args.get("q") or "").strip()
     tags = [t for t in request.args.getlist("tag") if t.strip()]
+    scope = (request.args.get("scope") or "").strip()
 
     # One call either way. A filtered page is the same page with fewer rows,
     # not a separate search screen, so it renders through the same template.
-    groups = (progress_service.find_notes(user_id, query, tags)
-              if (query or tags) else progress_service.all_notes(user_id))
+    groups = (progress_service.find_notes(user_id, query, tags, scope)
+              if (query or tags or scope) else progress_service.all_notes(user_id))
     summary = progress_service.notes_summary(groups)
 
     # The slide-over panel reads the same route rather than a parallel one, so
@@ -45,7 +46,7 @@ def notes():
         return jsonify({"papers": groups, "summary": summary})
 
     return render_template("notes.html", papers=groups, summary=summary,
-                           query=query, active_tags=tags,
+                           query=query, active_tags=tags, scope=scope,
                            all_tags=progress_service.tag_cloud(user_id))
 
 
