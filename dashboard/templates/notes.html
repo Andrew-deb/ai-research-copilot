@@ -80,6 +80,7 @@
                  aria-label="Filter notes" title="Filter">{{ icon('filter') }}</summary>
         <div class="filter-menu-body">
           {% for value, label in [('', 'All notes'),
+                                  ('pinned', 'Pinned'),
                                   ('paper', 'About a paper'),
                                   ('standalone', 'Not about a paper')] %}
             <a class="filter-option {{ 'is-on' if scope == value }}"
@@ -95,6 +96,16 @@
         <a class="icon-btn" href="{{ url_for('progress.notes') }}"
            aria-label="Clear filters" title="Clear">{{ icon('close') }}</a>
       {% endif %}
+
+      {# Exports what the page is SHOWING, filters included — an export that
+         quietly gave you everything would mean something different from the
+         list in front of you. #}
+      <a class="icon-btn" title="Export these notes as Markdown"
+         aria-label="Export these notes as Markdown"
+         href="{{ url_for('progress.export_notes', q=query or None,
+                          tag=active_tags or None, scope=scope or None) }}">
+        {{ icon('download') }}
+      </a>
     </form>
 
     {% if all_tags %}
@@ -163,7 +174,14 @@
                 data-note-tags="{{ note.tags | join(', ') }}"
                 data-note-paper="{{ paper.paper_id or '' }}"
                 data-note-paper-title="{{ paper.title or '' }}">
-              {% if note.title %}<p class="note-title">{{ note.title }}</p>{% endif %}
+              {% if note.title %}
+                <p class="note-title">
+                  {%- if note.pinned %}<span class="note-pin-mark" title="Pinned">{{ icon('pin') }}</span> {% endif -%}
+                  {{ note.title }}
+                </p>
+              {% elif note.pinned %}
+                <p class="note-title note-pin-only"><span class="note-pin-mark" title="Pinned">{{ icon('pin') }}</span></p>
+              {% endif %}
               {# The raw text stays in the DOM and notes.js renders it as
                  Markdown in place. Server-side rendering would mean trusting
                  the pipeline to sanitise; this way the escaped text is what
@@ -187,6 +205,18 @@
                  tooltip: a pen and a bin are read faster than two words, and
                  they stop the actions competing with the note's own text. #}
               <div class="note-actions">
+                {# Pin is a form of its own so it works without JavaScript, and
+                   sends the WANTED state rather than a toggle — two tabs each
+                   flipping from their own stale idea of it would land on
+                   whichever arrived last. #}
+                <form method="post" class="inline-form"
+                      action="{{ url_for('progress.pin_note', note_id=note.note_id) }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <input type="hidden" name="pinned" value="{{ 'false' if note.pinned else 'true' }}">
+                  <button type="submit" class="icon-btn {{ 'is-on' if note.pinned }}"
+                          aria-label="{{ 'Unpin note' if note.pinned else 'Pin note' }}"
+                          title="{{ 'Unpin' if note.pinned else 'Pin' }}">{{ icon('pin') }}</button>
+                </form>
                 <button type="button" class="icon-btn" data-page-edit
                         aria-label="Edit note" title="Edit">{{ icon('pencil') }}</button>
                 <form method="post" class="inline-form"
