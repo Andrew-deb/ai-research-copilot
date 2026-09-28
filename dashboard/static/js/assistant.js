@@ -70,6 +70,12 @@
   toggle.addEventListener("click", function () { panel.hidden ? open() : close(true); });
   closeButton.addEventListener("click", function () { close(true); });
   full.addEventListener("click", function () {
+    // The full chat owns a different run-status key so unrelated runs do not
+    // leak into the panel. Transfer only when deliberately switching surfaces.
+    try {
+      var active = sessionStorage.getItem("alfred-active-run:assistant:" + owner);
+      if (active) { sessionStorage.setItem("alfred-active-run", active); }
+    } catch (e) { /* private mode */ }
     location.href = conversation ? "/chat/" + encodeURIComponent(conversation) : "/chat";
   });
   newButton.addEventListener("click", function () {
