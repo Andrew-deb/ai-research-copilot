@@ -158,6 +158,7 @@ def _present(note: dict) -> dict:
         "title": note.get("title"),
         "display_title": display_title(note),
         "tags": list(note.get("tags") or []),
+        "pinned": bool(note.get("pinned")),
         "created_at": note["created_at"],
         "updated_at": note.get("updated_at"),
         # Revised notes say so. Equal timestamps mean it was written once and
@@ -214,7 +215,7 @@ def _group(rows: list[dict]) -> list[dict]:
     return groups
 
 
-NOTE_SCOPES = ("paper", "standalone")
+NOTE_SCOPES = ("paper", "standalone", "pinned")
 
 
 def find_notes(user_id: str, query: str | None = None, tags=None,
@@ -232,6 +233,61 @@ def find_notes(user_id: str, query: str | None = None, tags=None,
                                  clean_tags(tags) or None,
                                  scope if scope in NOTE_SCOPES else None)
     return _group(rows)
+
+
+def to_markdown(groups: list[dict]) -> str:
+    """
+    Notes as one Markdown document, grouped exactly as the page groups them.
+
+    Markdown rather than JSON or CSV: this is prose, and the point of an export
+    is that the file is readable and useful somewhere else — pasted into a
+    draft, opened in any editor, committed beside a paper. A JSON dump would be
+    a backup rather than a document, and CSV cannot hold a paragraph without
+    fighting it.
+
+    What a note is ABOUT travels with it. A note reading "the retriever is the
+    weak point" is close to meaningless once separated from the paper it was
+    written against, so the paper, its venue and its year head each section.
+    """
+    from datetime import datetime, timezone
+
+    out = ["# Notes",
+           "",
+           f"Exported {datetime.now(timezone.utc).strftime('%d %B %Y')}",
+           ""]
+
+    for group in groups:
+        if group["paper_id"]:
+            heading = group["title"] or "Untitled paper"
+            meta = " · ".join(str(p) for p in
+                              (group.get("venue"), group.get("publication_year")) if p)
+            out.append(f"## {heading}")
+            if meta:
+                out.append(f"*{meta}*")
+        else:
+            out.append("## Not about a paper")
+        out.append("")
+
+        for note in group["notes"]:
+            if note.get("title"):
+                out.append(f"### {note['title']}")
+            when = note["created_at"]
+            stamp = when.strftime("%d %b %Y") if hasattr(when, "strftime") else str(when)
+            marks = [stamp]
+            if note.get("pinned"):
+                marks.append("pinned")
+            if note.get("edited"):
+                marks.append("edited")
+            if note.get("tags"):
+                marks.append(" ".join("#" + t for t in note["tags"]))
+            out.append(f"*{' · '.join(marks)}*")
+            out.append("")
+            # The body verbatim: it was written as Markdown and stays that way,
+            # so a list is still a list on the other side.
+            out.append(note["note_text"])
+            out.append("")
+
+    return "\n".join(out).rstrip() + "\n"
 
 
 def tag_cloud(user_id: str) -> list[dict]:
@@ -270,6 +326,14 @@ def update_note(user_id: str, note_id: str, note_text: str,
     if not note:
         # Not theirs, or not there. Both are 404 to the caller: distinguishing
         # them would confirm the note exists to someone who cannot read it.
+        raise PaperNotFoundError("That note could not be found.")
+    return _present(note)
+
+
+def set_pinned(user_id: str, note_id: str, pinned: bool) -> dict:
+    """Pin or unpin a note. 404 when it is not theirs, as everywhere else."""
+    note = lakebase.set_note_pinned(user_id, note_id, bool(pinned))
+    if not note:
         raise PaperNotFoundError("That note could not be found.")
     return _present(note)
 
