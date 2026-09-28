@@ -1953,3 +1953,265 @@ body.notes-writing .notes-page-pad .notes-pad-body {
 
 /* An untitled pinned note still needs somewhere to put the mark. */
 .note-pin-only { margin: 0 0 2px; }
+
+/* --- The command palette ---------------------------------------------------
+   One box that finds anything, from anywhere. A dialog rather than a docked
+   panel, unlike the notes one: this exists to take you somewhere else, so the
+   page behind it is on its way out rather than something you keep working in —
+   which is exactly when a scrim is the right thing rather than the wrong one. */
+
+.palette-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: min(380px, 42vw);
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-subtle);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: border-color .12s, color .12s;
+}
+.palette-trigger:hover { border-color: var(--border-strong); color: var(--text-muted); }
+.palette-trigger > span { flex: 1; text-align: left; }
+.palette-trigger svg { width: 15px; height: 15px; }
+
+.palette-key {
+  padding: 1px 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--text-subtle);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  line-height: 1.6;
+}
+
+.palette { position: fixed; inset: 0; z-index: 200; }
+.palette-scrim { position: absolute; inset: 0; background: rgba(0, 0, 0, .45); }
+
+.palette-box {
+  position: relative;
+  /* Nearer the top than the middle: the eye is already up there after pressing
+     the shortcut, and results growing downwards must not push the field. */
+  margin: 12vh auto 0;
+  width: min(640px, calc(100vw - 32px));
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.palette-field {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.palette-field svg { width: 17px; height: 17px; color: var(--text-subtle); }
+.palette-field input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+}
+.palette-field input:focus { outline: none; }
+
+.palette-results { overflow-y: auto; padding: 6px; scrollbar-width: thin; }
+.palette-results::-webkit-scrollbar { width: 8px; }
+.palette-results::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+.palette-section + .palette-section { margin-top: 6px; }
+.palette-section h2 {
+  margin: 8px 10px 4px;
+  font-size: 10px;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--text-subtle);
+}
+
+.palette-item {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 13.5px;
+  text-decoration: none;
+}
+.palette-item-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Capped and truncated. `nowrap` with no width let a long paper title — and a
+   note's detail IS its paper's title — push the row sideways until the whole
+   dialog scrolled horizontally. It is context for the label, so it gets a
+   third of the row at most and gives way first. */
+.palette-item-detail {
+  flex-shrink: 1;
+  max-width: 34%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-subtle);
+  font-size: 11.5px;
+}
+
+/* Nothing in the palette scrolls sideways. A horizontal scrollbar under a
+   result list means a row is wider than the dialog, which is a layout bug
+   rather than something to scroll. */
+.palette-results { overflow-x: hidden; }
+.palette-item, .palette-tile { max-width: 100%; }
+
+/* One highlight for hover and for the keyboard both: mousemove moves the
+   selection, so the two can never disagree about which row Enter would take. */
+.palette-item.is-active { background: var(--brand-tint); color: var(--brand-tint-fg); }
+.palette-item.is-active .palette-item-detail { color: var(--brand-tint-fg); opacity: .8; }
+
+.palette-empty { padding: 20px 12px; color: var(--text-muted); font-size: 13px; text-align: center; }
+
+/* The page behind must not scroll under the dialog. */
+body.palette-open { overflow: hidden; }
+
+/* The trigger is a luxury on a phone; the shortcut and the nav are not. */
+@media (max-width: 760px) {
+  .palette-trigger > span, .palette-trigger .palette-key { display: none; }
+  .palette-trigger { width: auto; padding: 6px; border-radius: var(--radius-sm); }
+}
+
+/* --- Palette: tiles for pages, rows for assets ----------------------------- */
+
+/* Six to a row, small. The destinations are a strip above the results, not the
+   point of the palette — at 104px they took two rows and pushed what people
+   actually opened it for below the fold. The rest fold away behind "More". */
+.palette-tiles {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 5px;
+  padding: 2px;
+}
+
+/* Hidden until "More" is pressed. `order` keeps the toggle last without
+   needing the markup to know how many tiles precede it. */
+.palette-tiles:not(.is-expanded) .palette-tile.is-extra { display: none; }
+.palette-tile-more { order: 99; }
+
+.palette-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 9px 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 10.5px;
+  line-height: 1.3;
+  text-align: center;
+  text-decoration: none;
+}
+/* The label may not widen the tile; six equal columns is the whole layout. */
+.palette-tile > span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.palette-tile svg { width: 15px; height: 15px; flex-shrink: 0; }
+.palette-tile.is-active,
+.palette-tile:hover {
+  border-color: var(--brand);
+  background: var(--brand-tint);
+  color: var(--brand-tint-fg);
+}
+
+/* The kind is a fixed-width column so the labels line up: a list where every
+   row starts at a different x is a list you read twice. */
+.palette-item-kind {
+  flex-shrink: 0;
+  width: 64px;
+  color: var(--text-subtle);
+  font-family: var(--mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+.palette-item.is-active .palette-item-kind { color: var(--brand-tint-fg); opacity: .75; }
+
+/* --- The sidebar's recent list scrolls with the sidebar --------------------
+   It had a scrollbar of its own, 17px of Windows furniture down the middle of
+   a 244px rail. The rail already scrolls; a second scroller inside it is one
+   more thing to be in the wrong place. */
+.nav-section-scroll {
+  overflow: visible;
+  max-height: none;
+}
+
+/* --- The notepad's formatting bar ------------------------------------------
+   Markdown written into the textarea, not a rich-text surface. Notes are
+   stored, searched, exported and read back by the agent as Markdown, so the
+   toolbar types what somebody who knew the syntax would have typed — and the
+   field stays a plain textarea, which is why it still works with the script
+   absent. */
+
+.note-format {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.note-format-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+.note-format-btn:hover { background: var(--surface-2); color: var(--text); }
+.note-format-btn:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; }
+.note-format-btn svg { width: 15px; height: 15px; }
+.note-format-btn code { font-family: var(--mono); font-size: 11px; }
+
+.note-format-sep {
+  width: 1px;
+  height: 16px;
+  margin: 0 4px;
+  background: var(--border);
+}
+
+/* The bar is furniture; on a narrow panel the buttons wrap rather than
+   scrolling sideways or shrinking below a thumb's width. */
+@media (max-width: 520px) {
+  .note-format { padding: 6px 10px; }
+}
