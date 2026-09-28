@@ -222,6 +222,9 @@
           + ' stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'
           + '<path d="M12 20h9"></path>'
           + '<path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>',
+    pin: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"'
+       + ' stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'
+       + '<path d="M12 17v5M9 10.76V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v5.76l2 2.24H7Z"></path></svg>',
     trash: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"'
          + ' stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'
          + '<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"></path></svg>',
@@ -264,6 +267,9 @@
         html += '<p class="note-meta">' + note.words
              + (note.words === 1 ? " word" : " words")
              + (note.edited ? " · edited" : "")
+             + ' <button type="button" class="icon-btn' + (note.pinned ? " is-on" : "")
+             + '" data-panel-pin aria-label="' + (note.pinned ? "Unpin note" : "Pin note")
+             + '" title="' + (note.pinned ? "Unpin" : "Pin") + '">' + ICON.pin + "</button>"
              + ' <button type="button" class="icon-btn" data-panel-edit'
              + ' aria-label="Edit note" title="Edit">' + ICON.pencil + "</button>"
              + ' <button type="button" class="icon-btn icon-btn-danger" data-panel-delete'
@@ -374,6 +380,13 @@
     var article = e.target.closest(".notes-panel-note");
     if (!article) { return; }
     var id = article.getAttribute("data-note-id");
+
+    if (e.target.closest("[data-panel-pin]")) {
+      var note = findNote(id);
+      // The wanted state, not a toggle: computed from what this panel last
+      // saw, two tabs would each flip from their own stale copy.
+      return send("/notes/" + id + "/pin", { pinned: !(note && note.pinned) });
+    }
 
     if (e.target.closest("[data-panel-delete]")) {
       if (!window.confirm("Delete this note? This cannot be undone.")) { return; }
