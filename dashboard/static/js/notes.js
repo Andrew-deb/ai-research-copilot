@@ -149,3 +149,119 @@ window.RCNotes.titleField = function (heading, input, opts) {
     }
   });
 })();
+
+/* --- Formatting the notepad ------------------------------------------------
+   A toolbar that writes Markdown INTO the textarea, not a rich-text editor.
+
+   The choice is forced by everything downstream: notes are stored as Markdown,
+   searched as Markdown through a tsvector built from the raw text, exported as
+   Markdown, and read back by an agent that is good at Markdown. A contenteditable
+   surface would store HTML and break all four — and would need its own
+   sanitising on the way in as well as the way out.
+
+   So the field stays a plain <textarea>, which also means it keeps working with
+   this file absent: the buttons go, the typing does not. Anyone who already
+   knows the syntax can ignore the toolbar entirely, and anyone who does not can
+   press a button and see what it wrote. */
+
+window.RCNotes = window.RCNotes || {};
+
+window.RCNotes.formatting = function (field, toolbar) {
+  if (!field || !toolbar) { return; }
+
+  function apply(action) {
+    var start = field.selectionStart;
+    var end = field.selectionEnd;
+    var value = field.value;
+    var picked = value.slice(start, end);
+
+    if (action.wrap) {
+      var mark = action.wrap;
+      // Pressing bold on already-bold text unwraps it, which is what every
+      // editor does and what the second press is obviously for.
+      var before = value.slice(start - mark.length, start);
+      var after = value.slice(end, end + mark.length);
+      if (before === mark && after === mark) {
+        field.value = value.slice(0, start - mark.length) + picked
+                    + value.slice(end + mark.length);
+        select(start - mark.length, end - mark.length);
+      } else {
+        field.value = value.slice(0, start) + mark + (picked || action.hint || "")
+                    + mark + value.slice(end);
+        // With nothing selected the caret lands between the marks, ready to
+        // type — rather than after them, where the next keystroke escapes the
+        // formatting just applied.
+        select(start + mark.length,
+               start + mark.length + (picked || action.hint || "").length);
+      }
+      return done();
+    }
+
+    // Line prefixes — headings, lists, quotes — apply to whole lines, so the
+    // selection is widened to the lines it touches before anything is written.
+    var lineStart = value.lastIndexOf("\n", start - 1) + 1;
+    var lineEnd = value.indexOf("\n", end);
+    if (lineEnd === -1) { lineEnd = value.length; }
+
+    var lines = value.slice(lineStart, lineEnd).split("\n");
+    var prefix = action.prefix;
+    var already = lines.every(function (line) { return line.indexOf(prefix) === 0; });
+
+    var rewritten = lines.map(function (line, i) {
+      if (already) { return line.slice(prefix.length); }
+      // A numbered list counts; the others repeat one mark.
+      return (action.numbered ? (i + 1) + ". " : prefix) + line;
+    }).join("\n");
+
+    field.value = value.slice(0, lineStart) + rewritten + value.slice(lineEnd);
+    select(lineStart, lineStart + rewritten.length);
+    done();
+  }
+
+  function select(from, to) {
+    field.focus();
+    field.setSelectionRange(from, to);
+  }
+
+  function done() {
+    // The word count and the unsaved-changes guard both listen for input, and
+    // neither fires for a value set from script.
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  toolbar.addEventListener("click", function (e) {
+    var button = e.target.closest("[data-format]");
+    if (!button) { return; }
+    e.preventDefault();
+
+    var kind = button.getAttribute("data-format");
+    var actions = {
+      bold: { wrap: "**", hint: "bold text" },
+      italic: { wrap: "*", hint: "italic text" },
+      code: { wrap: "`", hint: "code" },
+      h1: { prefix: "# " },
+      h2: { prefix: "## " },
+      bullet: { prefix: "- " },
+      number: { prefix: "1. ", numbered: true },
+      quote: { prefix: "> " },
+    };
+    if (actions[kind]) { apply(actions[kind]); }
+  });
+
+  // The two shortcuts people press without being told they exist.
+  field.addEventListener("keydown", function (e) {
+    if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey) { return; }
+    var key = e.key.toLowerCase();
+    if (key === "b") { e.preventDefault(); apply({ wrap: "**", hint: "bold text" }); }
+    else if (key === "i") { e.preventDefault(); apply({ wrap: "*", hint: "italic text" }); }
+  });
+};
+
+/* Wire any notepad that shipped a toolbar beside it. */
+(function () {
+  "use strict";
+  document.querySelectorAll("[data-format-for]").forEach(function (toolbar) {
+    var field = document.getElementById(toolbar.getAttribute("data-format-for"));
+    window.RCNotes.formatting(field, toolbar);
+  });
+})();

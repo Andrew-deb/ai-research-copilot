@@ -151,6 +151,30 @@
     });
   });
 
+  /* ------------------------------------------------------- arriving at one */
+
+  // `?note=<id>` opens that note in the pad. The palette sends people here,
+  // and dropping them on a list to find again the thing they just picked out
+  // of a list would undo the point of picking it.
+  (function openRequested() {
+    var wanted = new URLSearchParams(window.location.search).get("note");
+    if (!wanted) { return; }
+
+    var item = listView.querySelector('.note-item[data-note-id="' + wanted + '"]');
+    // Not on this page — filtered out, or past the limit. The list is a
+    // reasonable place to land, and better than an empty notepad.
+    if (!item) { return; }
+
+    showPad({
+      id: wanted,
+      title: item.getAttribute("data-note-title") || "",
+      body: item.getAttribute("data-note-body"),
+      tags: item.getAttribute("data-note-tags") || "",
+      paperId: item.getAttribute("data-note-paper") || "",
+      paperTitle: item.getAttribute("data-note-paper-title") || "",
+    });
+  })();
+
   /* -------------------------------------------------------------- saving */
 
   // An edit posts to the note's own URL. The form's action is the create
