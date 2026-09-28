@@ -2,6 +2,17 @@
 {% block title %}Notes — Alfred{% endblock %}
 {% block topbar_title %}Notes{% endblock %}
 
+{# `content-fill` only — NOT `app-fixed`.
+
+   The notepad needs a definite height to stretch into, and app-fixed supplies
+   one by capping the shell at the viewport. But capping it also forces the
+   LIST to scroll inside its own box, which put a second scrollbar down the
+   middle of the page beside the notes.
+
+   So the cap is applied by notes-page.js, only while the notepad is open. The
+   list scrolls with the window and has no scrollbar of its own. #}
+{% block content_class %}content-fill{% endblock %}
+
 {% block content %}
 {# The same two views as the panel, at page scale: recent notes first, and a
    notepad the + opens in their place. The notepad REPLACES the list rather
@@ -15,8 +26,14 @@
             aria-label="New note" title="New note">{{ icon('plus') }}</button>
     <button type="button" class="icon-btn" id="page-note-back" hidden
             aria-label="Back to notes" title="Back to notes">{{ icon('arrow-left') }}</button>
-    <div>
+    <div class="notes-page-heading">
+      {# The heading IS the note's title while the notepad is open; double-click
+         to rename. The input beside it is the field that actually posts. #}
       <h1 class="page-title" id="notes-page-title">Your notes</h1>
+      <label class="visually-hidden" for="page-pad-title">Title</label>
+      <input class="notes-pad-title" id="page-pad-title" name="title" type="text"
+             form="page-view-pad" maxlength="200" hidden
+             placeholder="Untitled note">
       <p class="notes-summary" id="notes-page-tally">
         {% if summary.notes %}
           {{ summary.notes }} note{{ '' if summary.notes == 1 else 's' }}
@@ -31,7 +48,83 @@
 
   {# --- View 1: the list ------------------------------------------------- #}
   <div class="notes-view" id="page-view-list">
-    {% if not papers %}
+
+    {# A GET form, so a search is a URL: it can be bookmarked, reloaded and
+       shared with yourself.
+
+       Always shown. It was gated on having more than four notes, on the
+       reasoning that a search box above three of them is furniture — which
+       made the feature invisible on exactly the pages where somebody would go
+       looking to find out whether it existed at all. #}
+    <form class="notes-filter" method="get" action="{{ url_for('progress.notes') }}">
+      <label class="visually-hidden" for="notes-q">Search notes</label>
+      <input id="notes-q" type="search" name="q" value="{{ query or '' }}"
+             placeholder="Search your notes">
+
+      {# Carried through the search so the filters compose rather than
+         cancelling each other. #}
+      {% for tag in active_tags %}
+        <input type="hidden" name="tag" value="{{ tag }}">
+      {% endfor %}
+
+      <button type="submit" class="icon-btn" aria-label="Search" title="Search">
+        {{ icon('search') }}
+      </button>
+
+      {# A <details> rather than a scripted menu: it opens, closes, closes on
+         Escape and is reachable by keyboard without a line of JavaScript, and
+         a filter that still works with scripts off is worth more than one that
+         animates. #}
+      <details class="filter-menu">
+        <summary class="icon-btn {{ 'is-on' if scope }}"
+                 aria-label="Filter notes" title="Filter">{{ icon('filter') }}</summary>
+        <div class="filter-menu-body">
+          {% for value, label in [('', 'All notes'),
+                                  ('paper', 'About a paper'),
+                                  ('standalone', 'Not about a paper')] %}
+            <a class="filter-option {{ 'is-on' if scope == value }}"
+               href="{{ url_for('progress.notes', q=query or None,
+                                tag=active_tags or None, scope=value or None) }}">
+              {{ label }}
+            </a>
+          {% endfor %}
+        </div>
+      </details>
+
+      {% if query or active_tags or scope %}
+        <a class="icon-btn" href="{{ url_for('progress.notes') }}"
+           aria-label="Clear filters" title="Clear">{{ icon('close') }}</a>
+      {% endif %}
+    </form>
+
+    {% if all_tags %}
+      <div class="tag-row">
+        {% for entry in all_tags %}
+          {% set on = entry.tag in active_tags %}
+          {# Clicking a tag toggles it: on when off, off when on, with the
+             search text kept either way. #}
+          <a class="tag {{ 'is-on' if on }}"
+             href="{{ url_for('progress.notes', q=query or None,
+                              tag=(active_tags | reject('equalto', entry.tag) | list)
+                                  if on else (active_tags + [entry.tag])) }}">
+            {{ entry.tag }} <span class="tag-count">{{ entry.notes }}</span>
+          </a>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    {% if query or active_tags %}
+      <p class="notes-summary">
+        {{ summary.notes }} match{{ '' if summary.notes == 1 else 'es' }}
+        {%- if query %} for &ldquo;{{ query }}&rdquo;{% endif %}
+      </p>
+    {% endif %}
+
+    {% if not papers and (query or active_tags) %}
+      {# "No notes yet" would be false here, and it is the sentence most likely
+         to make somebody think their notes are gone. #}
+      <p class="empty-state">Nothing matches that. <a href="{{ url_for('progress.notes') }}">Show everything</a>.</p>
+    {% elif not papers %}
       <p class="empty-state">
         No notes yet. Press the + above to write one, or open any paper and
         write one from its page. The assistant can add them for you if you ask.
@@ -59,13 +152,30 @@
 
         <ul class="note-list">
           {% for note in paper.notes %}
+            {# The body is carried as an attribute as well as rendered. Once
+               notes.js turns the paragraph into Markdown its textContent is
+               the RENDERING, and editing from that would save the rendered
+               text back over the source that produced it. #}
             <li class="note-item"
                 data-note-id="{{ note.note_id }}"
                 data-note-title="{{ note.title or '' }}"
+                data-note-body="{{ note.note_text }}"
+                data-note-tags="{{ note.tags | join(', ') }}"
                 data-note-paper="{{ paper.paper_id or '' }}"
                 data-note-paper-title="{{ paper.title or '' }}">
               {% if note.title %}<p class="note-title">{{ note.title }}</p>{% endif %}
-              <p class="note-text">{{ note.note_text }}</p>
+              {# The raw text stays in the DOM and notes.js renders it as
+                 Markdown in place. Server-side rendering would mean trusting
+                 the pipeline to sanitise; this way the escaped text is what
+                 ships and the browser upgrades it. #}
+              <p class="note-text" data-markdown>{{ note.note_text }}</p>
+              {% if note.tags %}
+                <p class="note-tags">
+                  {% for tag in note.tags %}
+                    <a class="tag tag-sm" href="{{ url_for('progress.notes', tag=[tag]) }}">{{ tag }}</a>
+                  {% endfor %}
+                </p>
+              {% endif %}
               <p class="note-meta">
                 <time datetime="{{ note.created_at }}">
                   {{ note.created_at.strftime('%d %b %Y') if note.created_at.strftime else note.created_at }}
@@ -73,13 +183,18 @@
                 {%- if note.edited %} · <span class="note-edited">edited</span>{% endif %}
                 · {{ note.words }} word{{ '' if note.words == 1 else 's' }}
               </p>
+              {# Icons, with the word kept as the accessible name and the
+                 tooltip: a pen and a bin are read faster than two words, and
+                 they stop the actions competing with the note's own text. #}
               <div class="note-actions">
-                <button type="button" class="btn btn-ghost btn-sm" data-page-edit>Edit</button>
+                <button type="button" class="icon-btn" data-page-edit
+                        aria-label="Edit note" title="Edit">{{ icon('pencil') }}</button>
                 <form method="post" class="inline-form"
                       action="{{ url_for('progress.remove_note', note_id=note.note_id) }}"
                       data-confirm="Delete this note? This cannot be undone.">
                   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                  <button type="submit" class="btn btn-ghost btn-sm btn-danger">Delete</button>
+                  <button type="submit" class="icon-btn icon-btn-danger"
+                          aria-label="Delete note" title="Delete">{{ icon('trash') }}</button>
                 </form>
               </div>
             </li>
@@ -101,14 +216,19 @@
       <button type="button" class="btn-link" id="page-pad-detach" hidden>Detach</button>
     </p>
 
-    <label class="visually-hidden" for="page-pad-title">Title</label>
-    <input class="notes-pad-title" id="page-pad-title" name="title" type="text"
-           maxlength="200" placeholder="Title (optional)">
+    {# The title lives in the page heading above; `form=` keeps it part of
+       this form from outside it. #}
 
     <label class="visually-hidden" for="page-pad-body">Note</label>
     <textarea class="notes-pad-body" id="page-pad-body" name="note_text" required
               maxlength="10000" data-word-count
               placeholder="Start writing..."></textarea>
+
+    <div class="notes-pad-tags">
+      <label class="visually-hidden" for="page-pad-tags">Tags</label>
+      <input id="page-pad-tags" name="tags" type="text"
+             placeholder="Tags, separated by commas">
+    </div>
 
     <div class="notes-pad-foot">
       <span class="note-words" data-word-count-for="page-pad-body">0 words</span>
@@ -122,4 +242,16 @@
 </div>
 {% endblock %}
 
-{% block extra_js %}<script src="{{ url_for('static', filename='js/notes-page.js') }}"></script>{% endblock %}
+{% block extra_js %}
+  {# The same pair chat.html loads, with the same hashes. DOMPurify is not
+     optional even here: a note is the person's own writing, but it is still
+     text from the database being turned into HTML, and "it is only ever mine"
+     stops being true the moment anything else can write a note. #}
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/14.1.2/marked.min.js"
+          integrity="sha512-bXyBT2/sYjZg1D7ykDS6eJSE4DFDVPJHvbRAfdfYKr6IusrCz7wAmSm36vz9G8zMob25Rvqu90vft3JI71ygcQ=="
+          crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.7/purify.min.js"
+          integrity="sha512-BdRNuI8/lsyxkKQVxK1lVtfZshggfXPAwEP+JAOJEKx6Y8SLfcBSRdaWyXQmMxo+wG180uFqXYGjGRL0mh4/Jw=="
+          crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="{{ url_for('static', filename='js/notes-page.js') }}"></script>
+{% endblock %}
