@@ -110,29 +110,26 @@ def pin_note(note_id: str):
     )
 
 
-@bp.get("/notes/export")
+@bp.get("/notes/<note_id>/export")
 @require_capability("notes:write")
-def export_notes():
+def export_note(note_id: str):
     """
-    Everything currently on the page, as one Markdown file.
+    One note, as a Markdown file.
 
-    It exports the FILTER, not the library: if you searched for "retriever" and
-    then export, you get those notes. Exporting everything regardless would
-    make the button mean something different from what the page in front of you
-    shows, which is the kind of surprise that costs trust in an export.
+    Per note rather than per library. An export of everything is a backup —
+    useful, but not what somebody reaches for mid-work. What they want is THIS
+    note, to paste into a draft or hand to somebody, and a file holding forty
+    others makes them go and find it again.
+
+    The filename comes from the note's own name so a folder of these is
+    readable without opening them.
     """
-    user_id = current_user_id()
-    query = (request.args.get("q") or "").strip()
-    tags = [t for t in request.args.getlist("tag") if t.strip()]
-    scope = (request.args.get("scope") or "").strip()
-
-    groups = (progress_service.find_notes(user_id, query, tags, scope)
-              if (query or tags or scope) else progress_service.all_notes(user_id))
-
+    note = progress_service.export_one(current_user_id(), note_id)
     return Response(
-        progress_service.to_markdown(groups),
+        note["markdown"],
         mimetype="text/markdown",
-        headers={"Content-Disposition": 'attachment; filename="notes.md"'},
+        headers={"Content-Disposition":
+                 f'attachment; filename="{note["filename"]}"'},
     )
 
 
