@@ -790,7 +790,8 @@ def save_note(user_id: str, paper_id: str | None, note_text: str,
 
 
 def search_notes(user_id: str, query: str | None = None,
-                 tags: list[str] | None = None, limit: int = 200) -> list[dict]:
+                 tags: list[str] | None = None, scope: str | None = None,
+                 limit: int = 200) -> list[dict]:
     """
     This person's notes, narrowed by words, by tags, or by both.
 
@@ -814,6 +815,14 @@ def search_notes(user_id: str, query: str | None = None,
     if tags:
         where.append("n.tags @> %s")
         params.append(tags)
+
+    # Whether a note is about a paper is the one division the page already
+    # shows and cannot filter by: the grouping puts the two in separate
+    # sections but still renders both.
+    if scope == "paper":
+        where.append("n.paper_id IS NOT NULL")
+    elif scope == "standalone":
+        where.append("n.paper_id IS NULL")
 
     order = ("ts_rank(n.search_tsv, websearch_to_tsquery('english', %s)) DESC, "
              "n.created_at DESC") if query else "n.created_at DESC"
