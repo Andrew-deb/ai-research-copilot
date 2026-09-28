@@ -286,20 +286,21 @@ class FakeDB:
         self.progress[(user_id, paper_id)] = row
         return dict(row)
 
-    def save_note(self, user_id, paper_id, note_text, title=None):
+    def save_note(self, user_id, paper_id, note_text, title=None, tags=None):
         nid = str(uuid.uuid4())
         row = {"note_id": nid, "user_id": user_id, "paper_id": paper_id,
-               "note_text": note_text, "title": title,
+               "note_text": note_text, "title": title, "tags": list(tags or []),
                "created_at": _now(), "updated_at": _now()}
         self.notes[nid] = row
         return dict(row)
 
-    def update_note(self, user_id, note_id, note_text, title=None):
+    def update_note(self, user_id, note_id, note_text, title=None, tags=None):
         row = self.notes.get(str(note_id))
         if not row or str(row["user_id"]) != str(user_id):
             return None
         row["note_text"] = note_text
         row["title"] = title
+        row["tags"] = list(tags or [])
         # Mirrors `updated_at = now()`: advanced past created_at so the "edited"
         # marker is testable without sleeping.
         row["updated_at"] = _now() + datetime.timedelta(minutes=1)
@@ -319,6 +320,36 @@ class FakeDB:
         paper = self.papers.get(str(row["paper_id"])) or {}
         return {**row, "paper_title": paper.get("title"), "venue": paper.get("venue"),
                 "publication_year": paper.get("publication_year")}
+
+    def search_notes(self, user_id, query=None, tags=None, scope=None, limit=200):
+        """Words anywhere in the title or body; tags must all be present.
+
+        A substring match rather than a real tsquery — close enough to exercise
+        the routes, and the ranking the database does is not something a fake
+        can imitate honestly."""
+        rows = self.get_all_notes(user_id, limit)
+        if query:
+            needle = query.lower()
+            rows = [r for r in rows
+                    if needle in (r.get("note_text") or "").lower()
+                    or needle in (r.get("title") or "").lower()]
+        if tags:
+            rows = [r for r in rows if set(tags) <= set(r.get("tags") or [])]
+        if scope == "paper":
+            rows = [r for r in rows if r.get("paper_id")]
+        elif scope == "standalone":
+            rows = [r for r in rows if not r.get("paper_id")]
+        return rows
+
+    def get_note_tags(self, user_id):
+        counts = {}
+        for note in self.notes.values():
+            if str(note["user_id"]) != str(user_id):
+                continue
+            for tag in note.get("tags") or []:
+                counts[tag] = counts.get(tag, 0) + 1
+        return [{"tag": t, "notes": n}
+                for t, n in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))]
 
     def get_all_notes(self, user_id, limit=200):
         """Every note by this user, joined to its paper, newest first."""
