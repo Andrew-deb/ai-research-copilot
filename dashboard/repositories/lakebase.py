@@ -823,16 +823,23 @@ def search_notes(user_id: str, query: str | None = None,
         where.append("n.paper_id IS NOT NULL")
     elif scope == "standalone":
         where.append("n.paper_id IS NULL")
+    elif scope == "pinned":
+        where.append("n.pinned")
 
-    order = ("ts_rank(n.search_tsv, websearch_to_tsquery('english', %s)) DESC, "
-             "n.created_at DESC") if query else "n.created_at DESC"
+    # Pinned first in both orders. Under a search it outranks relevance on
+    # purpose: a pinned note is one the person has already told us matters, and
+    # that is a stronger signal than any ranking function.
+    order = ("n.pinned DESC, "
+             "ts_rank(n.search_tsv, websearch_to_tsquery('english', %s)) DESC, "
+             "n.created_at DESC") if query else "n.pinned DESC, n.created_at DESC"
     if query:
         params.append(query)
     params.append(limit)
 
     return run_query(
         f"""
-        SELECT n.note_id, n.note_text, n.title, n.tags, n.created_at, n.updated_at,
+        SELECT n.note_id, n.note_text, n.title, n.tags, n.pinned,
+               n.created_at, n.updated_at,
                n.paper_id, p.title AS paper_title, p.venue, p.publication_year
           FROM notes n
           LEFT JOIN papers p ON p.paper_id = n.paper_id
@@ -841,6 +848,25 @@ def search_notes(user_id: str, query: str | None = None,
          LIMIT %s;
         """,
         tuple(params),
+    )
+
+
+def set_note_pinned(user_id: str, note_id: str, pinned: bool) -> dict | None:
+    """
+    Pin or unpin. Returns None when the note is not this person's.
+
+    The wanted state is passed in rather than toggled here: a toggle computed
+    from what the page last saw goes wrong the moment two tabs disagree, and
+    the caller always knows which way it meant.
+    """
+    return run_write(
+        """
+        UPDATE notes SET pinned = %s
+         WHERE note_id = %s AND user_id = %s
+        RETURNING *;
+        """,
+        (pinned, note_id, user_id),
+        returning=True,
     )
 
 
@@ -903,7 +929,8 @@ def get_note(user_id: str, note_id: str) -> dict | None:
     """One note of this person's, with its paper when it has one."""
     rows = run_query(
         """
-        SELECT n.note_id, n.note_text, n.title, n.created_at, n.updated_at,
+        SELECT n.note_id, n.note_text, n.title, n.tags, n.pinned,
+               n.created_at, n.updated_at,
                n.paper_id, p.title AS paper_title, p.venue, p.publication_year
           FROM notes n
           LEFT JOIN papers p ON p.paper_id = n.paper_id
@@ -933,12 +960,13 @@ def get_all_notes(user_id: str, limit: int = 200) -> list[dict]:
     """
     return run_query(
         """
-        SELECT n.note_id, n.note_text, n.title, n.tags, n.created_at, n.updated_at,
+        SELECT n.note_id, n.note_text, n.title, n.tags, n.pinned,
+               n.created_at, n.updated_at,
                n.paper_id, p.title AS paper_title, p.venue, p.publication_year
           FROM notes n
           LEFT JOIN papers p ON p.paper_id = n.paper_id
          WHERE n.user_id = %s
-         ORDER BY n.created_at DESC
+         ORDER BY n.pinned DESC, n.created_at DESC
          LIMIT %s;
         """,
         (user_id, limit),
