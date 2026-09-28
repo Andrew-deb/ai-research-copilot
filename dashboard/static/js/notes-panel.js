@@ -27,6 +27,9 @@
 
   var newBtn = document.getElementById("notes-new");
   var backBtn = document.getElementById("notes-back");
+  var searchBtn = document.getElementById("notes-search-toggle");
+  var searchRow = document.getElementById("notes-search-row");
+  var searchBox = document.getElementById("notes-search");
   var openAll = document.getElementById("notes-open-all");
 
   var padTitle = document.getElementById("notes-pad-title");
@@ -38,6 +41,29 @@
 
   var loaded = false;
   var STORE = "rc-notes-open";
+
+  // The header's heading doubles as the note's title while the notepad is open.
+  var title = window.RCNotes.titleField(heading, padTitle);
+
+  // What the notepad held when it opened. Compared rather than counting
+  // keystrokes: typing a word and deleting it again leaves nothing to lose,
+  // and a prompt about it would be a prompt nobody can act on sensibly.
+  var opened = { title: "", body: "" };
+
+  function dirty() {
+    return !padView.hidden
+        && (padTitle.value !== opened.title || padBody.value !== opened.body);
+  }
+
+  // Returns false when the person chose to stay. Used by every exit from the
+  // notepad — the back arrow, Discard, closing the panel, Escape, and leaving
+  // the page — so there is one answer to "may this writing be dropped?"
+  // rather than one per route out.
+  function mayLeave() {
+    if (!dirty()) { return true; }
+    return window.confirm(
+      "This note has not been saved. Leave it and lose the changes?");
+  }
 
   function csrf() {
     var tag = document.querySelector('meta[name="csrf-token"]');
@@ -57,6 +83,8 @@
   }
 
   function close() {
+    if (!mayLeave()) { return; }
+
     // Focus first, while the panel is still in the document. Hiding the element
     // focus is inside drops it to the top of the page, which for a keyboard
     // user means losing their place entirely. Docking never STEALS focus on
@@ -99,8 +127,11 @@
     listView.hidden = false;
     if (newBtn) { newBtn.hidden = false; }
     if (backBtn) { backBtn.hidden = true; }
+    // Search belongs to the list and Back belongs to the notepad; they share
+    // the slot because neither is ever useful in the other's view.
+    if (searchBtn) { searchBtn.hidden = false; }
     if (openAll) { openAll.hidden = false; }
-    heading.textContent = "Notes";
+    title.asLabel(searchBox.value.trim() ? "Search results" : "Recent notes");
   }
 
   function showPad(note) {
@@ -108,11 +139,13 @@
     padView.hidden = false;
     if (newBtn) { newBtn.hidden = true; }
     if (backBtn) { backBtn.hidden = false; }
+    if (searchBtn) { searchBtn.hidden = true; }
     if (openAll) { openAll.hidden = true; }
 
-    heading.textContent = note ? "Edit note" : "New note";
+    // "Edit note" spent the header's only line on a label. The heading now
+     // carries the note's own name, which is the thing worth reading there.
+    title.asTitle(note && note.title ? note.title : "");
     padId.value = note ? note.note_id : "";
-    padTitle.value = note && note.title ? note.title : "";
     padBody.value = note ? note.note_text : "";
 
     // An existing note keeps whatever it was attached to; a new one attaches to
@@ -123,22 +156,34 @@
       attachToCurrentPaper();
     }
 
+    opened = { title: padTitle.value, body: padBody.value };
+
     padBody.dispatchEvent(new Event("input", { bubbles: true }));  // sync the count
-    (note ? padBody : padTitle).focus();
+    padBody.focus();
   }
 
   if (newBtn) { newBtn.addEventListener("click", function () { showPad(null); }); }
-  if (backBtn) { backBtn.addEventListener("click", showList); }
+  if (backBtn) {
+    backBtn.addEventListener("click", function () { if (mayLeave()) { showList(); } });
+  }
 
   var discard = document.getElementById("notes-pad-discard");
   if (discard) {
     discard.addEventListener("click", function () {
-      // Only worth asking about if there is something to lose.
-      var written = padBody.value.trim() || padTitle.value.trim();
-      if (written && !window.confirm("Discard this note?")) { return; }
+      // Discard is an explicit request to lose it, so the question is narrower
+      // than mayLeave's — it asks whether they meant it, not whether they knew.
+      if (dirty() && !window.confirm("Discard this note?")) { return; }
       showList();
     });
   }
+
+  // Leaving the page entirely. The browser shows its own wording here; all it
+  // takes from us is that there IS something unsaved.
+  window.addEventListener("beforeunload", function (e) {
+    if (!dirty()) { return; }
+    e.preventDefault();
+    e.returnValue = "";
+  });
 
   /* ------------------------------------------------- what it attaches to */
 
@@ -170,6 +215,18 @@
 
   /* ------------------------------------------------------------- the list */
 
+  // Inline rather than fetched: two 24px glyphs are smaller than the request
+  // that would go and get them, and they must be ready the moment the list is.
+  var ICON = {
+    pencil: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"'
+          + ' stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'
+          + '<path d="M12 20h9"></path>'
+          + '<path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>',
+    trash: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"'
+         + ' stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'
+         + '<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"></path></svg>',
+  };
+
   function escapeHtml(value) {
     var div = document.createElement("div");
     div.textContent = value == null ? "" : String(value);
@@ -178,7 +235,14 @@
 
   function render(groups) {
     if (!groups.length) {
-      list.innerHTML = '<p class="empty-state">Nothing written yet.</p>';
+      // "Nothing written yet" is false when a search simply matched nothing,
+      // and it is the sentence most likely to make someone think their notes
+      // are gone.
+      list.innerHTML = '<p class="empty-state">'
+        + (searchBox && searchBox.value.trim()
+            ? "No notes match that."
+            : "Nothing written yet.")
+        + "</p>";
       return;
     }
 
@@ -194,11 +258,16 @@
           html += '<p class="notes-panel-note-title">' + escapeHtml(note.title) + "</p>";
         }
         html += "<p>" + escapeHtml(note.note_text) + "</p>";
+        // Icons, with the word kept as the accessible name: a pen and a bin
+        // read faster than two words, and in a 392px column two text buttons
+        // per note compete with the note itself.
         html += '<p class="note-meta">' + note.words
              + (note.words === 1 ? " word" : " words")
              + (note.edited ? " · edited" : "")
-             + ' <button type="button" class="btn-link" data-panel-edit>Edit</button>'
-             + ' <button type="button" class="btn-link btn-danger" data-panel-delete>Delete</button>'
+             + ' <button type="button" class="icon-btn" data-panel-edit'
+             + ' aria-label="Edit note" title="Edit">' + ICON.pencil + "</button>"
+             + ' <button type="button" class="icon-btn icon-btn-danger" data-panel-delete'
+             + ' aria-label="Delete note" title="Delete">' + ICON.trash + "</button>"
              + "</p></article>";
       });
       html += "</section>";
@@ -208,8 +277,48 @@
 
   var groupsCache = [];
 
+  /* -------------------------------------------------------------- search */
+
+  if (searchBtn) {
+    searchBtn.addEventListener("click", function () {
+      var opening = searchRow.hidden;
+      searchRow.hidden = !opening;
+      searchBtn.setAttribute("aria-expanded", String(opening));
+
+      if (opening) { return searchBox.focus(); }
+      // Closing the box clears the filter. Leaving a hidden query in place
+      // would show a filtered list with nothing on screen explaining why.
+      if (searchBox.value) { searchBox.value = ""; refresh(); }
+      showList();
+    });
+  }
+
+  if (searchBox) {
+    var pending = null;
+    searchBox.addEventListener("input", function () {
+      // Debounced, because the query goes to the database. Every keystroke
+      // would be a round trip, and the answers could arrive out of order.
+      window.clearTimeout(pending);
+      pending = window.setTimeout(function () { refresh().then(showList); }, 220);
+    });
+    searchBox.addEventListener("keydown", function (e) {
+      if (e.key !== "Escape") { return; }
+      e.preventDefault();
+      // Stopped here, or it bubbles to the document handler that closes the
+      // whole panel — so clearing a search would shut the thing you were
+      // searching. Escape backs out one step at a time.
+      e.stopPropagation();
+      searchBox.value = "";
+      refresh().then(showList);
+    });
+  }
+
   function refresh() {
-    return fetch(panel.getAttribute("data-notes-url"), {
+    var query = searchBox && searchBox.value.trim();
+    var url = panel.getAttribute("data-notes-url")
+            + (query ? "?q=" + encodeURIComponent(query) : "");
+
+    return fetch(url, {
       headers: { "Accept": "application/json", "X-Requested-With": "XMLHttpRequest" },
     })
       .then(function (res) { return res.json(); })
@@ -254,6 +363,7 @@
         if (!ok) { return; }
         padTitle.value = "";
         padBody.value = "";
+        opened = { title: "", body: "" };     // saved: nothing left to lose
         showList();
       });
   });
