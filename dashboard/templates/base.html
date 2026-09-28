@@ -89,8 +89,12 @@
            persisted, so a demo visitor has no history to search and never will.
            Showing the control would promise a feature that cannot exist for them. #}
         {% if is_authenticated %}
+          {# Ctrl+Shift+F, not Ctrl+K: the palette owns K. Both answered it
+             until now, and this one won because it is bound first — so the
+             global search was unreachable by its own shortcut. #}
           <button type="button" class="icon-btn" id="chat-search-open"
-                  aria-label="Search chats" title="Search chats">
+                  aria-label="Search chats" title="Search chats (Ctrl+Shift+F)"
+                  aria-keyshortcuts="Control+Shift+F">
             {{ icon('search') }}
           </button>
         {% endif %}
@@ -387,7 +391,18 @@
       {# Absolutely centred rather than flex-centred: the title on the left and the
          actions on the right are different widths, so a flex centre would sit
          slightly off-centre and drift as either side changed. #}
-      <div class="topbar-center">{% block topbar_center %}{% endblock %}</div>
+      {# The palette trigger is the DEFAULT occupant of this slot. chat.html and
+         search.html override the block with their own controls, so they keep
+         what is already there and the palette stays reachable from the keyboard
+         on every page regardless. #}
+      <div class="topbar-center">{% block topbar_center %}
+        <button type="button" class="palette-trigger" id="palette-open"
+                aria-label="Search everything" aria-keyshortcuts="Control+K Meta+K">
+          {{ icon('search') }}
+          <span>Search…</span>
+          <kbd class="palette-key">Ctrl K</kbd>
+        </button>
+      {% endblock %}</div>
       <div class="topbar-actions">
         {% if not is_authenticated %}
           {% if not is_workspace_shell %}
@@ -501,6 +516,8 @@
         {# The title lives in the header, beside the heading it replaces.
            `form=` keeps it part of this form from outside it. #}
 
+        {% with field = 'notes-pad-body' %}{% include "_note_toolbar.html" %}{% endwith %}
+
         <label class="visually-hidden" for="notes-pad-body">Note</label>
         <textarea class="notes-pad-body" id="notes-pad-body" name="note_text" required
                   maxlength="10000" data-word-count
@@ -517,6 +534,30 @@
       </form>
     </aside>
     {% endif %}
+
+    {# The command palette.
+
+       A dialog, unlike the notes panel: this one IS modal by nature — it exists
+       to take you somewhere else, so the page behind it is on its way out
+       rather than something you keep working in. Rendered on every page so the
+       keyboard shortcut works everywhere, and empty until opened. #}
+    <div class="palette" id="palette" hidden role="dialog" aria-modal="true"
+         aria-label="Search everything" data-command-url="{{ url_for('public.command_palette') }}">
+      <div class="palette-scrim" id="palette-scrim"></div>
+      <div class="palette-box">
+        <div class="palette-field">
+          {{ icon('search') }}
+          <label class="visually-hidden" for="palette-input">Search everything</label>
+          <input id="palette-input" type="search" autocomplete="off"
+                 placeholder="Search notes, papers, collections, pages…"
+                 aria-controls="palette-results" aria-expanded="true"
+                 role="combobox" aria-autocomplete="list">
+          <kbd class="palette-key">Esc</kbd>
+        </div>
+        <div class="palette-results" id="palette-results" role="listbox"
+             aria-label="Results"></div>
+      </div>
+    </div>
 
     <div id="flash-tray" aria-live="polite">
       {% with messages = get_flashed_messages(with_categories=true) %}
@@ -543,6 +584,9 @@
 {# Outside the signed-in block: the navigation rail is resizable for everyone,
    and rails.js simply finds no notes handle when there is no panel. #}
 <script src="{{ url_for('static', filename='js/rails.js') }}"></script>
+{# Outside the signed-in block: navigating the application is not a privilege,
+   and an anonymous visitor gets the destinations and the papers. #}
+<script src="{{ url_for('static', filename='js/palette.js') }}"></script>
 {% if is_authenticated %}<script src="{{ url_for('static', filename='js/conversations.js') }}"></script>
 {# notes.js FIRST: it defines window.RCNotes, which the panel and the page both
    call as they initialise. Loaded after them it would be defined a moment too
