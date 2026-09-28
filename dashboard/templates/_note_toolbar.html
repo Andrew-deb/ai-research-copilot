@@ -1,0 +1,45 @@
+{# Formatting controls for a notepad.
+
+   Include with the id of the textarea they drive:
+
+       {% with field = 'page-pad-body' %}{% include "_note_toolbar.html" %}{% endwith %}
+
+   One partial for the page and the panel, so the two cannot end up offering
+   different formatting. Each button writes Markdown into the field — the notes
+   are stored, searched, exported and read back as Markdown, so the toolbar
+   types what a person who knew the syntax would have typed. #}
+
+<div class="note-format" data-format-for="{{ field }}" role="toolbar"
+     aria-label="Formatting" aria-controls="{{ field }}">
+  <button type="button" class="note-format-btn" data-format="bold"
+          aria-label="Bold" title="Bold (Ctrl+B)"><strong>B</strong></button>
+  <button type="button" class="note-format-btn" data-format="italic"
+          aria-label="Italic" title="Italic (Ctrl+I)"><em>I</em></button>
+  <button type="button" class="note-format-btn" data-format="code"
+          aria-label="Code" title="Code"><code>&lt;&gt;</code></button>
+
+  <span class="note-format-sep" aria-hidden="true"></span>
+
+  <button type="button" class="note-format-btn" data-format="h1"
+          aria-label="Heading" title="Heading">H1</button>
+  <button type="button" class="note-format-btn" data-format="h2"
+          aria-label="Subheading" title="Subheading">H2</button>
+
+  <span class="note-format-sep" aria-hidden="true"></span>
+
+  <button type="button" class="note-format-btn" data-format="bullet"
+          aria-label="Bulleted list" title="Bulleted list">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+         stroke-linecap="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>
+  </button>
+  <button type="button" class="note-format-btn" data-format="number"
+          aria-label="Numbered list" title="Numbered list">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+         stroke-linecap="round" stroke-linejoin="round"><path d="M10 6h11M10 12h11M10 18h11M4 6h1v4M4 10h2M6 16a1.5 1.5 0 1 0-2-1.4M4 18h2.5"/></svg>
+  </button>
+  <button type="button" class="note-format-btn" data-format="quote"
+          aria-label="Quote" title="Quote">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+         stroke-linecap="round"><path d="M4 5v14M9 8h11M9 12h11M9 16h7"/></svg>
+  </button>
+</div>

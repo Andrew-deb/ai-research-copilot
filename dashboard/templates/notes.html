@@ -97,15 +97,6 @@
            aria-label="Clear filters" title="Clear">{{ icon('close') }}</a>
       {% endif %}
 
-      {# Exports what the page is SHOWING, filters included — an export that
-         quietly gave you everything would mean something different from the
-         list in front of you. #}
-      <a class="icon-btn" title="Export these notes as Markdown"
-         aria-label="Export these notes as Markdown"
-         href="{{ url_for('progress.export_notes', q=query or None,
-                          tag=active_tags or None, scope=scope or None) }}">
-        {{ icon('download') }}
-      </a>
     </form>
 
     {% if all_tags %}
@@ -219,6 +210,14 @@
                 </form>
                 <button type="button" class="icon-btn" data-page-edit
                         aria-label="Edit note" title="Edit">{{ icon('pencil') }}</button>
+                {# Per note, not per library. An export of everything is a
+                   backup; what somebody reaches for mid-work is THIS note, to
+                   paste into a draft — and a file holding forty others makes
+                   them go and find it again. #}
+                <a class="icon-btn" download
+                   href="{{ url_for('progress.export_note', note_id=note.note_id) }}"
+                   aria-label="Download note as Markdown"
+                   title="Download as Markdown">{{ icon('download') }}</a>
                 <form method="post" class="inline-form"
                       action="{{ url_for('progress.remove_note', note_id=note.note_id) }}"
                       data-confirm="Delete this note? This cannot be undone.">
@@ -248,6 +247,8 @@
 
     {# The title lives in the page heading above; `form=` keeps it part of
        this form from outside it. #}
+
+    {% with field = 'page-pad-body' %}{% include "_note_toolbar.html" %}{% endwith %}
 
     <label class="visually-hidden" for="page-pad-body">Note</label>
     <textarea class="notes-pad-body" id="page-pad-body" name="note_text" required
