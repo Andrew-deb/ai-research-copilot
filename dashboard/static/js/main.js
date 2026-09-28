@@ -145,7 +145,11 @@
       if (dialog && !dialog.hidden) { closeChatSearch(); return; }
       closeSidebar(true);
     }
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+    // Ctrl+K belongs to the global palette, which is the broader of the two and
+    // the binding people arrive already expecting. Chat history search — a
+    // filter over one list — takes Ctrl+Shift+F, and both were answering K
+    // until now, with this one winning because it is bound first.
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "f") {
       const opener = document.getElementById("chat-search-open");
       if (opener && !opener.closest("[inert]")) { e.preventDefault(); opener.click(); }
     }
