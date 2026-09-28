@@ -1929,3 +1929,27 @@ body.notes-writing .notes-page-pad .notes-pad-body {
   border-left: 2px solid var(--border-strong);
   color: var(--text-muted);
 }
+
+/* --- Pinned notes ----------------------------------------------------------
+   Ordering rather than a section of its own: a pinned note sorts first, which
+   floats its paper's group to the top and puts the note at the head of it, so
+   the page keeps one structure instead of growing a second list above it that
+   the grouping does not apply to. */
+
+.icon-btn.is-on {
+  color: var(--brand-tint-fg);
+  border-color: var(--brand);
+  background: var(--brand-tint);
+}
+
+/* The mark on the note itself, so a pinned note is recognisable in the list
+   without hovering to reveal the actions. */
+.note-pin-mark {
+  display: inline-flex;
+  vertical-align: -2px;
+  color: var(--brand-tint-fg);
+}
+.note-pin-mark svg { width: 13px; height: 13px; }
+
+/* An untitled pinned note still needs somewhere to put the mark. */
+.note-pin-only { margin: 0 0 2px; }
