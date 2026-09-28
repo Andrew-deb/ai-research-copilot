@@ -777,20 +777,86 @@ def get_progress_for_paper(user_id: str, paper_id: str) -> dict | None:
 # =============================================================================
 
 def save_note(user_id: str, paper_id: str | None, note_text: str,
-              title: str | None = None) -> dict:
-    """A note, optionally about a paper and optionally named. See sql/16, sql/17."""
+              title: str | None = None, tags: list[str] | None = None) -> dict:
+    """A note, optionally about a paper, named and tagged. See sql/16-18."""
     return run_write(
         """
-        INSERT INTO notes (user_id, paper_id, note_text, title)
-        VALUES (%s, %s, %s, %s) RETURNING *;
+        INSERT INTO notes (user_id, paper_id, note_text, title, tags)
+        VALUES (%s, %s, %s, %s, %s) RETURNING *;
         """,
-        (user_id, paper_id, note_text, title),
+        (user_id, paper_id, note_text, title, tags or []),
         returning=True,
     )
 
 
+def search_notes(user_id: str, query: str | None = None,
+                 tags: list[str] | None = None, limit: int = 200) -> list[dict]:
+    """
+    This person's notes, narrowed by words, by tags, or by both.
+
+    Ranked by ts_rank when there is a query and by recency otherwise, because
+    "most relevant" is meaningless when nothing was asked for.
+
+    `websearch_to_tsquery` rather than `plainto_tsquery`: it understands quoted
+    phrases and OR, and — the part that matters — it never raises on malformed
+    input. `to_tsquery` would turn a stray `&` in somebody's search box into a
+    500.
+
+    Tags use `@>` (contains all), so two tags narrow rather than widen. Someone
+    who picks "methods" and "to-read" means the notes that are both.
+    """
+    where = ["n.user_id = %s"]
+    params: list = [user_id]
+
+    if query:
+        where.append("n.search_tsv @@ websearch_to_tsquery('english', %s)")
+        params.append(query)
+    if tags:
+        where.append("n.tags @> %s")
+        params.append(tags)
+
+    order = ("ts_rank(n.search_tsv, websearch_to_tsquery('english', %s)) DESC, "
+             "n.created_at DESC") if query else "n.created_at DESC"
+    if query:
+        params.append(query)
+    params.append(limit)
+
+    return run_query(
+        f"""
+        SELECT n.note_id, n.note_text, n.title, n.tags, n.created_at, n.updated_at,
+               n.paper_id, p.title AS paper_title, p.venue, p.publication_year
+          FROM notes n
+          LEFT JOIN papers p ON p.paper_id = n.paper_id
+         WHERE {' AND '.join(where)}
+         ORDER BY {order}
+         LIMIT %s;
+        """,
+        tuple(params),
+    )
+
+
+def get_note_tags(user_id: str) -> list[dict]:
+    """
+    Every tag this person uses, with how many notes carry it.
+
+    From `unnest` rather than a tag table: the labels have no existence apart
+    from the notes wearing them, so the notes are the only place they can be
+    counted from without the two drifting apart.
+    """
+    return run_query(
+        """
+        SELECT tag, count(*) AS notes
+          FROM notes, unnest(tags) AS tag
+         WHERE user_id = %s
+         GROUP BY tag
+         ORDER BY count(*) DESC, tag;
+        """,
+        (user_id,),
+    )
+
+
 def update_note(user_id: str, note_id: str, note_text: str,
-                title: str | None = None) -> dict | None:
+                title: str | None = None, tags: list[str] | None = None) -> dict | None:
     """
     Revise a note. Returns None when it is not this person's to revise.
 
@@ -801,11 +867,11 @@ def update_note(user_id: str, note_id: str, note_text: str,
     """
     return run_write(
         """
-        UPDATE notes SET note_text = %s, title = %s, updated_at = now()
+        UPDATE notes SET note_text = %s, title = %s, tags = %s, updated_at = now()
          WHERE note_id = %s AND user_id = %s
         RETURNING *;
         """,
-        (note_text, title, note_id, user_id),
+        (note_text, title, tags or [], note_id, user_id),
         returning=True,
     )
 
@@ -858,7 +924,7 @@ def get_all_notes(user_id: str, limit: int = 200) -> list[dict]:
     """
     return run_query(
         """
-        SELECT n.note_id, n.note_text, n.title, n.created_at, n.updated_at,
+        SELECT n.note_id, n.note_text, n.title, n.tags, n.created_at, n.updated_at,
                n.paper_id, p.title AS paper_title, p.venue, p.publication_year
           FROM notes n
           LEFT JOIN papers p ON p.paper_id = n.paper_id
