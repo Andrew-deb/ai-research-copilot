@@ -202,6 +202,21 @@ svg.icon { width: 18px; height: 18px; flex: none; }
 .topbar-title { font-weight: 600; font-size: 14px; flex: 1; color: var(--text); }
 .topbar-actions { display: flex; align-items: center; gap: 8px; }
 
+/* `[hidden]` must actually hide.
+
+   The browser's own `[hidden] { display: none }` is a plain element rule, so
+   ANY author rule setting display outranks it. That has now bitten three
+   separate components here: `.nav-item` left a renamed conversation's old
+   title on screen beside the field replacing it, `.notes-panel` needed its own
+   override, and `.icon-btn` below left the notepad's Back button showing in a
+   list that has nothing to go back to.
+
+   `!important` because outranking those component rules is the entire job. It
+   is the one place in this stylesheet where that is the right tool rather than
+   a shortcut — anything marked hidden is hidden, and no component added later
+   can quietly opt out. */
+[hidden] { display: none !important; }
+
 .icon-btn {
   display: grid;
   place-items: center;
@@ -1421,8 +1436,26 @@ h1, h2, h3,
 
 :root { --notes-w: 392px; }
 
+/* The panel's search row, revealed by the magnifier in its header. */
+.notes-search-row {
+  flex-shrink: 0;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.notes-search-row input {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  font-size: 13px;
+}
+
 .notes-panel {
   position: fixed;
+  /* Full height, and the topbar narrows beside it.
+     Hanging the panel below the header was tried and reverted: the topbar is
+     sticky, so on any page where it scrolled the panel appeared to come adrift
+     from it, floating over the content with a gap above. Taking the whole
+     column has no seam to come apart. */
   inset: 0 0 0 auto;
   z-index: 40;                      /* the sidebar's layer, not a modal's */
   width: var(--notes-w);
@@ -1432,12 +1465,12 @@ h1, h2, h3,
   border-left: 1px solid var(--border);
 }
 
-/* `[hidden]` loses to the author `display: flex` above — the same rule that
-   once left a renamed conversation's old title on screen beside the field
-   replacing it. */
-.notes-panel[hidden] { display: none; }
+/* No `[hidden]` override needed here any more — the global rule near the top
+   of this file now outranks every component's `display`. */
 
-/* The page gives up the width rather than being covered by it. */
+/* The page gives up the width rather than being covered by it. On .main-col,
+   so the topbar narrows too and its controls stay beside the panel instead of
+   underneath it. */
 body.notes-docked .main-col { margin-right: var(--notes-w); }
 
 .notes-panel-head {
@@ -1458,7 +1491,6 @@ body.notes-docked .main-col { margin-right: var(--notes-w); }
    always in the same place. */
 
 .notes-view { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.notes-view[hidden] { display: none; }
 
 .notes-panel-list { flex: 1; min-height: 0; overflow-y: auto; padding: 14px; }
 
@@ -1593,3 +1625,307 @@ body.notes-docked .main-col { margin-right: var(--notes-w); }
 /* A note is prose, and prose set across the full width is unreadable — the
    measure matters more here than on any other page in the app. */
 .notes-page { max-width: 760px; }
+
+/* --- Resizable rails --------------------------------------------------------
+   Both rails are draggable. How much of the window a reference list or a
+   notepad deserves is not something a stylesheet can know: it depends on what
+   the person is reading, how long their notes are and how wide their screen
+   is. A fixed 392px is a guess, and this replaces the guess with their answer.
+
+   The handle is a 10px strip straddling the border, wider than the 1px line it
+   grabs so it can actually be hit, with only a hairline painted on hover. */
+
+.rail-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 10px;
+  z-index: 5;
+  cursor: col-resize;
+  /* Touch devices scroll a panel by dragging it; claiming the gesture here
+     would make the panel unscrollable on a phone, where it is full width and
+     has nothing to resize against anyway. */
+  touch-action: none;
+}
+.rail-handle-right { right: -5px; }
+.rail-handle-left  { left: -5px; }
+
+.rail-handle::after {
+  content: "";
+  position: absolute;
+  inset: 0 4px;
+  background: transparent;
+  transition: background .12s ease;
+}
+.rail-handle:hover::after,
+.rail-handle:focus-visible::after,
+.rail-handle.is-dragging::after { background: var(--brand); }
+.rail-handle:focus-visible { outline: none; }
+
+/* While dragging, stop the pointer selecting text across the whole document —
+   without this a drag highlights the page it is resizing. */
+body.rail-resizing { user-select: none; cursor: col-resize; }
+
+/* No rail to resize when it is a full-width overlay. */
+@media (max-width: 900px) {
+  .rail-handle { display: none; }
+}
+
+/* --- The notepad as a page -------------------------------------------------
+   On the Notes page the notepad IS the page: it fills the column down to the
+   footer rather than sitting in a short box with empty space beneath it. A
+   notepad you can only see six lines of is a form, not a notepad. */
+
+/* `flex: 1` distributes FREE space; it cannot stretch inside a box that grows
+   to fit its contents. The page carries `content-fill` and `app-fixed`, which
+   give the shell a definite height — without those the rules below are inert
+   and the notepad sits in a short box with the page blank beneath it, which is
+   exactly how it shipped. */
+.notes-page {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.notes-page .notes-view { min-height: 0; }
+
+/* The list scrolls with the WINDOW, not in a box of its own — an inner
+   scrollbar beside the notes was thicker than the notes' own left rule and
+   sat right against the text. It only needs its own scroll while the shell is
+   capped, which is only while the notepad is open, and the notepad is what is
+   on screen then anyway. */
+body.notes-writing #page-view-list { overflow-y: auto; }
+
+/* Thin, and out of the way, wherever a panel does have to scroll. The default
+   on Windows is 17px of high-contrast furniture running down the middle of the
+   layout. */
+.notes-panel-list,
+.notes-pad-body,
+body.notes-writing #page-view-list {
+  scrollbar-width: thin;                              /* Firefox */
+  scrollbar-color: var(--border-strong) transparent;
+}
+.notes-panel-list::-webkit-scrollbar,
+.notes-pad-body::-webkit-scrollbar,
+body.notes-writing #page-view-list::-webkit-scrollbar { width: 8px; }
+
+.notes-panel-list::-webkit-scrollbar-thumb,
+.notes-pad-body::-webkit-scrollbar-thumb,
+body.notes-writing #page-view-list::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 999px;
+  /* A transparent border under background-clip leaves the thumb floating off
+     the text rather than pressed against it. */
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+.notes-panel-list::-webkit-scrollbar-track,
+.notes-pad-body::-webkit-scrollbar-track,
+body.notes-writing #page-view-list::-webkit-scrollbar-track { background: transparent; }
+
+body.notes-writing .notes-page-pad {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+body.notes-writing .notes-page-pad .notes-pad-body {
+  flex: 1;
+  height: auto;
+  min-height: 0;
+  resize: none;
+}
+
+/* The title is its own row, separated by a rule rather than sharing an edge
+   with the body — they are different fields and one long title running
+   straight into the first line reads as one paragraph. */
+.notes-pad-title {
+  border-bottom: 1px solid var(--border);
+  padding: 14px 18px;
+  font-size: 16px;
+  font-family: "Poppins", var(--font);
+  letter-spacing: -.01em;
+}
+.notes-page-pad .notes-pad-body { padding: 16px 18px; }
+
+/* --- Headings and icon actions --------------------------------------------- */
+
+#notes-panel-title {
+  font-family: "Poppins", var(--font);
+  font-weight: 600;
+  font-size: 14px;
+  letter-spacing: -.01em;
+  /* One line, cut rather than wrapped: a long title must not push the close
+     button out of a 392px header. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A heading standing in for an editable field says so on hover, and shows a
+   caret rather than a text cursor — it is a control, not prose. */
+.is-note-title { cursor: text; border-radius: var(--radius-sm); }
+.is-note-title:hover { background: var(--surface-2); }
+.is-note-title:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.is-note-title.is-untitled { color: var(--text-subtle); font-weight: 500; }
+
+/* The input that replaces it while editing wears the heading's own type, so
+   the text does not jump size the moment it becomes editable. */
+#notes-panel-title + .notes-pad-title,
+#notes-page-title + .notes-pad-title {
+  border: 0;
+  border-bottom: 1px solid var(--brand);
+  border-radius: 0;
+  background: transparent;
+  padding: 2px 0;
+  font-family: "Poppins", var(--font);
+  font-weight: 600;
+  letter-spacing: -.01em;
+}
+#notes-panel-title + .notes-pad-title { font-size: 14px; width: 100%; }
+#notes-page-title + .notes-pad-title { font-size: 25px; }
+
+/* Icon-only actions on a note. Revealed with the row, like the old word
+   buttons, but no longer competing with the note's own text for attention. */
+.note-actions .icon-btn { width: 28px; height: 28px; }
+.note-actions .icon-btn-danger:hover { color: var(--danger); border-color: var(--danger); }
+
+.notes-panel-note .note-meta .icon-btn {
+  width: 24px;
+  height: 24px;
+  border: 0;
+}
+
+/* --- Finding a note again --------------------------------------------------- */
+
+.notes-filter {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+/* --- The scope filter -------------------------------------------------------
+   A <details> rather than a scripted menu: it opens, closes, dismisses on
+   Escape and is reachable by keyboard with no JavaScript at all. A filter that
+   still works with scripts off is worth more than one that animates. */
+
+.filter-menu { position: relative; }
+.filter-menu > summary { list-style: none; }
+.filter-menu > summary::-webkit-details-marker { display: none; }
+.filter-menu > summary.is-on { color: var(--brand-tint-fg); border-color: var(--brand); }
+
+.filter-menu-body {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 20;
+  min-width: 176px;
+  padding: 4px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.filter-option {
+  display: block;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 13px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.filter-option:hover { background: var(--surface-2); }
+.filter-option.is-on { background: var(--brand-tint); color: var(--brand-tint-fg); }
+.notes-filter input[type="search"] {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 13.5px;
+}
+
+.tag-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; }
+
+/* A tag reads as a label, not a button: no border, a tinted ground, and the
+   hash doing the work an outline was doing before. Twelve outlined pills above
+   a list of notes drew more attention than the notes did. */
+.tag {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 3px 10px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 11.5px;
+  line-height: 1.5;
+  text-decoration: none;
+  transition: background .12s, color .12s;
+}
+.tag::before { content: "#"; opacity: .45; }
+.tag:hover { background: var(--surface-3); color: var(--text); }
+
+/* An active filter differs in fill as well as in colour, so it is still
+   legible to anyone who cannot separate the two by hue. */
+.tag.is-on {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: var(--brand-fg);
+  font-weight: 500;
+}
+.tag.is-on::before { opacity: .7; }
+
+.tag-count {
+  font-family: var(--mono);
+  font-size: 10px;
+  opacity: .6;
+}
+/* On a note, a tag is a label on someone's own writing — quieter still, and
+   without the count, which belongs to the filter row rather than the note. */
+.tag-sm { padding: 1px 8px; font-size: 10.5px; background: transparent; }
+.tag-sm:hover { background: var(--surface-2); }
+
+.note-tags { margin: 6px 0 0; display: flex; flex-wrap: wrap; gap: 5px; }
+
+.notes-pad-tags { flex-shrink: 0; padding: 0 18px 12px; }
+.notes-pad-tags input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 12.5px;
+}
+.notes-pad-tags input:focus { outline: none; color: var(--text); }
+
+/* Markdown inside a note: tightened, because a note is a paragraph or two and
+   document-scale margins would space three bullets across half a screen. */
+.note-text.is-markdown > :first-child { margin-top: 0; }
+.note-text.is-markdown > :last-child { margin-bottom: 0; }
+.note-text.is-markdown ul,
+.note-text.is-markdown ol { margin: 6px 0; padding-left: 20px; }
+.note-text.is-markdown li { margin: 2px 0; }
+.note-text.is-markdown p { margin: 6px 0; }
+.note-text.is-markdown code {
+  font-family: var(--mono);
+  font-size: .92em;
+  background: var(--surface-3);
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+.note-text.is-markdown pre {
+  background: var(--surface-3);
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
+}
+.note-text.is-markdown blockquote {
+  margin: 6px 0;
+  padding-left: 12px;
+  border-left: 2px solid var(--border-strong);
+  color: var(--text-muted);
+}
