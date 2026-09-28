@@ -180,3 +180,22 @@ not alter authentication, quotas, agent execution, or database schemas.
 Earlier deployment/authentication descriptions above are historical. The current
 application uses Render, Google OAuth and Flask sessions, with backend MCP access;
 consult current configuration and middleware before changing those boundaries.
+
+## Cross-page assistant
+
+Workspace pages other than `/chat` show the Alfred launcher beside the theme
+control. The right-side panel renders the same chat composer and JavaScript as
+the full page in a compact view. `/chat/assistant` loads an owned conversation;
+`/chat/ask` remains the sole execution route. Panel-created signed-in threads
+receive an ID before streaming so navigation can reopen the same thread while
+the run ledger reports whether an interrupted stream is still active. Anonymous
+demo conversations remain nonpersistent.
+
+The parent shell manages the right edge: opening Alfred closes Notes only after
+the notepad's existing unsaved-change check, and opening Notes closes Alfred.
+Paper, collection, and goal context is resolved on the server on every turn;
+private items must belong to the signed-in user. Successful write tool events
+trigger a page refresh after the turn, while failures do not claim an update.
+The compact panel exposes shared citations, sources, Stop and versions; its
+history control uses the existing history search. Profile and settings remain
+a later phase.

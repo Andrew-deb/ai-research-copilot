@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+{# An isolated view of the existing chat, so its renderer, source previews,
+   streaming, Stop and version controls remain identical to /chat. The parent
+   owns only the panel chrome and the current page context. #}
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <title>Alfred assistant</title>
+  <script>try { document.documentElement.dataset.theme = localStorage.getItem('rc-theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); } catch (e) {}</script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@500;600&display=swap">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/chat.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/assistant.css') }}">
+</head>
+<body class="assistant-embedded">
+  <div class="chat-page {{ 'is-empty' if not messages }}"
+       data-surface="assistant"
+       data-owner="{{ current_user.user_id if is_authenticated else 'demo' }}"
+       data-context-kind="{{ context.kind if context else '' }}"
+       data-context-id="{{ context.id if context else '' }}"
+       {% if conversation %}data-conversation="{{ conversation.conversation_id }}"{% endif %}>
+    {% if messages %}<script type="application/json" id="chat-history">{{ messages | tojson }}</script>{% endif %}
+    <div class="chat-stage">
+      {% if not messages %}<p class="assistant-welcome">Ask Alfred about this page or your research.</p>{% endif %}
+      {% include "_chat_composer.html" %}
+    </div>
+  </div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/14.1.2/marked.min.js"
+          integrity="sha512-bXyBT2/sYjZg1D7ykDS6eJSE4DFDVPJHvbRAfdfYKr6IusrCz7wAmSm36vz9G8zMob25Rvqu90vft3JI71ygcQ=="
+          crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.7/purify.min.js"
+          integrity="sha512-BdRNuI8/lsyxkKQVxK1lVtfZshggfXPAwEP+JAOJEKx6Y8SLfcBSRdaWyXQmMxo+wG180uFqXYGjGRL0mh4/Jw=="
+          crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="{{ url_for('static', filename='js/chat.js') }}"></script>
+</body>
+</html>
