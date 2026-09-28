@@ -339,7 +339,16 @@ class FakeDB:
             rows = [r for r in rows if r.get("paper_id")]
         elif scope == "standalone":
             rows = [r for r in rows if not r.get("paper_id")]
+        elif scope == "pinned":
+            rows = [r for r in rows if r.get("pinned")]
         return rows
+
+    def set_note_pinned(self, user_id, note_id, pinned):
+        row = self.notes.get(str(note_id))
+        if not row or str(row["user_id"]) != str(user_id):
+            return None
+        row["pinned"] = bool(pinned)
+        return dict(row)
 
     def get_note_tags(self, user_id):
         counts = {}
@@ -354,7 +363,8 @@ class FakeDB:
     def get_all_notes(self, user_id, limit=200):
         """Every note by this user, joined to its paper, newest first."""
         rows = [n for n in self.notes.values() if str(n["user_id"]) == str(user_id)]
-        rows.sort(key=lambda n: n["created_at"], reverse=True)
+        # Pinned first, then newest — the order every listing reads them in.
+        rows.sort(key=lambda n: (bool(n.get("pinned")), n["created_at"]), reverse=True)
         joined = []
         for note in rows[:limit]:
             paper = self.papers.get(str(note["paper_id"]), {})
