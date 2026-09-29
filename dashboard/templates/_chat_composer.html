@@ -25,6 +25,9 @@
               aria-label="{{ 'Ask Wick' if chat_mode == 'wick' else 'Ask a research question' }}">{{ initial_prompt | default('') }}</textarea>
     {% if chat_mode %}
     <div class="composer-footer">
+      {% if context %}
+      <button type="button" id="chat-context-clear" class="composer-context" title="Remove context">Context: {{ context.label }} ×</button>
+      {% endif %}
       <div class="chat-mode-choice">
         <label class="sr-only" for="chat-mode">Chat mode</label>
         <select id="chat-mode" aria-label="Chat mode" title="Choose Research or Wick">
@@ -32,9 +35,6 @@
           <option value="wick" {{ 'selected' if chat_mode == 'wick' }}>Wick</option>
         </select>
         <span class="sr-only" id="chat-mode-description">{{ 'Workspace operations' if chat_mode == 'wick' else 'Paper discovery and research' }}</span>
-        {% if context %}
-        <button type="button" id="chat-context-clear" class="composer-context" title="Remove context">Context: {{ context.label }} ×</button>
-        {% endif %}
       </div>
     {% endif %}
     <button class="composer-send" type="submit" aria-label="Ask">
