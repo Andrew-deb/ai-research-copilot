@@ -57,7 +57,7 @@
     row.dataset.conversation = entry.conversation_id;
     row.dataset.pinned = entry.pinned ? "1" : "0";
     row.dataset.origin = entry.origin;
-    row.title = "Started in " + entry.origin +
+    row.title = "Started in " + (entry.origin === "assistant" ? "Wick" : "Research") +
       (entry.origin_context ? " · " + entry.origin_context : "");
     var link = document.createElement("a");
     link.className = "nav-item nav-item-chat";

@@ -20,8 +20,8 @@ from exceptions import ResearchCopilotError
 from middleware.auth import current_tier, current_user_id, current_quota_scope, require_user_id
 from middleware.capabilities import AGENT_QUERY, consume_quota, require_capability, tier_can
 from routes.helpers import form_or_json, wants_json
-from services import (agent_service, assistant_context, conversation_service, quota_service,
-                      telemetry_service)
+from services import (agent_service, assistant_context, collection_service,
+                      conversation_service, goal_service, quota_service, telemetry_service)
 from repositories import agent_runs
 
 logger = logging.getLogger(__name__)
@@ -60,12 +60,16 @@ def new_chat():
     even once it is, arriving to find your question already running takes the
     decision away from whoever typed it.
     """
+    context = assistant_context.resolve(current_user_id(),
+        request.args.get("context_kind", ""), request.args.get("context_id", ""))
     return render_template(
         "chat.html",
         conversation=None,
         messages=[],
         starters=suggestions.AGENT_STARTERS,
         initial_prompt=carried_prompt(),
+        chat_mode="wick" if request.args.get("mode") == "wick" else "research",
+        context=context,
     )
 
 
@@ -82,6 +86,23 @@ def assistant_panel():
         messages=stored["messages"] if stored else [], initial_prompt="", starters=[])
 
 
+@bp.get("/chat/assistant/contexts")
+def assistant_contexts():
+    """Choices are scoped at the data layer; each chosen item is checked again per turn."""
+    owner = current_user_id()
+    collections = collection_service.collections_for(owner)
+    choices = [
+        {"kind": "collection", "id": str(row["collection_id"]), "label": row["name"]}
+        for row in collections["own"] + collections["examples"]
+    ]
+    if owner:
+        choices.extend(
+            {"kind": "goal", "id": str(row["goal_id"]), "label": row["title"]}
+            for row in goal_service.list_goals(owner)
+        )
+    return jsonify({"choices": choices})
+
+
 @bp.get("/chat/<conversation_id>")
 def conversation(conversation_id: str):
     """
@@ -95,6 +116,8 @@ def conversation(conversation_id: str):
     stored = conversation_service.load(current_user_id(), conversation_id)
     if not stored:
         abort(404)
+    context = assistant_context.resolve(current_user_id(),
+        request.args.get("context_kind", ""), request.args.get("context_id", ""))
 
     return render_template(
         "chat.html",
@@ -102,6 +125,10 @@ def conversation(conversation_id: str):
         messages=stored["messages"],
         starters=suggestions.AGENT_STARTERS,
         initial_prompt="",
+        chat_mode=("wick" if request.args.get("mode") == "wick" or
+                   (not request.args.get("mode") and stored.get("origin") == "assistant")
+                   else "research"),
+        context=context,
     )
 
 
@@ -200,7 +227,7 @@ def ask():
     # is already spent, and a 400 delivered as a stream event is a bad request
     # the browser was told to treat as success.
     payload = form_or_json("question", "conversation_id", "action", "source_message_id",
-                           "surface", "context_kind", "context_id")
+                           "surface", "context_kind", "context_id", "chat_mode")
     question = agent_service.validate_question(payload.get("question") or "")
     conversation_id = (payload.get("conversation_id") or "").strip() or None
     tier = current_tier()
@@ -210,9 +237,13 @@ def ask():
     surface = payload.get("surface") or "agent"
     if surface not in ("agent", "assistant"):
         abort(400)
+    chat_mode = agent_service.validate_mode(payload.get("chat_mode") or
+        ("wick" if surface == "assistant" else "research"))
+    if surface == "assistant" and chat_mode != "wick":
+        abort(400)
     context = (assistant_context.resolve(user_id, payload.get("context_kind") or "",
                                          payload.get("context_id") or "")
-               if surface == "assistant" else None)
+               if chat_mode == "wick" else None)
     if not isinstance(mode, str) or not isinstance(source_id, str):
         abort(400)
     mode = mode.strip()
@@ -228,7 +259,10 @@ def ask():
     if not agent_service.is_connected():
         # Validates first, so a malformed question is still a 400 rather than
         # being masked by the unavailability behind it.
-        result = agent_service.ask(question, tier=tier, user_id=user_id)
+        options = {"tier": tier, "user_id": user_id}
+        if chat_mode != "research":
+            options["mode"] = chat_mode
+        result = agent_service.ask(question, **options)
         return jsonify(result), 503
 
     consume_quota(quota_service.AGENT_QUERY)
@@ -249,7 +283,8 @@ def ask():
             stream_with_context(_stream_turn(question, tier, user_id, conversation_id,
                                              run_id=run_id, owner=owner,
                                              prepared=prepared, mode=mode, source_id=source_id,
-                                             context=context, surface=surface)),
+                                             context=context, surface=surface,
+                                             chat_mode=chat_mode)),
             mimetype="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
@@ -261,10 +296,11 @@ def ask():
         )
 
     result = _run_turn(question, tier, user_id, conversation_id,
-                       prepared=prepared, context=context)
+                       prepared=prepared, context=context, chat_mode=chat_mode)
     return jsonify(_with_conversation(result, user_id, conversation_id, question,
                                      prepared=prepared, mode=mode, source_id=source_id,
-                                     context=context, surface=surface))
+                                     context=context, surface=surface,
+                                     chat_mode=chat_mode))
 
 
 @bp.post("/chat/runs/<uuid:run_id>/stop")
@@ -297,7 +333,7 @@ def _wants_stream() -> bool:
 
 def _run_turn(question: str, tier: str, user_id: str | None,
               conversation_id: str | None = None, on_event=None,
-              should_stop=None, prepared=None, context=None) -> dict:
+              should_stop=None, prepared=None, context=None, chat_mode="research") -> dict:
     """
     One measured turn. Shared by the JSON and streaming paths.
 
@@ -314,6 +350,8 @@ def _run_turn(question: str, tier: str, user_id: str | None,
             options = {"tier": tier, "user_id": user_id,
                        "conversation_history": history, "on_event": on_event,
                        "usage": tally}
+            if chat_mode != "research":
+                options["mode"] = chat_mode
             if context:
                 options["page_context"] = context
             if should_stop:
@@ -341,7 +379,7 @@ def _run_turn(question: str, tier: str, user_id: str | None,
 def _with_conversation(result: dict, user_id: str | None,
                        conversation_id: str | None, question: str, *,
                        prepared=None, mode: str = "new", source_id=None,
-                       context=None, surface="agent") -> dict:
+                       context=None, surface="agent", chat_mode="research") -> dict:
     """
     Persist the turn and tell the page where it landed.
 
@@ -352,7 +390,8 @@ def _with_conversation(result: dict, user_id: str | None,
     stored = conversation_service.record_turn(
         user_id, conversation_id, question, result, mode=mode, source_id=source_id,
         expected_head=prepared["expected_head"] if prepared else None,
-        origin=surface, origin_context=context["label"] if context else None)
+        origin="assistant" if chat_mode == "wick" else surface,
+        origin_context=context["label"] if context else None)
     return dict(result, conversation_id=stored)
 
 
@@ -362,7 +401,8 @@ def _sse(payload: dict) -> str:
 
 def _stream_turn(question: str, tier: str, user_id: str | None,
                  conversation_id: str | None = None, *, run_id=None, owner=None,
-                 prepared=None, mode="new", source_id=None, context=None, surface="agent"):
+                 prepared=None, mode="new", source_id=None, context=None, surface="agent",
+                 chat_mode="research"):
     """
     Run the turn on a worker thread and relay its progress as it happens.
 
@@ -384,14 +424,16 @@ def _stream_turn(question: str, tier: str, user_id: str | None,
             result = _run_turn(
                 question, tier, user_id, conversation_id, on_event=events.put,
                 should_stop=(lambda: agent_runs.status(run_id, owner) == "stop_requested")
-                if run_id else None, prepared=prepared, context=context)
+                if run_id else None, prepared=prepared, context=context,
+                chat_mode=chat_mode)
             terminal = agent_runs.finish(run_id, owner) if run_id else "completed"
             if terminal == "stopped" or result.get("status") == agent_service.STATUS_STOPPED:
                 result = dict(result, status=agent_service.STATUS_STOPPED,
                               message="Stopped. Work already completed may have used your allowance.")
             outcome["result"] = (_with_conversation(
                 result, user_id, conversation_id, question, prepared=prepared,
-                mode=mode, source_id=source_id, context=context, surface=surface)
+                mode=mode, source_id=source_id, context=context, surface=surface,
+                chat_mode=chat_mode)
                 if result.get("answer")
                                  else result)
         except ResearchCopilotError as exc:

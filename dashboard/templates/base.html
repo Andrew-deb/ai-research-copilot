@@ -204,7 +204,7 @@
             {% for kind in ('all', 'agent', 'assistant', 'search') %}
               <button type="button" class="history-filter-option {{ 'is-active' if kind == 'all' }}"
                       data-history-kind="{{ kind }}" aria-pressed="{{ 'true' if kind == 'all' else 'false' }}">
-                <span>{{ kind | capitalize }}</span><span class="history-filter-check" aria-hidden="true">✓</span>
+                <span>{{ 'Wick' if kind == 'assistant' else 'Research' if kind == 'agent' else kind | capitalize }}</span><span class="history-filter-check" aria-hidden="true">✓</span>
               </button>
             {% endfor %}
           </div>
@@ -228,7 +228,7 @@
                  data-conversation="{{ chat.conversation_id }}"
                  data-pinned="{{ '1' if chat.pinned else '0' }}"
                  data-origin="{{ chat.origin }}"
-                 title="Started in {{ chat.origin | capitalize }}{{ ' · ' + chat.origin_context if chat.origin_context else '' }}">
+                 title="Started in {{ 'Wick' if chat.origin == 'assistant' else 'Research' }}{{ ' · ' + chat.origin_context if chat.origin_context else '' }}">
               <a href="{{ url_for('chat.conversation', conversation_id=chat.conversation_id) }}"
                  class="nav-item nav-item-chat">
                 {{ icon('spark' if chat.origin == 'assistant' else 'chat') }}<span class="nav-chat-title">{{ chat.title }}</span>
@@ -362,7 +362,7 @@
         <div class="history-filters" role="group" aria-label="Search history type">
           {% for kind in ('all', 'agent', 'assistant', 'search') %}
             <button type="button" class="history-filter {{ 'is-active' if kind == 'all' }}"
-                    data-search-kind="{{ kind }}" aria-pressed="{{ 'true' if kind == 'all' else 'false' }}">{{ kind | capitalize }}</button>
+                    data-search-kind="{{ kind }}" aria-pressed="{{ 'true' if kind == 'all' else 'false' }}">{{ 'Wick' if kind == 'assistant' else 'Research' if kind == 'agent' else kind | capitalize }}</button>
           {% endfor %}
         </div>
         <h3 class="dialog-label">History</h3>
@@ -427,9 +427,9 @@
         {% endif %}
         {% if is_workspace_shell and not ep.startswith('chat.') %}
         <button type="button" class="icon-btn assistant-toggle" id="assistant-toggle"
-                aria-label="Open Alfred assistant" title="Alfred assistant" data-tooltip="Alfred assistant"
+                aria-label="Open Wick, your workspace assistant" title="Wick" data-tooltip="Wick"
                 aria-controls="assistant-panel" aria-expanded="false">
-          <img src="{{ url_for('static', filename='img/alfred/favicon-magnifier.png') }}" alt="">
+          <img src="{{ url_for('static', filename='img/wick-mark.svg') }}" alt="">
         </button>
         {% endif %}
         <button type="button" class="icon-btn theme-toggle" id="theme-toggle"
@@ -441,23 +441,41 @@
     </header>
 
     {% if is_workspace_shell and not ep.startswith('chat.') %}
-    <aside class="assistant-panel" id="assistant-panel" hidden aria-label="Alfred assistant"
+    <aside class="assistant-panel" id="assistant-panel" hidden aria-label="Wick, your workspace assistant"
            data-owner="{{ current_user.user_id if is_authenticated else 'demo' }}">
+      <div class="rail-handle rail-handle-left" id="assistant-resize" role="separator"
+           tabindex="0" aria-label="Resize Wick panel" aria-orientation="vertical"></div>
       <header class="assistant-panel-head">
-        <strong>Alfred</strong>
-        <span id="assistant-context" class="assistant-context"></span>
+        <img src="{{ url_for('static', filename='img/wick-mark.svg') }}" alt="" width="22" height="22">
+        <strong>Wick</strong>
+        <label class="assistant-context" for="wick-context">
+          <span class="sr-only">Wick context</span>
+          <select id="wick-context" aria-label="Wick context">
+            <option value="page">This page</option>
+            <option value="none">No page</option>
+          </select>
+        </label>
         <button type="button" class="icon-btn" id="assistant-new"
-                aria-label="New assistant conversation" title="New conversation">{{ icon('plus') }}</button>
+                aria-label="New Wick conversation" title="New conversation">{{ icon('plus') }}</button>
         {% if is_authenticated %}
         <button type="button" class="icon-btn" id="assistant-history"
-                aria-label="Assistant history" title="Search history">{{ icon('chat') }}</button>
+                aria-label="Wick history" title="Wick history" aria-expanded="false"
+                aria-controls="wick-history">{{ icon('chat') }}</button>
         {% endif %}
         <button type="button" class="icon-btn" id="assistant-full"
                 aria-label="Open in full chat" title="Open in full chat">{{ icon('expand') }}</button>
         <button type="button" class="icon-btn" id="assistant-close"
-                aria-label="Close Alfred assistant" title="Close Alfred assistant">{{ icon('close') }}</button>
+                aria-label="Close Wick" title="Close Wick">{{ icon('close') }}</button>
       </header>
-      <iframe id="assistant-frame" title="Alfred conversation" src="about:blank"></iframe>
+      {% if is_authenticated %}
+      <section class="wick-history" id="wick-history" hidden aria-label="Wick conversations">
+        <label for="wick-history-query">Wick conversations</label>
+        <input id="wick-history-query" type="search" placeholder="Search conversations">
+        <div id="wick-history-results" class="wick-history-results"></div>
+        <button type="button" id="wick-history-more" hidden>Load more</button>
+      </section>
+      {% endif %}
+      <iframe id="assistant-frame" title="Wick conversation" src="about:blank"></iframe>
       <p class="assistant-update" id="assistant-update" hidden role="status"></p>
     </aside>
     {% endif %}

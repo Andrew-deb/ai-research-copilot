@@ -1449,15 +1449,32 @@ h1, h2, h3,
   padding: 8px 12px; border-bottom: 1px solid var(--border);
 }
 .assistant-panel-head strong { font-family: var(--font-display); font-size: 15px; }
+.assistant-panel .rail-handle { position: absolute; left: -5px; top: 0; bottom: 0; z-index: 2; }
+.wick-history {
+  position: absolute; top: 56px; left: 12px; right: 12px; z-index: 4;
+  max-height: min(65dvh, 470px); padding: 14px; overflow: auto;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px; box-shadow: 0 12px 32px #0002;
+}
+.wick-history label { display: block; font-weight: 600; margin-bottom: 8px; }
+.wick-history input { box-sizing: border-box; width: 100%; padding: 9px; margin-bottom: 8px; }
+.wick-history-results { display: grid; gap: 3px; }
+.wick-history-results button { display: block; text-align: left; width: 100%; padding: 10px;
+  border: 0; border-radius: 8px; background: transparent; color: var(--text); cursor: pointer; }
+.wick-history-results button:hover, .wick-history-results button:focus-visible { background: var(--surface-raised, #8882); }
+.wick-history-results small { display: block; color: var(--text-muted); }
 .assistant-context {
   flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
   white-space: nowrap; color: var(--text-muted); font-size: 11px;
 }
+.assistant-context select { max-width: 100%; border: 1px solid var(--border);
+  border-radius: 8px; padding: 5px; color: var(--text); background: var(--surface); }
 .assistant-panel iframe { flex: 1; min-height: 0; width: 100%; border: 0; }
 body.assistant-docked .main-col { margin-right: var(--assistant-w); }
 body.assistant-docked .dialog-scrim { z-index: 90; }
 @media (max-width: 900px) {
   .assistant-panel { width: 100vw; z-index: 60; border-left: 0; }
+  .assistant-panel .rail-handle { display: none; }
   body.assistant-docked .main-col { margin-right: 0; }
 }
 

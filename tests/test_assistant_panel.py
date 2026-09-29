@@ -74,3 +74,61 @@ def test_panel_stream_gets_durable_assistant_origin_before_run(client, db, monke
     saved = next(iter(db.conversations.values()))
     assert saved["origin"] == "assistant"
     assert saved["origin_context"] == "Paper search"
+
+
+def test_wick_tool_policy_is_enforced_not_only_advertised():
+    from exceptions import CapabilityDeniedError
+    from services import agent_service
+
+    assert "compare_papers" in agent_service.callable_tools("authenticated", "research")
+    assert "compare_papers" not in agent_service.callable_tools("authenticated", "wick")
+    with pytest.raises(CapabilityDeniedError):
+        agent_service.ensure_callable("authenticated", "compare_papers", "wick")
+    assert "create_collection" in agent_service.callable_tools("authenticated", "wick")
+    assert "create_collection" not in agent_service.callable_tools("anonymous", "wick")
+
+
+def test_wick_mode_in_full_chat_and_panel_cannot_claim_research(client):
+    response = client.get("/chat?mode=wick")
+    assert response.status_code == 200
+    assert b'data-chat-mode="wick"' in response.data
+    assert b'<option value="wick" selected>' in response.data
+
+    from routes import chat
+    # Mode is rejected before quota consumption or a tool connection is attempted.
+    response = client.post("/chat/ask", json={"question": "Show my collections",
+        "surface": "assistant", "chat_mode": "research"})
+    assert response.status_code == 400
+
+
+def test_wick_context_is_resolved_for_full_chat(client, db):
+    paper = db.seed_paper(title="Selected paper")
+    response = client.get("/chat?mode=wick&context_kind=paper&context_id=" +
+                          str(paper["paper_id"]))
+    assert response.status_code == 200
+    assert b'data-context-kind="paper"' in response.data
+    assert b"Selected paper" in response.data
+
+
+def test_context_choices_are_scoped_to_current_user(client, db):
+    owner = db.get_or_create_user("someone-else@example.com")
+    private = db.create_collection(str(owner["user_id"]), "Private elsewhere")
+    response = client.get("/chat/assistant/contexts")
+    assert response.status_code == 200
+    assert str(private["collection_id"]) not in response.get_data(as_text=True)
+
+
+def test_new_full_chat_wick_turn_is_listed_with_wick_history(client, db, monkeypatch):
+    from routes import chat
+    monkeypatch.setattr(chat.agent_service, "is_connected", lambda: True)
+    monkeypatch.setattr(chat, "consume_quota", lambda metric: None)
+    monkeypatch.setattr(chat, "_run_turn", lambda *args, **kwargs: {
+        "status": "ok", "question": "Show collections", "answer": "Here are your collections.",
+        "citations": [], "sources": [], "tool_calls": [],
+        "usage": {"llm_turns": 1, "tool_calls": 0, "embedding_calls": 0},
+    })
+    response = client.post("/chat/ask", json={
+        "question": "Show collections", "chat_mode": "wick", "surface": "agent"})
+    assert response.status_code == 200
+    saved = next(iter(db.conversations.values()))
+    assert saved["origin"] == "assistant"

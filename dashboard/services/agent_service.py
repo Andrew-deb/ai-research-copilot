@@ -139,6 +139,21 @@ WRITE_TOOLS = tuple(name for name, cap in TOOL_CAPABILITIES.items() if cap is no
 # turning it on widens what signed-in people can do and nothing else.
 WRITE_TOOLS_ENABLED = True
 
+# Product modes share orchestration, but Wick's catalog is limited to finding
+# workspace targets and acting on them. The tier gate is applied separately.
+WICK_TOOLS = frozenset({
+    "search_papers", "get_paper_details", "list_collections",
+    "get_collection_details", "create_collection", "add_paper_to_collection",
+    "remove_paper_from_collection", "generate_reading_plan",
+    "mark_paper_status", "save_note",
+})
+
+
+def validate_mode(mode: str) -> str:
+    if mode not in ("research", "wick"):
+        raise ValidationError("Unknown chat mode.")
+    return mode
+
 
 def tools_for_tier(tier: str) -> tuple[str, ...]:
     """
@@ -227,7 +242,7 @@ def envelope(question: str, *, status: str = STATUS_OK, answer: str | None = Non
     }
 
 
-def callable_tools(tier: str) -> tuple[str, ...]:
+def callable_tools(tier: str, mode: str = "research") -> tuple[str, ...]:
     """
     What the agent may actually invoke: tier permission AND the phase gate.
 
@@ -235,12 +250,14 @@ def callable_tools(tier: str) -> tuple[str, ...]:
     switched on yet". Both have to pass.
     """
     allowed = tools_for_tier(tier)
+    if validate_mode(mode) == "wick":
+        allowed = tuple(n for n in allowed if n in WICK_TOOLS)
     if not WRITE_TOOLS_ENABLED:
         allowed = tuple(n for n in allowed if TOOL_CAPABILITIES[n] is None)
     return allowed
 
 
-def ensure_callable(tier: str, tool_name: str) -> None:
+def ensure_callable(tier: str, tool_name: str, mode: str = "research") -> None:
     """
     Raise unless this tool may run, for this tier, in this phase.
 
@@ -249,6 +266,9 @@ def ensure_callable(tier: str, tool_name: str) -> None:
     not tell it about that one" is not access control.
     """
     check_tool(tier, tool_name)
+    if tool_name not in callable_tools(tier, mode):
+        raise CapabilityDeniedError("This tool is unavailable in the selected mode.",
+                                    capability=None, requires_auth=False)
     if not WRITE_TOOLS_ENABLED and TOOL_CAPABILITIES[tool_name] is not None:
         raise CapabilityDeniedError(
             "The assistant cannot save or change anything yet — that arrives in "
@@ -341,7 +361,7 @@ def _actions_guidance(can_write: bool) -> str:
     )
 
 
-def build_system_prompt(tier: str) -> str:
+def build_system_prompt(tier: str, mode: str = "research") -> str:
     """
     The base prompt plus the tools this caller may actually use.
 
@@ -350,14 +370,18 @@ def build_system_prompt(tier: str) -> str:
     spend a turn apologising — so the real catalog is appended and declared
     authoritative over the one above it.
     """
-    available = callable_tools(tier)
+    available = callable_tools(tier, mode)
     lines = "\n".join(f"- {name}" for name in available)
     # Derived from the catalog rather than from the tier or the gate, so the
     # prompt cannot disagree with what the session can actually call.
     can_write = any(TOOL_CAPABILITIES[name] is not None for name in available)
     return (
         f"{_base_prompt()}\n\n"
-        "---\n\n"
+        + ("You are Wick, the workspace assistant in Alfred. Help the person "
+           "organize and operate their research workspace with the available "
+           "tools. For deep paper comparison and topic explanation, suggest "
+           "Research mode.\n\n" if mode == "wick" else "")
+        + "---\n\n"
         "## Tools available in THIS session\n\n"
         "This list overrides any tool catalog above it. Only these may be "
         "called; any other name will be refused:\n\n"
@@ -538,9 +562,9 @@ def _clean(text: str) -> str:
     return _TOOL_XML.sub("", text).strip()
 
 
-def _tool_schemas(tier: str) -> list[dict]:
+def _tool_schemas(tier: str, mode: str = "research") -> list[dict]:
     """OpenRouter function schemas for the tools this tier may call."""
-    available = set(callable_tools(tier))
+    available = set(callable_tools(tier, mode))
     return [
         {
             "type": "function",
@@ -716,7 +740,7 @@ def _emit(on_event, **payload) -> None:
 
 
 def ask(question: str, *, tier: str, user_id: str | None = None,
-        conversation_history: list[dict] | None = None,
+        conversation_history: list[dict] | None = None, mode: str = "research",
         on_event=None, usage=None, should_stop=None, page_context=None) -> dict:
     """
     Answer one research question, running tools as needed.
@@ -739,6 +763,7 @@ def ask(question: str, *, tier: str, user_id: str | None = None,
     more than an error page.
     """
     cleaned = validate_question(question)
+    validate_mode(mode)
     def check_stop():
         if should_stop and should_stop():
             raise RunStopped()
@@ -762,7 +787,7 @@ def ask(question: str, *, tier: str, user_id: str | None = None,
     # dependency being unavailable must degrade the feature, not 500 the page.
     try:
         check_stop()
-        schemas = _tool_schemas(tier)
+        schemas = _tool_schemas(tier, mode)
         check_stop()
         logger.info("Agent tool schemas loaded count=%d", len(schemas))
     except ExternalAPIError as exc:
@@ -770,7 +795,7 @@ def ask(question: str, *, tier: str, user_id: str | None = None,
         return envelope(cleaned, status=STATUS_NOT_CONNECTED, message=str(exc))
 
     messages = [
-        {"role": "system", "content": build_system_prompt(tier)},
+        {"role": "system", "content": build_system_prompt(tier, mode)},
     ]
     if page_context:
         # Resolved by the dashboard on this turn, not copied from a browser
@@ -908,7 +933,7 @@ def ask(question: str, *, tier: str, user_id: str | None = None,
                 tool_started = time.monotonic()
                 logger.info("Agent tool start name=%s", name)
                 try:
-                    ensure_callable(tier, name)
+                    ensure_callable(tier, name, mode)
                     result = call_tool(name, arguments)
                     # Citations are collected from the FULL result, which still
                     # has venue and citation_count; the model is handed the

@@ -824,3 +824,8 @@
   .content-fill .chat-stage { padding-bottom: 2px; }
   .content-fill .chat-note { margin-top: 6px; }
 }
+.chat-mode-choice { display: flex; align-items: center; gap: 8px; color: var(--text-muted);
+  font-size: 12px; margin-top: 6px; }
+.chat-mode-choice select { color: var(--text); background: var(--surface);
+  border: 1px solid var(--border); border-radius: 8px; padding: 5px 8px; font: inherit; }
+.chat-mode-choice span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

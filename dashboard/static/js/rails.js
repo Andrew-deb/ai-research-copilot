@@ -15,6 +15,14 @@
 
   var RAILS = [
     {
+      handle: "assistant-resize",
+      prop: "--assistant-w",
+      store: "rc-rail-assistant",
+      widthFrom: function (x) { return window.innerWidth - x; },
+      min: 340,
+      max: 760,
+    },
+    {
       handle: "sidebar-resize",
       prop: "--sidebar-w",
       store: "rc-rail-sidebar",
@@ -111,8 +119,8 @@
       var width = current(rail);
       var next = null;
 
-      if (e.key === "ArrowLeft") { next = width + (rail.prop === "--notes-w" ? step : -step); }
-      else if (e.key === "ArrowRight") { next = width + (rail.prop === "--notes-w" ? -step : step); }
+      if (e.key === "ArrowLeft") { next = width + (rail.prop !== "--sidebar-w" ? step : -step); }
+      else if (e.key === "ArrowRight") { next = width + (rail.prop !== "--sidebar-w" ? -step : step); }
       else if (e.key === "Home") { next = rail.min; }
       else if (e.key === "End") { next = rail.max; }
       if (next === null) { return; }
