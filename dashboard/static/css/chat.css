@@ -136,7 +136,8 @@
 }
 .chat-prompt-edit-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .chat-prompt-edit-actions button { padding: 7px 14px; border-radius: 999px; color: var(--text); }
-.chat-prompt-edit-actions .chat-prompt-save { background: var(--brand); color: #fff; }
+/* var(--brand-fg): white on the dark theme's bright brand is 2.0:1. */
+.chat-prompt-edit-actions .chat-prompt-save { background: var(--brand); color: var(--brand-fg); }
 .chat-prompt-edit-actions .chat-prompt-save:hover { filter: brightness(.92); background: var(--brand); }
 
 .chat-msg-assistant {
