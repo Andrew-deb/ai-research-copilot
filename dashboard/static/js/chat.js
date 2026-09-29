@@ -34,6 +34,10 @@
       page.dataset.chatMode = modePicker.value;
       document.getElementById("chat-mode-description").textContent =
         modePicker.value === "wick" ? "Workspace operations" : "Paper discovery and research";
+      input.placeholder = modePicker.value === "wick"
+        ? "Ask Wick about your workspace…" : "Ask a research question…";
+      input.setAttribute("aria-label", modePicker.value === "wick"
+        ? "Ask Wick" : "Ask a research question");
       var url = new URL(location.href);
       url.searchParams.set("mode", modePicker.value);
       history.replaceState(null, "", url.pathname + url.search);

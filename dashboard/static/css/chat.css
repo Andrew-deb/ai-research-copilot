@@ -824,8 +824,21 @@
   .content-fill .chat-stage { padding-bottom: 2px; }
   .content-fill .chat-note { margin-top: 6px; }
 }
-.chat-mode-choice { display: flex; align-items: center; gap: 8px; color: var(--text-muted);
-  font-size: 12px; margin-top: 6px; }
-.chat-mode-choice select { color: var(--text); background: var(--surface);
-  border: 1px solid var(--border); border-radius: 8px; padding: 5px 8px; font: inherit; }
-.chat-mode-choice span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.composer-with-mode { display: flex; flex-direction: column; align-items: stretch; gap: 2px;
+  padding: 12px 12px 9px 16px; border-radius: 22px; }
+.composer-with-mode .sr-only { position: absolute; width: 1px; height: 1px; padding: 0;
+  margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.composer-with-mode .composer-input { width: 100%; min-height: 36px; padding: 3px 0 8px; }
+.composer-footer { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.chat-mode-choice { display: flex; align-items: center; gap: 8px; flex: none;
+  min-width: 0; margin-left: auto; }
+.chat-mode-choice select { width: auto; max-width: 125px; padding: 5px 22px 5px 8px;
+  color: var(--text); background: var(--surface); border: 0; border-radius: 8px;
+  font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.chat-mode-choice select:hover { background: var(--surface-2); }
+.chat-mode-choice select:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+.composer-context { min-width: 0; max-width: 55%; padding: 5px 8px; overflow: hidden;
+  white-space: nowrap; text-overflow: ellipsis; border: 0; border-radius: 8px;
+  background: var(--surface-2); color: var(--text-muted); font: inherit; font-size: 11px;
+  cursor: pointer; }
+.composer-footer .composer-send, .composer-footer .composer-stop { margin-left: 0; }

@@ -93,6 +93,10 @@ def test_wick_mode_in_full_chat_and_panel_cannot_claim_research(client):
     assert response.status_code == 200
     assert b'data-chat-mode="wick"' in response.data
     assert b'<option value="wick" selected>' in response.data
+    composer = response.get_data(as_text=True).split('<form class="composer', 1)[1].split("</form>", 1)[0]
+    assert 'id="chat-mode"' in composer
+    assert 'class="composer-footer"' in composer
+    assert 'Ask Wick about your workspace' in composer
 
     from routes import chat
     # Mode is rejected before quota consumption or a tool connection is attempted.

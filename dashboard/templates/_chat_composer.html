@@ -19,10 +19,24 @@
   {# The textarea's content is kept on one line deliberately: a textarea
      preserves its own whitespace, so indenting it would arrive as blanks in
      front of the question. #}
-  <form class="composer" id="chat-composer" autocomplete="off">
+  <form class="composer {{ 'composer-with-mode' if chat_mode }}" id="chat-composer" autocomplete="off">
     <textarea class="composer-input" id="chat-input" rows="1"
-              placeholder="{{ composer_placeholder | default('Ask a research question…') }}"
-              aria-label="Ask a research question">{{ initial_prompt | default('') }}</textarea>
+              placeholder="{{ composer_placeholder | default('Ask Wick about your workspace…' if chat_mode == 'wick' else 'Ask a research question…') }}"
+              aria-label="{{ 'Ask Wick' if chat_mode == 'wick' else 'Ask a research question' }}">{{ initial_prompt | default('') }}</textarea>
+    {% if chat_mode %}
+    <div class="composer-footer">
+      {% if context %}
+      <button type="button" id="chat-context-clear" class="composer-context" title="Remove context">Context: {{ context.label }} ×</button>
+      {% endif %}
+      <div class="chat-mode-choice">
+        <label class="sr-only" for="chat-mode">Chat mode</label>
+        <select id="chat-mode" aria-label="Chat mode" title="Choose Research or Wick">
+          <option value="research" {{ 'selected' if chat_mode == 'research' }}>Research</option>
+          <option value="wick" {{ 'selected' if chat_mode == 'wick' }}>Wick</option>
+        </select>
+        <span class="sr-only" id="chat-mode-description">{{ 'Workspace operations' if chat_mode == 'wick' else 'Paper discovery and research' }}</span>
+      </div>
+    {% endif %}
     <button class="composer-send" type="submit" aria-label="Ask">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -30,20 +44,8 @@
       </svg>
     </button>
     <button class="composer-stop" type="button" hidden aria-label="Stop agent run">Stop</button>
+    {% if chat_mode %}</div>{% endif %}
   </form>
-  {% if chat_mode %}
-  <div class="chat-mode-choice">
-    <label for="chat-mode">Mode</label>
-    <select id="chat-mode" aria-label="Chat mode">
-      <option value="research" {{ 'selected' if chat_mode == 'research' }}>Research</option>
-      <option value="wick" {{ 'selected' if chat_mode == 'wick' }}>Wick</option>
-    </select>
-    <span id="chat-mode-description">{{ 'Workspace operations' if chat_mode == 'wick' else 'Paper discovery and research' }}</span>
-    {% if context %}
-    <button type="button" id="chat-context-clear" title="Remove context">Context: {{ context.label }} ×</button>
-    {% endif %}
-  </div>
-  {% endif %}
 
   {# Below the composer, not above it: these are suggestions for an empty input,
      and putting them first made them read as the primary control. Hidden once
