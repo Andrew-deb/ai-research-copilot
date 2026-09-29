@@ -7,7 +7,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="csrf-token" content="{{ csrf_token() }}">
-  <title>Alfred assistant</title>
+  <title>Wick — Alfred</title>
   <script>try { document.documentElement.dataset.theme = localStorage.getItem('rc-theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); } catch (e) {}</script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@500;600&display=swap">
@@ -24,8 +24,21 @@
        {% if conversation %}data-conversation="{{ conversation.conversation_id }}"{% endif %}>
     {% if messages %}<script type="application/json" id="chat-history">{{ messages | tojson }}</script>{% endif %}
     <div class="chat-stage">
-      {% if not messages %}<p class="assistant-welcome">Ask Alfred about this page or your research.</p>{% endif %}
-      {% include "_chat_composer.html" %}
+    {% if not messages %}
+      <div class="assistant-welcome">
+        <img src="{{ url_for('static', filename='img/wick-mark.svg') }}" alt="" width="64" height="64">
+        <h1>Wick</h1>
+        <p>Your workspace assistant</p>
+        <span>Ask for help organizing your research in Alfred.</span>
+        <div class="wick-suggestions">
+          <button type="button" class="prompt-chip" data-prompt="Show me my collections">Show my collections</button>
+          <button type="button" class="prompt-chip" data-prompt="Help me organize papers into a collection">Organize my papers</button>
+          <button type="button" class="prompt-chip" data-prompt="What can you help me do in my workspace?">What can Wick do?</button>
+        </div>
+      </div>
+    {% endif %}
+    {% set composer_placeholder = 'Ask Wick about your workspace…' %}
+    {% include "_chat_composer.html" %}
     </div>
   </div>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/14.1.2/marked.min.js"

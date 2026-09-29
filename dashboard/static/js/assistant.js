@@ -10,6 +10,10 @@
   var full = document.getElementById("assistant-full");
   var newButton = document.getElementById("assistant-new");
   var historyButton = document.getElementById("assistant-history");
+  var historyPanel = document.getElementById("wick-history");
+  var historyQuery = document.getElementById("wick-history-query");
+  var historyResults = document.getElementById("wick-history-results");
+  var historyMore = document.getElementById("wick-history-more");
   var contextLabel = document.getElementById("assistant-context");
   var owner = panel.dataset.owner || "demo";
   var stateKey = "alfred-panel-open:" + owner;
@@ -53,7 +57,7 @@
     panel.hidden = false;
     document.body.classList.add("assistant-docked");
     toggle.setAttribute("aria-expanded", "true");
-    toggle.setAttribute("aria-label", "Close Alfred assistant");
+    toggle.setAttribute("aria-label", "Close Wick");
     remember(true);
     if (frame.getAttribute("src") === "about:blank") { frame.src = url(); }
     else { frame.contentWindow.postMessage({ source: "alfred-shell", type: "focus" }, location.origin); }
@@ -63,7 +67,8 @@
     panel.hidden = true;
     document.body.classList.remove("assistant-docked");
     toggle.setAttribute("aria-expanded", "false");
-    toggle.setAttribute("aria-label", "Open Alfred assistant");
+    toggle.setAttribute("aria-label", "Open Wick, your workspace assistant");
+    closeHistory();
     remember(false);
     if (restoreFocus) { (lastFocus && lastFocus.isConnected ? lastFocus : toggle).focus(); }
   }
@@ -76,7 +81,7 @@
       var active = sessionStorage.getItem("alfred-active-run:assistant:" + owner);
       if (active) { sessionStorage.setItem("alfred-active-run", active); }
     } catch (e) { /* private mode */ }
-    location.href = conversation ? "/chat/" + encodeURIComponent(conversation) : "/chat";
+    location.href = (conversation ? "/chat/" + encodeURIComponent(conversation) : "/chat") + "?mode=wick";
   });
   newButton.addEventListener("click", function () {
     conversation = null;
@@ -86,29 +91,61 @@
     } catch (e) { /* private mode */ }
     frame.src = url();
   });
+  var historyOffset = 0;
+  var historyTimer = null;
+  function closeHistory() {
+    if (!historyPanel) { return; }
+    historyPanel.hidden = true;
+    historyButton.setAttribute("aria-expanded", "false");
+  }
+  function loadHistory(append) {
+    if (!historyPanel) { return; }
+    if (!append) { historyOffset = 0; historyResults.replaceChildren(); }
+    var params = new URLSearchParams({ kind: "assistant", limit: "20",
+      offset: String(historyOffset), q: historyQuery.value.trim() });
+    fetch("/chat/history?" + params.toString())
+      .then(function (response) { if (!response.ok) { throw new Error(); } return response.json(); })
+      .then(function (body) {
+        body.entries.forEach(function (entry) {
+          var button = document.createElement("button");
+          button.type = "button";
+          button.textContent = entry.title;
+          var age = document.createElement("small");
+          age.textContent = entry.updated_at ? new Date(entry.updated_at).toLocaleDateString() : "";
+          button.appendChild(age);
+          button.addEventListener("click", function () {
+            conversation = entry.conversation_id;
+            try { sessionStorage.setItem(threadKey, conversation); } catch (e) { /* private mode */ }
+            frame.src = url();
+            closeHistory();
+          });
+          historyResults.appendChild(button);
+        });
+        historyOffset += body.entries.length;
+        historyMore.hidden = body.entries.length < 20;
+        if (!historyOffset) { historyResults.textContent = "No Wick conversations yet."; }
+      })
+      .catch(function () { historyResults.textContent = "Could not load Wick conversations."; });
+  }
   if (historyButton) {
     historyButton.addEventListener("click", function () {
-      var opener = document.getElementById("chat-search-open");
-      if (opener) { opener.click(); }
+      if (!historyPanel.hidden) { closeHistory(); return; }
+      historyPanel.hidden = false;
+      historyButton.setAttribute("aria-expanded", "true");
+      loadHistory(false);
+      historyQuery.focus();
     });
-    var results = document.getElementById("chat-search-results");
-    if (results) {
-      results.addEventListener("click", function (event) {
-        if (panel.hidden) { return; }
-        var link = event.target.closest("a[href]");
-        if (!link) { return; }
-        var match = new URL(link.href).pathname.match(/^\/chat\/([a-f0-9-]{36})$/i);
-        if (!match) { return; }
-        event.preventDefault();
-        conversation = match[1];
-        try { sessionStorage.setItem(threadKey, conversation); } catch (e) { /* private mode */ }
-        document.getElementById("chat-search-close").click();
-        frame.src = url();
-      });
-    }
+    historyQuery.addEventListener("input", function () {
+      clearTimeout(historyTimer);
+      historyTimer = setTimeout(function () { loadHistory(false); }, 220);
+    });
+    historyMore.addEventListener("click", function () { loadHistory(true); });
   }
   document.addEventListener("alfred:notes-opening", function () { close(false); });
   document.addEventListener("keydown", function (event) {
+    if (event.key === "Escape" && historyPanel && !historyPanel.hidden) {
+      closeHistory(); historyButton.focus(); return;
+    }
     if (event.key === "Escape" && !panel.hidden && !event.defaultPrevented) { close(true); }
   });
   frame.addEventListener("load", function () {
