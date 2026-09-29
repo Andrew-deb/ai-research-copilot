@@ -299,7 +299,8 @@ def ask():
                        prepared=prepared, context=context, chat_mode=chat_mode)
     return jsonify(_with_conversation(result, user_id, conversation_id, question,
                                      prepared=prepared, mode=mode, source_id=source_id,
-                                     context=context, surface=surface))
+                                     context=context, surface=surface,
+                                     chat_mode=chat_mode))
 
 
 @bp.post("/chat/runs/<uuid:run_id>/stop")
@@ -378,7 +379,7 @@ def _run_turn(question: str, tier: str, user_id: str | None,
 def _with_conversation(result: dict, user_id: str | None,
                        conversation_id: str | None, question: str, *,
                        prepared=None, mode: str = "new", source_id=None,
-                       context=None, surface="agent") -> dict:
+                       context=None, surface="agent", chat_mode="research") -> dict:
     """
     Persist the turn and tell the page where it landed.
 
@@ -389,7 +390,8 @@ def _with_conversation(result: dict, user_id: str | None,
     stored = conversation_service.record_turn(
         user_id, conversation_id, question, result, mode=mode, source_id=source_id,
         expected_head=prepared["expected_head"] if prepared else None,
-        origin=surface, origin_context=context["label"] if context else None)
+        origin="assistant" if chat_mode == "wick" else surface,
+        origin_context=context["label"] if context else None)
     return dict(result, conversation_id=stored)
 
 
@@ -430,7 +432,8 @@ def _stream_turn(question: str, tier: str, user_id: str | None,
                               message="Stopped. Work already completed may have used your allowance.")
             outcome["result"] = (_with_conversation(
                 result, user_id, conversation_id, question, prepared=prepared,
-                mode=mode, source_id=source_id, context=context, surface=surface)
+                mode=mode, source_id=source_id, context=context, surface=surface,
+                chat_mode=chat_mode)
                 if result.get("answer")
                                  else result)
         except ResearchCopilotError as exc:

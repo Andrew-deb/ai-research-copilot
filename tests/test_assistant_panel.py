@@ -116,3 +116,19 @@ def test_context_choices_are_scoped_to_current_user(client, db):
     response = client.get("/chat/assistant/contexts")
     assert response.status_code == 200
     assert str(private["collection_id"]) not in response.get_data(as_text=True)
+
+
+def test_new_full_chat_wick_turn_is_listed_with_wick_history(client, db, monkeypatch):
+    from routes import chat
+    monkeypatch.setattr(chat.agent_service, "is_connected", lambda: True)
+    monkeypatch.setattr(chat, "consume_quota", lambda metric: None)
+    monkeypatch.setattr(chat, "_run_turn", lambda *args, **kwargs: {
+        "status": "ok", "question": "Show collections", "answer": "Here are your collections.",
+        "citations": [], "sources": [], "tool_calls": [],
+        "usage": {"llm_turns": 1, "tool_calls": 0, "embedding_calls": 0},
+    })
+    response = client.post("/chat/ask", json={
+        "question": "Show collections", "chat_mode": "wick", "surface": "agent"})
+    assert response.status_code == 200
+    saved = next(iter(db.conversations.values()))
+    assert saved["origin"] == "assistant"
