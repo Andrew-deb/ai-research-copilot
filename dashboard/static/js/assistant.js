@@ -43,7 +43,7 @@
     // happens to be open now as its context.
     var fallback = conversation ? "none" : "page";
     try {
-      var saved = sessionStorage.getItem(contextKey());
+      var saved = localStorage.getItem(contextKey());
       chosenContext = saved === null ? fallback : JSON.parse(saved);
     } catch (e) { chosenContext = fallback; }
     var pinned = chosenContext && typeof chosenContext === "object" ? chosenContext : null;
@@ -74,7 +74,7 @@
       contextPicker.value.indexOf("item:") === 0
         ? { kind: contextPicker.value.split(":")[1], id: contextPicker.value.split(":")[2],
             label: choice.dataset.label } : contextPicker.value;
-    try { sessionStorage.setItem(contextKey(), JSON.stringify(chosenContext)); } catch (e) { /* private mode */ }
+    try { localStorage.setItem(contextKey(), JSON.stringify(chosenContext)); } catch (e) { /* private mode */ }
     restoreContext();
     if (frame.contentWindow && frame.getAttribute("src") !== "about:blank") {
       frame.contentWindow.postMessage({ source: "alfred-shell", type: "context", value: selectedContext() }, location.origin);
@@ -215,8 +215,8 @@
       conversation = event.data.value;
       try { sessionStorage.setItem(threadKey, conversation); } catch (e) { /* private mode */ }
       try {
-        if (!sessionStorage.getItem(contextKey())) {
-          sessionStorage.setItem(contextKey(), sessionStorage.getItem(oldKey) || '"page"');
+        if (!localStorage.getItem(contextKey())) {
+          localStorage.setItem(contextKey(), localStorage.getItem(oldKey) || '"page"');
         }
       } catch (e) { /* private mode */ }
     }
