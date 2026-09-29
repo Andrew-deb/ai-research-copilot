@@ -1467,6 +1467,8 @@ h1, h2, h3,
   flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
   white-space: nowrap; color: var(--text-muted); font-size: 11px;
 }
+.assistant-context select { max-width: 100%; border: 1px solid var(--border);
+  border-radius: 8px; padding: 5px; color: var(--text); background: var(--surface); }
 .assistant-panel iframe { flex: 1; min-height: 0; width: 100%; border: 0; }
 body.assistant-docked .main-col { margin-right: var(--assistant-w); }
 body.assistant-docked .dialog-scrim { z-index: 90; }

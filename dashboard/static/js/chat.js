@@ -20,6 +20,25 @@
 
   var page = document.querySelector(".chat-page") || document.querySelector(".landing-main");
   var embedded = page && page.dataset.surface === "assistant";
+  var modePicker = document.getElementById("chat-mode");
+  var clearContext = document.getElementById("chat-context-clear");
+  if (clearContext) {
+    clearContext.addEventListener("click", function () {
+      page.dataset.contextKind = "";
+      page.dataset.contextId = "";
+      clearContext.remove();
+    });
+  }
+  if (modePicker) {
+    modePicker.addEventListener("change", function () {
+      page.dataset.chatMode = modePicker.value;
+      document.getElementById("chat-mode-description").textContent =
+        modePicker.value === "wick" ? "Workspace operations" : "Paper discovery and research";
+      var url = new URL(location.href);
+      url.searchParams.set("mode", modePicker.value);
+      history.replaceState(null, "", url.pathname + url.search);
+    });
+  }
   var completedWrites = [];
   var writeTools = ["create_collection", "add_paper_to_collection",
     "remove_paper_from_collection", "generate_reading_plan", "mark_paper_status", "save_note"];
@@ -65,6 +84,10 @@
       if (event.origin !== window.location.origin || event.source !== window.parent ||
           !event.data || event.data.source !== "alfred-shell") { return; }
       if (event.data.type === "focus") { input.focus(); }
+      if (event.data.type === "context") {
+        page.dataset.contextKind = event.data.value ? event.data.value.kind : "";
+        page.dataset.contextId = event.data.value ? event.data.value.id : "";
+      }
       if (event.data.type === "theme") {
         document.documentElement.dataset.theme = event.data.value === "dark" ? "dark" : "light";
       }
@@ -813,8 +836,9 @@
       body: JSON.stringify({ question: question, conversation_id: conversationId,
         action: options.action || "new", source_message_id: options.source_message_id || null,
         surface: embedded ? "assistant" : "agent",
-        context_kind: embedded ? page.dataset.contextKind : "",
-        context_id: embedded ? page.dataset.contextId : "" }),
+        chat_mode: embedded ? "wick" : (modePicker ? modePicker.value : "research"),
+        context_kind: (embedded || (page && page.dataset.chatMode === "wick")) ? page.dataset.contextKind : "",
+        context_id: (embedded || (page && page.dataset.chatMode === "wick")) ? page.dataset.contextId : "" }),
     });
 
     // Refusals (403 capability, 429 quota, 503 unavailable) answer JSON even

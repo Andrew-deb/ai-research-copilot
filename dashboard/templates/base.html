@@ -204,7 +204,7 @@
             {% for kind in ('all', 'agent', 'assistant', 'search') %}
               <button type="button" class="history-filter-option {{ 'is-active' if kind == 'all' }}"
                       data-history-kind="{{ kind }}" aria-pressed="{{ 'true' if kind == 'all' else 'false' }}">
-                <span>{{ kind | capitalize }}</span><span class="history-filter-check" aria-hidden="true">✓</span>
+                <span>{{ 'Wick' if kind == 'assistant' else 'Research' if kind == 'agent' else kind | capitalize }}</span><span class="history-filter-check" aria-hidden="true">✓</span>
               </button>
             {% endfor %}
           </div>
@@ -228,7 +228,7 @@
                  data-conversation="{{ chat.conversation_id }}"
                  data-pinned="{{ '1' if chat.pinned else '0' }}"
                  data-origin="{{ chat.origin }}"
-                 title="Started in {{ chat.origin | capitalize }}{{ ' · ' + chat.origin_context if chat.origin_context else '' }}">
+                 title="Started in {{ 'Wick' if chat.origin == 'assistant' else 'Research' }}{{ ' · ' + chat.origin_context if chat.origin_context else '' }}">
               <a href="{{ url_for('chat.conversation', conversation_id=chat.conversation_id) }}"
                  class="nav-item nav-item-chat">
                 {{ icon('spark' if chat.origin == 'assistant' else 'chat') }}<span class="nav-chat-title">{{ chat.title }}</span>
@@ -362,7 +362,7 @@
         <div class="history-filters" role="group" aria-label="Search history type">
           {% for kind in ('all', 'agent', 'assistant', 'search') %}
             <button type="button" class="history-filter {{ 'is-active' if kind == 'all' }}"
-                    data-search-kind="{{ kind }}" aria-pressed="{{ 'true' if kind == 'all' else 'false' }}">{{ kind | capitalize }}</button>
+                    data-search-kind="{{ kind }}" aria-pressed="{{ 'true' if kind == 'all' else 'false' }}">{{ 'Wick' if kind == 'assistant' else 'Research' if kind == 'agent' else kind | capitalize }}</button>
           {% endfor %}
         </div>
         <h3 class="dialog-label">History</h3>
@@ -448,7 +448,13 @@
       <header class="assistant-panel-head">
         <img src="{{ url_for('static', filename='img/wick-mark.svg') }}" alt="" width="22" height="22">
         <strong>Wick</strong>
-        <span id="assistant-context" class="assistant-context"></span>
+        <label class="assistant-context" for="wick-context">
+          <span class="sr-only">Wick context</span>
+          <select id="wick-context" aria-label="Wick context">
+            <option value="page">This page</option>
+            <option value="none">No page</option>
+          </select>
+        </label>
         <button type="button" class="icon-btn" id="assistant-new"
                 aria-label="New Wick conversation" title="New conversation">{{ icon('plus') }}</button>
         {% if is_authenticated %}
