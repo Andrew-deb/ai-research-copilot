@@ -109,6 +109,8 @@
 
   function ensureThread() {
     if (thread) { return thread; }
+    var welcome = stage.querySelector('.assistant-welcome');
+    if (welcome) { welcome.remove(); }
     thread = document.createElement("div");
     thread.className = "chat-thread";
     thread.id = "chat-thread";

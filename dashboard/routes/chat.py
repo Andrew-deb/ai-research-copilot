@@ -259,7 +259,10 @@ def ask():
     if not agent_service.is_connected():
         # Validates first, so a malformed question is still a 400 rather than
         # being masked by the unavailability behind it.
-        result = agent_service.ask(question, tier=tier, user_id=user_id, mode=chat_mode)
+        options = {"tier": tier, "user_id": user_id}
+        if chat_mode != "research":
+            options["mode"] = chat_mode
+        result = agent_service.ask(question, **options)
         return jsonify(result), 503
 
     consume_quota(quota_service.AGENT_QUERY)
@@ -345,7 +348,9 @@ def _run_turn(question: str, tier: str, user_id: str | None,
                        conversation_service.agent_context(user_id, conversation_id))
             options = {"tier": tier, "user_id": user_id,
                        "conversation_history": history, "on_event": on_event,
-                       "usage": tally, "mode": chat_mode}
+                       "usage": tally}
+            if chat_mode != "research":
+                options["mode"] = chat_mode
             if context:
                 options["page_context"] = context
             if should_stop:
