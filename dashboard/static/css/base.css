@@ -102,7 +102,10 @@
 html, body { margin: 0; padding: 0; }
 body {
   font-family: var(--font);
-  font-size: 14px;
+  /* Settings > Appearance writes --base-font-size on <html>. The fallback is
+     the design's own size, so the page is correct before any script runs and in
+     a browser where localStorage throws. */
+  font-size: var(--base-font-size, 14px);
   line-height: 1.6;
   color: var(--text);
   background: var(--bg);
@@ -2388,8 +2391,6 @@ body.palette-open { overflow: hidden; }
   outline-offset: 2px;
 }
 
-.topic-rows { display: flex; flex-direction: column; gap: 10px; }
-.topic-rows input { font: inherit; font-size: 14px; }
 
 .onboarding-actions {
   display: flex;
@@ -2405,14 +2406,147 @@ body.palette-open { overflow: hidden; }
 .onboarding-bail .btn-link { color: var(--text-subtle); font-size: 12.5px; }
 
 /* --- Settings ---------------------------------------------------------------
-   One card per area, each saving on its own. A page that saved all four at once
-   could not tell "I did not change my topics" from "I have no topics". */
+   Two panes: a fixed nav, a scrolling body. Each row shows an ANSWER, with the
+   editor behind a disclosure.
 
-.settings { max-width: 680px; }
-.settings-card + .settings-card { margin-top: 18px; }
-.settings-card h2 { font-size: 15px; margin: 0 0 4px; }
-.settings-card form { margin-top: 14px; }
-.settings-card .btn { margin-top: 16px; }
+   The version this replaces rendered every onboarding question in its default
+   state - six goals and eleven researcher types as permanent full-width rows -
+   so opening Settings re-asked everything you had already answered. Onboarding
+   asks; settings shows what you said. */
+
+.settings-shell {
+  display: grid;
+  grid-template-columns: 210px minmax(0, 1fr);
+  gap: 36px;
+  align-items: start;
+  max-width: 940px;
+}
+
+.settings-title { font-size: 20px; margin: 0 0 14px; }
+
+.settings-nav { position: sticky; top: 12px; display: flex; flex-direction: column; gap: 2px; }
+.settings-nav-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 13.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.settings-nav-link svg { width: 16px; height: 16px; }
+.settings-nav-link:hover { background: var(--surface-2); color: var(--text); }
+.settings-nav-link[aria-current="page"] {
+  background: var(--surface-2);
+  color: var(--text);
+  font-weight: 500;
+}
+
+.settings-heading {
+  font-size: 15px;
+  margin: 0 0 4px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+.settings-section + .settings-section,
+.settings-heading + .settings-heading { margin-top: 34px; }
+
+/* One row, one fact. The editor is a <details> so the page reads as a summary
+   and becomes a form only where asked. */
+.settings-row {
+  display: flex;
+  /* Wrap is load-bearing, not cosmetic. An open editor takes flex-basis: 100%
+     to claim the full width, and on a single non-wrapping line that width has
+     nowhere to go — so it rendered ON TOP of the row's own text instead of
+     below it. Wrapping is what turns "full width" into "its own line". */
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px 24px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--border);
+}
+.settings-row-block { display: block; }
+.settings-row-text { min-width: 0; flex: 1; }
+.settings-row-text h3 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13.5px;
+  font-weight: 600;
+  margin: 0 0 4px;
+}
+.settings-row-text h3 svg { width: 15px; height: 15px; color: var(--text-muted); }
+
+.settings-answer { margin: 0; font-size: 13.5px; line-height: 1.6; }
+.settings-sub {
+  display: block;
+  margin-top: 3px;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+.settings-unset { color: var(--text-subtle); font-style: italic; }
+
+.settings-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  color: var(--text-muted);
+  font-size: 11px;
+  vertical-align: middle;
+}
+
+.settings-callout {
+  margin: 16px 0 0;
+  padding: 11px 14px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+/* The disclosure. `summary` is styled as a button and its marker removed, so
+   "Change" reads as an action rather than as an expandable heading. */
+.settings-editor { flex-shrink: 0; }
+.settings-editor > summary { cursor: pointer; list-style: none; display: inline-flex; }
+.settings-editor > summary::-webkit-details-marker { display: none; }
+/* `width: 100%` alongside the basis: the basis alone is a hint a flex line can
+   still shrink, and this element must not be shrunk to fit beside the text it
+   is supposed to sit under. */
+.settings-editor[open] { flex-basis: 100%; width: 100%; }
+.settings-editor[open] > summary { margin-bottom: 14px; }
+.settings-editor[open] > form,
+.settings-editor[open] > div {
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.settings-editor form { margin: 0; }
+.settings-editor .btn-primary { margin-top: 16px; }
+
+.settings-control { flex-shrink: 0; }
+
+.settings-identity { display: flex; align-items: center; gap: 12px; }
+.settings-avatar { width: 38px; height: 38px; font-size: 15px; flex-shrink: 0; }
+
+@media (max-width: 760px) {
+  .settings-shell { grid-template-columns: 1fr; gap: 20px; }
+  .settings-nav { position: static; flex-direction: row; overflow-x: auto; }
+  .settings-nav-link span { white-space: nowrap; }
+  .settings-title { display: none; }
+  .settings-row { flex-direction: column; gap: 12px; }
+}
 
 .field { display: block; margin-bottom: 6px; }
 .field-label {
@@ -2434,23 +2568,6 @@ body.palette-open { overflow: hidden; }
 
 .field-group { border: 0; padding: 0; margin: 0 0 20px; }
 .field-group legend { padding: 0; }
-
-/* Shown, never offered. The verified identity is a fact about the account, so
-   it is set as a description list rather than as disabled inputs — a greyed-out
-   field still looks like something that could be typed into. */
-.settings-facts {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 10px;
-  margin: 22px 0 0;
-  padding-top: 18px;
-  border-top: 1px solid var(--border);
-}
-.settings-facts > div { display: flex; justify-content: space-between; gap: 16px; }
-.settings-facts dt { color: var(--text-muted); font-size: 12.5px; }
-.settings-facts dd { margin: 0; font-size: 13px; }
-
-.settings-appearance { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
 
 /* --- Usage: read-only, and visibly so -------------------------------------- */
 
@@ -2498,3 +2615,189 @@ body.palette-open { overflow: hidden; }
 }
 .profile-menu-link:hover { background: var(--surface-2); }
 .profile-menu-link svg { width: 15px; height: 15px; color: var(--text-muted); }
+
+/* --- Tag input: add one at a time -------------------------------------------
+   Replaces a row of fixed empty boxes. The cap is something you meet, not a
+   quota you fill, so nothing is rendered until there is something to render. */
+
+.tag-input { margin-top: 4px; }
+.tag-list { list-style: none; margin: 0 0 10px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.tag-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.tag-text { flex: 1; min-width: 0; font-size: 13.5px; overflow-wrap: anywhere; }
+.tag-remove { color: var(--text-subtle); }
+.tag-remove:hover { color: var(--danger); }
+.tag-remove svg { width: 15px; height: 15px; }
+
+.tag-add { display: flex; gap: 8px; align-items: center; }
+.tag-entry {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  font-size: 13.5px;
+  padding: 8px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+}
+.tag-entry:disabled { opacity: 0.55; cursor: not-allowed; }
+.tag-hint { margin-top: 8px; }
+
+/* --- Toggle ---------------------------------------------------------------- */
+
+.toggle {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--surface-3);
+  cursor: pointer;
+  transition: background 140ms ease;
+}
+.toggle-knob {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  transition: transform 140ms ease, background 140ms ease;
+}
+.toggle.is-on { background: var(--brand); }
+.toggle.is-on .toggle-knob { transform: translateX(18px); background: #fff; }
+
+/* --- Devices --------------------------------------------------------------- */
+
+.device-list { list-style: none; margin: 16px 0 0; padding: 0; }
+.device-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+}
+.device-row + .device-row { border-top: 1px solid var(--border); }
+.device-icon { color: var(--text-subtle); display: grid; place-items: center; }
+.device-icon svg { width: 18px; height: 18px; }
+.device-detail { flex: 1; min-width: 0; }
+.device-name { margin: 0; font-size: 13.5px; }
+
+/* --- Danger ---------------------------------------------------------------- */
+
+.settings-row-danger { border-bottom: 0; }
+.settings-row-danger h3 { color: var(--danger); }
+
+.btn-danger {
+  background: transparent;
+  border: 1px solid var(--danger);
+  color: var(--danger);
+}
+.btn-danger:hover:not(:disabled) { background: var(--danger); color: #fff; }
+.btn-danger:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.modal-danger::backdrop { background: rgba(0, 0, 0, 0.55); }
+.modal-danger { max-width: 440px; }
+.modal-danger h2 { font-size: 16px; margin: 0 0 10px; }
+.modal-danger p { font-size: 13px; line-height: 1.65; margin: 0 0 12px; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+
+/* --- Mode picker ------------------------------------------------------------
+   Three thumbnails rather than a dropdown: the difference between Light and
+   Dark is something to see, not to read. */
+
+.mode-picker { display: flex; gap: 10px; }
+.mode-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.mode-thumb {
+  display: block;
+  position: relative;
+  width: 64px;
+  height: 42px;
+  border: 2px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.mode-thumb-light { background: #fdf2e8; }
+.mode-thumb-dark { background: #17181a; }
+/* Split down the middle, which is what "follows your system" looks like. */
+.mode-thumb-system { background: linear-gradient(to right, #fdf2e8 50%, #17181a 50%); }
+
+.mode-thumb-bar {
+  position: absolute; inset: 0 0 auto 0; height: 9px;
+  background: rgba(128, 128, 128, 0.28);
+}
+.mode-thumb-line {
+  position: absolute; left: 8px; right: 8px; top: 18px; height: 3px;
+  border-radius: 2px; background: rgba(128, 128, 128, 0.45);
+}
+.mode-thumb-line.short { top: 26px; right: 26px; }
+
+.mode-option.is-selected { color: var(--text); }
+.mode-option.is-selected .mode-thumb { border-color: var(--brand); }
+.mode-option:focus-visible .mode-thumb { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+
+/* --- Segmented control ----------------------------------------------------- */
+
+.segmented {
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 999px;
+  background: var(--surface-3);
+}
+.segmented-option {
+  padding: 5px 13px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.segmented-option.is-selected { background: var(--surface); color: var(--text); }
+
+/* --- Stepper --------------------------------------------------------------- */
+
+.stepper { display: flex; align-items: center; gap: 4px; }
+.stepper-value {
+  min-width: 26px;
+  text-align: center;
+  font-family: var(--mono);
+  font-size: 13px;
+}
+.stepper-unit { color: var(--text-muted); font-size: 12px; }
+
+/* Honours the account's own choice first, then the operating system's. The
+   explicit "off" exists so somebody who wants motion can have it on a machine
+   whose system setting says otherwise. */
+:root[data-motion="on"] * {
+  animation-duration: 0.01ms !important;
+  transition-duration: 0.01ms !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  :root:not([data-motion="off"]) * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
