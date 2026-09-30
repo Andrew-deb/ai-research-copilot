@@ -30,7 +30,7 @@ import logging
 
 from exceptions import ValidationError
 from repositories import lakebase
-from services import onboarding_service, quota_service
+from services import account_service, onboarding_service, quota_service
 
 logger = logging.getLogger(__name__)
 
@@ -45,13 +45,25 @@ USAGE_LABELS = {
 }
 
 
-def overview(user_id: str, tier: str) -> dict:
-    """Everything the settings page shows, in one call."""
+def overview(user_id: str, tier: str, session_token: str | None = None) -> dict:
+    """
+    Everything the settings page shows, in one call.
+
+    Shaped as answers rather than questions. The first version of this page
+    rendered every onboarding option permanently — two screens of radio buttons
+    to convey three facts — because it was built from the onboarding template.
+    A settings page shows what you chose; the choices appear when you ask to
+    change them.
+    """
     user = lakebase.get_user_by_id(user_id) or {}
     profile = lakebase.get_user_profile(user_id) or {}
     chosen = onboarding_service.interests(user_id)
 
     return {
+        "account": {
+            "incognito": bool(user.get("incognito_mode")),
+            "devices": account_service.devices(user_id, session_token),
+        },
         "identity": {
             "email": user.get("email"),
             "provider": user.get("auth_provider"),

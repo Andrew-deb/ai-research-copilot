@@ -7,30 +7,36 @@ topics" from "I have no topics", and would quietly wipe a section somebody
 never opened.
 """
 
-from flask import Blueprint, redirect, render_template, request, url_for
+from flask import Blueprint, redirect, render_template, request, session, url_for
 
-from middleware.auth import current_tier, current_user_id
+from middleware.auth import SESSION_TOKEN_KEY, current_tier, current_user_id
 from middleware.capabilities import require_capability
 from routes.helpers import action_response
-from services import onboarding_service, settings_service
+from services import account_service, onboarding_service, settings_service
 
 bp = Blueprint("settings", __name__)
+
+_SECTIONS = ("preferences", "account", "security", "appearance")
 
 
 @bp.get("/settings")
 @require_capability("notes:write")
 def page():
     """
-    Everything about this account, in four cards.
+    Everything about this account, in four sections.
 
     Gated on a signed-in capability: an anonymous visitor has no account to
     have settings for, and the decorator's sign-in prompt is a truer answer
     than an empty page.
     """
     user_id = current_user_id()
+    section = request.args.get("section")
+
     return render_template(
         "settings.html",
-        data=settings_service.overview(user_id, current_tier()),
+        section=section if section in _SECTIONS else "preferences",
+        data=settings_service.overview(
+            user_id, current_tier(), session.get(SESSION_TOKEN_KEY)),
         fields_shown=onboarding_service.FIELDS_SHOWN,
         fields_more=onboarding_service.FIELDS_MORE,
         primary_goals=onboarding_service.PRIMARY_GOALS,
@@ -56,7 +62,7 @@ def save_profile():
 
     return action_response(
         {"ok": True},
-        redirect_to=url_for("settings.page"),
+        redirect_to=url_for("settings.page", section="account"),
         flash_message="Name updated.",
     )
 
@@ -87,6 +93,27 @@ def save_research():
 
     return action_response(
         {"ok": True},
-        redirect_to=url_for("settings.page"),
+        redirect_to=url_for("settings.page", section="preferences"),
         flash_message="Research preferences updated.",
+    )
+
+
+@bp.post("/settings/incognito")
+@require_capability("notes:write")
+def save_incognito():
+    """
+    Whether searches are written to history.
+
+    Stored on `users`, never on `user_profiles` — a preference written there
+    would create the row `needs_onboarding()` tests for, and hide the welcome
+    flow from somebody who had never seen it.
+    """
+    enabled = request.form.get("incognito") == "on"
+    account_service.set_incognito(current_user_id(), enabled)
+
+    return action_response(
+        {"ok": True, "incognito": enabled},
+        redirect_to=url_for("settings.page", section="preferences"),
+        flash_message=("Incognito mode is on — searches will not be saved."
+                       if enabled else "Incognito mode is off."),
     )
