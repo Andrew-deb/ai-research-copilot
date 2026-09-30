@@ -216,6 +216,14 @@
         <a href="{{ url_for('goals.list_goals') }}" class="nav-item {{ 'active' if ep.startswith('goals.') }}" aria-label="Goals" data-tooltip="Goals">
           {{ icon('target') }}<span>Goals</span>
         </a>
+        {# Help belongs in the workspace nav, not only in the public one. Inside
+           the application the sole route to the docs was an icon in the header
+           — fine on a desktop toolbar, and the first thing a phone has no room
+           for. Now the header copy can drop on a narrow screen without taking
+           the documentation with it. #}
+        <a href="{{ url_for('public.help_page') }}" class="nav-item {{ 'active' if ep in ('public.help_page', 'public.docs') }}" aria-label="Help &amp; docs" data-tooltip="Help &amp; docs">
+          {{ icon('book') }}<span>Help &amp; docs</span>
+        </a>
       </div>
 
       {# Same reason as the search control above: nothing is stored for an
@@ -439,6 +447,15 @@
         </button>
       {% endblock %}</div>
       <div class="topbar-actions">
+        {# Mobile only. On a wider screen the palette is the labelled pill in
+           the centre slot, which says what it does and shows its shortcut. On a
+           phone that pill has nowhere to sit, and Ctrl+K is not a thing most
+           phone keyboards can type — so the palette needs an affordance you can
+           tap, next to the other things you tap. #}
+        <button type="button" class="icon-btn topbar-search" id="palette-open-mobile"
+                aria-label="Search everything" title="Search">
+          {{ icon('search') }}
+        </button>
         {% if not is_authenticated %}
           {% if not is_workspace_shell %}
             <a class="btn btn-ghost btn-sm" href="{{ url_for('home.dashboard') }}">Try demo</a>
@@ -455,7 +472,9 @@
                 aria-controls="notes-panel" aria-expanded="false">
           {{ icon('pencil') }}
         </button>
-        <a class="icon-btn" href="{{ url_for('public.help_page') }}"
+        {# Hidden on a phone: the same link is three items down the sidebar, and
+           the header row there has a mode switch to fit. #}
+        <a class="icon-btn topbar-help" href="{{ url_for('public.help_page') }}"
            aria-label="Help and docs" title="Help and docs" data-tooltip="Help and docs">
           {{ icon('book') }}
         </a>
