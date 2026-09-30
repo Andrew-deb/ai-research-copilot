@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% block title %}Welcome — Alfred{% endblock %}
+{% block topbar_title %}Welcome{% endblock %}
+
+{# The palette trigger goes: this page is five questions with a way out, and a
+   search box invites wandering off mid-answer. #}
+{% block topbar_center %}{% endblock %}
+
+{% block content %}
+<div class="onboarding">
+
+  <header class="onboarding-head">
+    <p class="onboarding-progress">
+      <span class="onboarding-count">Step {{ number }} of {{ state.total }}</span>
+      <span class="onboarding-bar" role="img"
+            aria-label="Step {{ number }} of {{ state.total }}">
+        {% for n in range(1, state.total + 1) %}
+          <span class="onboarding-pip {{ 'is-done' if n <= number }}"></span>
+        {% endfor %}
+      </span>
+    </p>
+  </header>
+
+  <form method="post" action="{{ url_for('onboarding.answer', number=number) }}"
+        class="onboarding-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    {# ---- 1. Fields ---------------------------------------------------- #}
+    {% if number == 1 %}
+      <h1 class="page-title">What do you research?</h1>
+      <p class="page-lead">
+        Pick as many as apply. One choice is one field — nothing is inferred
+        from it beyond what you tick.
+      </p>
+
+      <div class="chip-set">
+        {% for field in fields_shown %}
+          <label class="chip">
+            <input type="checkbox" name="fields" value="{{ field }}"
+                   {{ 'checked' if field in chosen.field }}>
+            <span>{{ field }}</span>
+          </label>
+        {% endfor %}
+      </div>
+
+      {# The other thirteen. A <details> so it opens, closes and is reachable by
+         keyboard with no JavaScript — the full 26 are always available, they
+         are simply not all shown at once. #}
+      <details class="chip-more" {{ 'open' if chosen.field | select('in', fields_more) | list }}>
+        <summary>Search all fields</summary>
+        <label class="visually-hidden" for="field-filter">Filter fields</label>
+        <input id="field-filter" type="search" class="chip-filter"
+               placeholder="Type to narrow the list" data-chip-filter>
+        <div class="chip-set">
+          {% for field in fields_more %}
+            <label class="chip">
+              <input type="checkbox" name="fields" value="{{ field }}"
+                     {{ 'checked' if field in chosen.field }}>
+              <span>{{ field }}</span>
+            </label>
+          {% endfor %}
+        </div>
+      </details>
+
+    {# ---- 2. Current work ---------------------------------------------- #}
+    {% elif number == 2 %}
+      <h1 class="page-title">What are you working on right now?</h1>
+      <p class="page-lead">
+        Up to {{ max_topics }}, in your own words. These are narrower than a
+        field — the thing you would actually search for.
+      </p>
+
+      <div class="topic-rows">
+        {% for i in range(max_topics) %}
+          <label class="visually-hidden" for="topic-{{ i }}">Topic {{ i + 1 }}</label>
+          <input id="topic-{{ i }}" type="text" name="topics" maxlength="80"
+                 value="{{ chosen.topic[i] if chosen.topic | length > i else '' }}"
+                 placeholder="{{ ['retrieval augmented generation', 'protein folding', 'causal inference', '', ''][i] }}">
+        {% endfor %}
+      </div>
+
+    {# ---- 3. Why they are here ----------------------------------------- #}
+    {% elif number == 3 %}
+      <h1 class="page-title">What brings you here?</h1>
+      <p class="page-lead">One answer. It shapes what the assistant leads with.</p>
+
+      <div class="choice-set">
+        {% for goal in primary_goals %}
+          <label class="choice">
+            <input type="radio" name="primary_goal" value="{{ goal }}"
+                   {{ 'checked' if state.profile.primary_goal == goal }}>
+            <span>{{ goal }}</span>
+          </label>
+        {% endfor %}
+      </div>
+
+    {# ---- 4. Who they are ----------------------------------------------- #}
+    {% elif number == 4 %}
+      <h1 class="page-title">Which best describes you?</h1>
+      <p class="page-lead">
+        Used to pitch explanations, nothing else. "Prefer not to say" is a real
+        answer.
+      </p>
+
+      <div class="choice-set">
+        {% for kind in researcher_types %}
+          <label class="choice">
+            <input type="radio" name="researcher_type" value="{{ kind }}"
+                   {{ 'checked' if state.profile.researcher_type == kind }}>
+            <span>{{ kind }}</span>
+          </label>
+        {% endfor %}
+      </div>
+
+    {# ---- 5. What they want from it ------------------------------------- #}
+    {% elif number == 5 %}
+      <h1 class="page-title">What should the assistant help with most?</h1>
+      <p class="page-lead">Pick as many as apply.</p>
+
+      <div class="choice-set">
+        {% for task in help_tasks %}
+          <label class="choice">
+            <input type="checkbox" name="help_tasks" value="{{ task }}"
+                   {{ 'checked' if state.profile.help_tasks and task in state.profile.help_tasks }}>
+            <span>{{ task }}</span>
+          </label>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    {# Skip is the same form posted empty, so answering and declining take one
+       path through the server rather than two that can drift apart. #}
+    <div class="onboarding-actions">
+      <button type="submit" class="btn btn-ghost" name="skipped" value="1"
+              formnovalidate>Skip this</button>
+      <button type="submit" class="btn btn-primary">
+        {{ 'Finish' if number == state.total else 'Continue' }}
+      </button>
+    </div>
+  </form>
+
+  <p class="onboarding-bail">
+    <button type="submit" form="onboarding-skip-all" class="btn-link">
+      Skip all of this and go to the dashboard
+    </button>
+  </p>
+</div>
+
+{# Its own form, outside the one above, so pressing Enter in a text field never
+   submits it by accident. #}
+<form id="onboarding-skip-all" method="post"
+      action="{{ url_for('onboarding.skip') }}" hidden>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+</form>
+{% endblock %}
+
+{% block extra_js %}<script src="{{ url_for('static', filename='js/onboarding.js') }}"></script>{% endblock %}
