@@ -42,13 +42,20 @@ from config import (
     ALLOW_DEV_USER_BYPASS,
     DEV_USER_EMAIL,
     DEV_USER_NAME,
+    SESSION_CHECK_SECONDS,
 )
-from repositories import lakebase
+from repositories import lakebase, sessions
 
 logger = logging.getLogger(__name__)
 
 SESSION_USER_KEY = "user_id"
 SESSION_ANON_KEY = "anon_id"
+SESSION_TOKEN_KEY = "sid"
+
+# When this account was last proved again, for actions a session alone should
+# not authorise. Lives here with the other session keys so that neither routes
+# module has to import the other to agree on the name.
+REAUTH_KEY = "reauth_at"
 
 TIER_AUTHENTICATED = "authenticated"
 TIER_ANONYMOUS = "anonymous"
@@ -88,6 +95,70 @@ def forget_user(user_id: str) -> None:
         _USER_CACHE.pop(str(user_id), None)
 
 
+# =============================================================================
+# Session validity
+#
+# A signed cookie cannot be withdrawn, so `user_sessions` decides whether the one
+# presented still counts. Asking the database on every request would add a
+# Lakebase round trip to every page load, so a validated session is trusted for
+# SESSION_CHECK_SECONDS.
+#
+# What that buys and what it costs, stated plainly: revocation is immediate in
+# the worker that performed it (the cache is purged there) and takes up to
+# SESSION_CHECK_SECONDS to reach the others. For "sign out my other devices" that
+# window is acceptable; it is not a substitute for changing a password, which is
+# a facility this application deliberately does not have.
+# =============================================================================
+
+# token digest -> (validated_at, user_id). Keyed by digest, never the token, so
+# the in-memory cache leaks nothing the database would not.
+_SESSION_CACHE: dict[str, tuple[float, str]] = {}
+_SESSION_CACHE_LOCK = threading.Lock()
+
+
+def _session_is_live(token: str) -> bool:
+    """
+    Whether this session token is still good, cached briefly.
+
+    A miss goes to a single UPDATE that validates and records the activity at
+    once — the rows that answer "is this live?" are exactly the ones that want
+    "it was just used" written to them.
+    """
+    now = time.monotonic()
+    cached = _SESSION_CACHE.get(token)
+    if cached and now - cached[0] < SESSION_CHECK_SECONDS:
+        return True
+
+    row = sessions.touch_and_validate(token)
+    if not row:
+        with _SESSION_CACHE_LOCK:
+            _SESSION_CACHE.pop(token, None)
+        return False
+
+    with _SESSION_CACHE_LOCK:
+        _SESSION_CACHE[token] = (now, str(row["user_id"]))
+    return True
+
+
+def forget_sessions(user_id: str) -> None:
+    """
+    Drop this user's cached session validity, so a revoke takes effect here now.
+
+    Other workers catch up when their own entries expire. Called after revoking
+    and after deleting an account.
+    """
+    user_id = str(user_id)
+    with _SESSION_CACHE_LOCK:
+        for token in [t for t, (_, uid) in _SESSION_CACHE.items() if uid == user_id]:
+            _SESSION_CACHE.pop(token, None)
+
+
+def forget_session(token: str) -> None:
+    """Drop one cached session — called on logout."""
+    with _SESSION_CACHE_LOCK:
+        _SESSION_CACHE.pop(token, None)
+
+
 def _dev_user() -> dict:
     """The local development identity. Config refuses to boot with this in production."""
     return _cached_user(
@@ -100,6 +171,17 @@ def _session_user() -> dict | None:
     """The signed-in user, or None if the cookie names a row that no longer exists."""
     user_id = session.get(SESSION_USER_KEY)
     if not user_id:
+        return None
+
+    # A cookie naming a user but carrying no session token is one this build
+    # cannot revoke. Rather than grandfather it — which would make "sign out
+    # everywhere" quietly untrue for exactly the sessions somebody is worried
+    # about — it is treated as signed out. The cost is one re-login for anyone
+    # holding a cookie from before this shipped.
+    token = session.get(SESSION_TOKEN_KEY)
+    if not token or not _session_is_live(token):
+        logger.info("Session for %s is not live — clearing it.", user_id)
+        session.clear()
         return None
 
     user = _cached_user(str(user_id), lambda: lakebase.get_user_by_id(str(user_id)))
