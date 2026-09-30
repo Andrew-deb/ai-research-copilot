@@ -27,7 +27,12 @@ def search_page():
     page = request.args.get("page", 1, type=int)
 
     results = None
-    if query:
+    # "ask" is the third position of the same control, but it is answered by
+    # /search/ask over fetch rather than here — it spends a model call and
+    # returns prose, not a page of results. Running a keyword search for it as a
+    # fallback would answer a question nobody asked and spend a quota doing it,
+    # so this renders the page with Ask selected and waits for the real request.
+    if query and mode != "ask":
         if mode == "semantic":
             results = search_service.semantic_search(query, top_k=20)
         else:

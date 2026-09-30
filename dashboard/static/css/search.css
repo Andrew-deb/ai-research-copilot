@@ -39,8 +39,6 @@
 .search-modes input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
 
 .rag-box { border-color: var(--brand-tint); background: linear-gradient(180deg, var(--brand-tint), transparent 120px); }
-.rag-box form { display: flex; gap: 10px; align-items: flex-start; }
-.rag-box textarea { flex: 1; }
 #rag-answer { margin-top: 14px; }
 .rag-answer-body {
   background: var(--surface-2);
@@ -106,3 +104,35 @@
    that starts at the left edge, and centring would detach it from the input it
    belongs to. */
 .suggest-row { justify-content: flex-start; }
+
+
+/* ---------- The hint under the box ----------
+   One line, rewritten by search.js when the mode changes. Ask is the one that
+   needs saying: it spends a model call and answers in prose, which is not what
+   a search box usually does. */
+.search-hint {
+  margin: -8px 0 18px;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  line-height: 1.6;
+  max-width: 62ch;
+}
+
+/* ---------- Narrow screens ----------
+   The suggestion chips used to run to six rows on a phone and push everything
+   beneath them off the screen — which is how the Ask box came to be invisible
+   on mobile even before it was folded into the search bar.
+
+   Three is enough to show what a query looks like, which is all they are for. */
+@media (max-width: 560px) {
+  .search-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+  .search-bar input[type="search"] { min-width: 0; }
+  .search-modes { width: 100%; }
+  .search-modes label { flex: 1; text-align: center; }
+
+  .suggest-row li:nth-child(n + 4) { display: none; }
+}
