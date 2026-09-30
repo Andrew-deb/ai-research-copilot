@@ -1,0 +1,86 @@
+{# ===========================================================================
+   Appearance — per device, and it says so.
+
+   A laptop in a bright room and a phone at night want different answers, and
+   syncing them means one device overrules the other. So none of this reaches
+   the server, and the page states that rather than leaving somebody to discover
+   it when their phone changes colour.
+
+   No colour pickers. The themes here are contrast-checked; free background and
+   foreground values would let somebody make the application unreadable with no
+   idea why, and would turn the contrast tests into decoration covering only the
+   defaults nobody was using.
+   =========================================================================== #}
+
+<section class="settings-section" id="section-appearance" data-settings-panel="appearance" hidden>
+  <h2 class="settings-heading">Appearance</h2>
+
+  <p class="settings-callout">
+    Remembered <strong>on this device</strong>, not on your account — each
+    browser you sign in from keeps its own.
+  </p>
+
+  {# ---- Mode ----------------------------------------------------------- #}
+  <div class="settings-row settings-row-block">
+    <div class="settings-row-text">
+      <h3>Mode</h3>
+      <p class="settings-sub">System follows whatever your operating system is set to.</p>
+    </div>
+
+    <div class="mode-picker" role="radiogroup" aria-label="Colour mode">
+      {% for value, label in [('light', 'Light'), ('dark', 'Dark'), ('system', 'System')] %}
+        <button type="button" class="mode-option" data-mode="{{ value }}"
+                role="radio" aria-checked="false">
+          <span class="mode-thumb mode-thumb-{{ value }}" aria-hidden="true">
+            <span class="mode-thumb-bar"></span>
+            <span class="mode-thumb-line"></span>
+            <span class="mode-thumb-line short"></span>
+          </span>
+          <span class="mode-label">{{ label }}</span>
+        </button>
+      {% endfor %}
+    </div>
+  </div>
+
+  {# ---- Text size ------------------------------------------------------ #}
+  <div class="settings-row">
+    <div class="settings-row-text">
+      <h3>Text size</h3>
+      <p class="settings-sub">
+        The base size for the interface. Paper abstracts are long; this is worth
+        getting right.
+      </p>
+    </div>
+
+    <div class="settings-control stepper">
+      <button type="button" class="icon-btn" data-font-step="-1"
+              aria-label="Smaller text">&minus;</button>
+      <output class="stepper-value" data-font-value>14</output><span class="stepper-unit">px</span>
+      <button type="button" class="icon-btn" data-font-step="1"
+              aria-label="Larger text">+</button>
+    </div>
+  </div>
+
+  {# ---- Motion --------------------------------------------------------- #}
+  <div class="settings-row">
+    <div class="settings-row-text">
+      <h3>Reduce motion</h3>
+      <p class="settings-sub">
+        Fewer animations. System follows the accessibility setting your
+        operating system already has.
+      </p>
+    </div>
+
+    <div class="segmented" role="radiogroup" aria-label="Reduce motion">
+      {% for value, label in [('system', 'System'), ('on', 'On'), ('off', 'Off')] %}
+        <button type="button" class="segmented-option" data-motion="{{ value }}"
+                role="radio" aria-checked="false">{{ label }}</button>
+      {% endfor %}
+    </div>
+  </div>
+
+  <p class="field-hint">
+    More themes and chat backgrounds are planned. They are not here yet, so
+    there is nothing pretending to be.
+  </p>
+</section>
