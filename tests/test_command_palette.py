@@ -212,9 +212,13 @@ def test_the_chat_page_keeps_its_own_control(client, db):
 
 
 def test_the_shortcut_is_the_one_people_already_press():
-    js = _js()
-    assert "metaKey" in js and "ctrlKey" in js
-    assert '"k"' in js
+    """
+    Asked of the registry rather than of palette.js, which no longer matches
+    keys itself. One place knows the chord; everywhere else registers against it.
+    """
+    from tests.test_shortcuts import registry
+
+    assert next(e for e in registry() if e["id"] == "palette.open")["keys"] == "Mod+K"
 
 
 def test_a_stale_answer_cannot_overwrite_a_newer_one():
