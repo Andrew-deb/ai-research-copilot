@@ -208,10 +208,19 @@ def test_a_working_search_says_so_too(client, db):
 # The shortcut, and what it collided with
 # ---------------------------------------------------------------------------
 
+# These used to read the key-matching code out of palette.js and main.js. The
+# chord moved into the registry in shortcuts.js, which is the point of having
+# one — so they ask it instead. The collision rules themselves are enforced in
+# tests/test_shortcuts.py; what is checked here is that THIS feature still owns
+# the chord it is supposed to.
+
 def test_the_palette_owns_control_k():
-    js = _js()
-    assert "e.metaKey || e.ctrlKey" in js
-    assert '(e.key === "k" || e.key === "K")' in js
+    from tests.test_shortcuts import registry
+
+    entry = next(e for e in registry() if e["id"] == "palette.open")
+    assert entry["keys"] == "Mod+K"
+    assert entry["scope"] == "global"
+    assert 'register("palette.open"' in _js()
 
 
 def test_the_chat_history_search_no_longer_answers_it():
@@ -220,17 +229,20 @@ def test_the_chat_history_search_no_longer_answers_it():
     global palette was unreachable by its own shortcut. Chat search — a filter
     over one list — moved to Ctrl+Shift+F.
     """
-    main = (ROOT / "dashboard" / "static" / "js" / "main.js").read_text(encoding="utf-8")
-    code = re.sub(r"//.*", "", main)
+    from tests.test_shortcuts import registry
 
-    chat = code.split("chat-search-open")[0][-400:]
-    assert 'e.key.toLowerCase() === "k"' not in chat
-    assert "shiftKey" in chat
+    assert next(e for e in registry() if e["id"] == "chat.search")["keys"] == "Mod+Shift+F"
 
 
 def test_the_palette_ignores_the_chat_combination():
-    """Ctrl+Shift+K must not open both."""
-    assert "!e.shiftKey" in _js()
+    """
+    Ctrl+Shift+K must not open both. The dispatcher compares every modifier,
+    including the ones a chord does not ask for, so a chord without Shift does
+    not match an event that has it.
+    """
+    shortcuts = (ROOT / "dashboard" / "static" / "js"
+                 / "shortcuts.js").read_text(encoding="utf-8")
+    assert "event.shiftKey === want.shift" in shortcuts
 
 
 # ---------------------------------------------------------------------------
