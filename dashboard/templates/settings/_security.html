@@ -1,0 +1,115 @@
+{# ===========================================================================
+   Security — devices, and the end of the account.
+
+   No "set password" row. Email and password sign-in is deliberately not built,
+   and offering a control for it would promise something that does not exist.
+   =========================================================================== #}
+
+<section class="settings-section" id="section-security" data-settings-panel="security" hidden>
+  <h2 class="settings-heading">Security</h2>
+
+  {# ---- Devices -------------------------------------------------------- #}
+  <div class="settings-row settings-row-block">
+    <div class="settings-row-text">
+      <h3>Where you are signed in</h3>
+      <p class="settings-sub">
+        A browser stays signed in until it is signed out or the session expires.
+        Sign out anything you do not recognise.
+      </p>
+    </div>
+
+    <ul class="device-list">
+      {% for device in data.account.devices %}
+        <li class="device-row">
+          <span class="device-icon" aria-hidden="true">{{ icon('monitor') }}</span>
+          <div class="device-detail">
+            <p class="device-name">
+              {{ device.label }}
+              {% if device.is_current %}
+                <span class="settings-badge">This device</span>
+              {% endif %}
+            </p>
+            <p class="settings-sub">
+              {{ device.ip_address }} ·
+              {% if device.last_seen_at %}
+                last used {{ device.last_seen_at.strftime('%d %b %Y, %H:%M')
+                             if device.last_seen_at.strftime else device.last_seen_at }}
+              {% endif %}
+            </p>
+          </div>
+
+          {# The current device has no sign-out button: doing it from here would
+             end the session you are reading this in, which reads as the page
+             breaking rather than as a security action succeeding. Log out does
+             that, deliberately and from somewhere you expect it. #}
+          {% if not device.is_current %}
+            <form method="post"
+                  action="{{ url_for('account.revoke_session', session_id=device.session_id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn btn-ghost btn-sm">Sign out</button>
+            </form>
+          {% endif %}
+        </li>
+      {% else %}
+        <li class="empty-state">No other sessions are recorded.</li>
+      {% endfor %}
+    </ul>
+
+    {% if data.account.devices | length > 1 %}
+      <form method="post" action="{{ url_for('account.revoke_other_sessions') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-ghost btn-sm">
+          Sign out of every other device
+        </button>
+      </form>
+    {% endif %}
+  </div>
+
+  {# ---- Deletion ------------------------------------------------------- #}
+  <div class="settings-row settings-row-danger">
+    <div class="settings-row-text">
+      <h3>Delete account</h3>
+      <p class="settings-sub">
+        Permanent. Your collections, notes, conversations, reading progress and
+        research preferences are erased and cannot be recovered.
+      </p>
+    </div>
+
+    <button type="button" class="btn btn-danger btn-sm" data-delete-open>
+      Delete account
+    </button>
+  </div>
+
+  <dialog class="modal modal-danger" id="delete-account-dialog">
+    <form method="post" action="{{ url_for('account.begin_delete') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <h2>Delete this account?</h2>
+      <p>
+        This erases your collections, notes, conversations, reading progress and
+        research preferences. It cannot be undone.
+      </p>
+      <p class="settings-sub">
+        You will be asked to sign in with {{ data.identity.provider | title }}
+        again before anything is deleted.
+      </p>
+
+      <label class="field">
+        <span class="field-label">
+          Type <strong>{{ data.identity.email }}</strong> to confirm
+        </span>
+        <input type="text" name="confirm_email" autocomplete="off"
+               data-delete-confirm data-expect="{{ data.identity.email }}">
+      </label>
+
+      <div class="modal-actions">
+        <button type="button" class="btn btn-ghost btn-sm" data-delete-cancel>Cancel</button>
+        {# Disabled until the typed address matches, so the dangerous button is
+           not the easiest thing to hit on the dialog. #}
+        <button type="submit" class="btn btn-danger btn-sm" data-delete-submit disabled>
+          Delete my account
+        </button>
+      </div>
+    </form>
+  </dialog>
+</section>
