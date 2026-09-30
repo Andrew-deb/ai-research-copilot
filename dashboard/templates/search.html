@@ -11,14 +11,37 @@
 
 <h1 class="page-title">Search the literature</h1>
 
-<form class="search-bar" method="get" action="{{ url_for('search.search_page') }}">
-  <input type="search" name="q" value="{{ query }}" placeholder="transformer attention, retrieval-augmented generation, …" autofocus>
-  <div class="search-modes">
-    <label><input type="radio" name="mode" value="keyword" {{ 'checked' if mode != 'semantic' }}> Keyword</label>
+{# One box, three modes.
+
+   Ask used to be a second panel further down the page, which on a phone sat
+   below six suggestion chips and was reliably never seen. It is the same
+   gesture as the other two — you have a subject in mind and you want the
+   corpus consulted — so it belongs in the same control rather than in a
+   competing one.
+
+   What genuinely differs is the SHAPE of the answer: Keyword and Semantic
+   return a list of papers to read, Ask returns written prose with citations
+   and costs a model call. That difference is carried by the hint line and by
+   what appears underneath, not by a separate form. #}
+<form class="search-bar" method="get" action="{{ url_for('search.search_page') }}"
+      data-search-form>
+  <input type="search" name="q" value="{{ query }}" autofocus
+         data-search-input
+         placeholder="transformer attention, retrieval-augmented generation, …">
+  <div class="search-modes" role="radiogroup" aria-label="How to search">
+    <label><input type="radio" name="mode" value="keyword" {{ 'checked' if mode not in ('semantic', 'ask') }}> Keyword</label>
     <label><input type="radio" name="mode" value="semantic" {{ 'checked' if mode == 'semantic' }}> Semantic</label>
+    {% if rag_available %}
+      <label><input type="radio" name="mode" value="ask" {{ 'checked' if mode == 'ask' }}> Ask</label>
+    {% endif %}
   </div>
-  <button type="submit" class="btn btn-primary">Search</button>
+  <button type="submit" class="btn btn-primary" data-search-submit>Search</button>
 </form>
+
+{# One line, and it changes with the mode. Ask is the one that needs saying:
+   it spends a model call and answers in prose, which is not what the other two
+   do and not what a search box usually does. #}
+<p class="search-hint" data-search-hint></p>
 
 {# Only under an empty box, and directly under it so they read as things to put
    in it. The heading names what they actually are: "Your recent searches" over
@@ -40,18 +63,12 @@
   </section>
 {% endif %}
 
+{# The answer Ask produces. No form of its own any more — the box above submits
+   here when Ask is the selected mode. #}
 {% if rag_available %}
-<section class="panel rag-box">
-  <h2>Ask a research question</h2>
-  <p class="hint">Retrieval-augmented: vector search over abstracts, then a cited synthesis.</p>
-  <form id="rag-form">
-    <textarea name="question" rows="2" placeholder="What are the main approaches to reducing attention's quadratic cost?"></textarea>
-    <button type="submit" class="btn btn-primary">Ask</button>
-  </form>
-  <div id="rag-answer" hidden>
-    <div class="rag-answer-body"></div>
-    <ol class="rag-sources"></ol>
-  </div>
+<section class="panel rag-box" id="rag-answer" hidden>
+  <div class="rag-answer-body"></div>
+  <ol class="rag-sources"></ol>
 </section>
 {% endif %}
 
