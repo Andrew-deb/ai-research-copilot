@@ -83,4 +83,23 @@
     More themes and chat backgrounds are planned. They are not here yet, so
     there is nothing pretending to be.
   </p>
+
+  {# ---- Shortcuts ------------------------------------------------------ #}
+  <h2 class="settings-heading">Keyboard</h2>
+
+  <div class="settings-row">
+    <div class="settings-row-text">
+      <h3>{{ icon('keyboard') }} Keyboard shortcuts</h3>
+      <p class="settings-sub">
+        {# Listed rather than reassignable. The list is generated from the same
+           registry that dispatches the keys, so it cannot fall out of date. #}
+        The full list, including the ones that only apply while you are writing.
+        They are fixed for now and cannot be reassigned.
+      </p>
+    </div>
+
+    <button type="button" class="btn btn-ghost btn-sm" data-shortcuts-open>
+      Show shortcuts
+    </button>
+  </div>
 </section>
