@@ -264,6 +264,16 @@ SESSION_COOKIE_HTTPONLY: bool = True
 SESSION_COOKIE_SAMESITE: str = "Lax"
 SESSION_LIFETIME_DAYS: int = int(os.getenv("SESSION_LIFETIME_DAYS", "14"))
 
+# How long a validated session is trusted before the database is asked again.
+#
+# This is a deliberate trade, and it is worth naming precisely: revoking a
+# session takes effect immediately in the worker that handled the revoke, and
+# within this many seconds everywhere else. Checking on every request instead
+# would make revocation instant and add a Lakebase round trip - several hundred
+# milliseconds across the public endpoint - to every page load, which is a real
+# cost paid constantly to close a one-minute window.
+SESSION_CHECK_SECONDS: float = float(os.getenv("SESSION_CHECK_SECONDS", "60"))
+
 # =============================================================================
 # Boot-time safety checks
 # =============================================================================
