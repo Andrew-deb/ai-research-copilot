@@ -12,7 +12,10 @@
   {% endif %}
 
   <a class="btn btn-primary btn-lg"
-     href="{{ url_for('auth.google', next=next_url) }}">
+     {# `or None` so url_for omits the parameter entirely when nobody asked for
+        anywhere. An empty `?next=` would be harmless, but a `next=/` baked into
+        every sign-in link is what hid onboarding from every new account. #}
+     href="{{ url_for('auth.google', next=next_url or None) }}">
     Continue with Google
   </a>
 
