@@ -202,7 +202,7 @@ def test_next_cannot_leave_the_site(app, hostile):
     """Without this, `?next=` turns a link from our domain into a phishing redirect."""
     from routes.auth import safe_next
     with app.test_request_context():
-        assert safe_next(hostile) == "/"
+        assert safe_next(hostile) == ""
 
 
 def test_next_keeps_a_relative_path(app):
@@ -211,11 +211,16 @@ def test_next_keeps_a_relative_path(app):
         assert safe_next("/collections") == "/collections"
 
 
-def test_next_falls_back_when_absent(app):
+def test_next_is_empty_when_nobody_asked(app):
+    """
+    Empty, not the home page. The caller supplies its own default, because
+    "go to the dashboard" and "nobody said where" have to stay distinguishable
+    — that difference is the whole onboarding redirect.
+    """
     from routes.auth import safe_next
     with app.test_request_context():
-        assert safe_next(None) == "/"
-        assert safe_next("") == "/"
+        assert safe_next(None) == ""
+        assert safe_next("") == ""
 
 
 # ---------------------------------------------------------------------------
