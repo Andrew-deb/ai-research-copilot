@@ -139,19 +139,22 @@
     closeSidebar(false);
     if (mobile.matches && focusWasInSidebar && sidebarToggle) { sidebarToggle.focus(); }
   });
+  // Chat history search is a filter over one list, so it takes the narrower
+  // chord; the global palette keeps Ctrl+K, which is what people arrive
+  // expecting. Both used to be bound here and in palette.js independently, and
+  // both answered K — this one winning purely by being registered first.
+  if (window.RCShortcuts) {
+    window.RCShortcuts.register("chat.search", function () {
+      const opener = document.getElementById("chat-search-open");
+      if (opener && !opener.closest("[inert]")) { opener.click(); }
+    });
+  }
+
   document.addEventListener("keydown", function (e) {
     const dialog = document.getElementById("chat-search-scrim");
     if (e.key === "Escape") {
       if (dialog && !dialog.hidden) { closeChatSearch(); return; }
       closeSidebar(true);
-    }
-    // Ctrl+K belongs to the global palette, which is the broader of the two and
-    // the binding people arrive already expecting. Chat history search — a
-    // filter over one list — takes Ctrl+Shift+F, and both were answering K
-    // until now, with this one winning because it is bound first.
-    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "f") {
-      const opener = document.getElementById("chat-search-open");
-      if (opener && !opener.closest("[inert]")) { e.preventDefault(); opener.click(); }
     }
     if (e.key === "Tab" && mobile.matches && sidebar && sidebar.classList.contains("open") && (!dialog || dialog.hidden)) {
       const items = Array.from(sidebar.querySelectorAll('a[href], button, [tabindex="0"]')).filter(function (el) { return el.getClientRects().length && !el.disabled; });
