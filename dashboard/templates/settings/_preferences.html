@@ -1,0 +1,181 @@
+{# ===========================================================================
+   Preferences — research, and what gets remembered.
+
+   Every row shows its answer. The options live inside a <details>, so the page
+   is a summary you skim and an editor you open, rather than a form you scroll.
+   =========================================================================== #}
+
+<section class="settings-section" id="section-preferences" data-settings-panel="preferences">
+  <h2 class="settings-heading">Preferences</h2>
+
+  {% if not data.research.onboarding_complete %}
+    <p class="settings-callout">
+      You skipped some of the setup questions.
+      <a href="{{ url_for('onboarding.start') }}">Finish setting up</a> —
+      or answer them here, in any order.
+    </p>
+  {% endif %}
+
+  {# ---- Research fields ---------------------------------------------- #}
+  <div class="settings-row">
+    <div class="settings-row-text">
+      <h3>Research fields</h3>
+      <p class="settings-answer">
+        {% if data.research.fields %}{{ data.research.fields | join(', ') }}
+        {% else %}<span class="settings-unset">Not set</span>{% endif %}
+      </p>
+    </div>
+
+    <details class="settings-editor">
+      <summary class="btn btn-ghost btn-sm">Change</summary>
+      <form method="post" action="{{ url_for('settings.save_research') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="section" value="fields">
+
+        <div class="chip-set">
+          {% for field in fields_shown %}
+            <label class="chip">
+              <input type="checkbox" name="fields" value="{{ field }}"
+                     {{ 'checked' if field in data.research.fields }}>
+              <span>{{ field }}</span>
+            </label>
+          {% endfor %}
+        </div>
+
+        <details class="chip-more">
+          <summary>Search all fields</summary>
+          <label class="visually-hidden" for="field-filter">Filter fields</label>
+          <input id="field-filter" type="search" class="chip-filter"
+                 placeholder="Type to narrow the list" data-chip-filter>
+          <div class="chip-set">
+            {% for field in fields_more %}
+              <label class="chip">
+                <input type="checkbox" name="fields" value="{{ field }}"
+                       {{ 'checked' if field in data.research.fields }}>
+                <span>{{ field }}</span>
+              </label>
+            {% endfor %}
+          </div>
+        </details>
+
+        <button type="submit" class="btn btn-primary btn-sm">Save fields</button>
+      </form>
+    </details>
+  </div>
+
+  {# ---- Topics ------------------------------------------------------- #}
+  <div class="settings-row">
+    <div class="settings-row-text">
+      <h3>What you are working on</h3>
+      <p class="settings-answer">
+        {% if data.research.topics %}{{ data.research.topics | join(', ') }}
+        {% else %}<span class="settings-unset">Nothing added yet</span>{% endif %}
+      </p>
+    </div>
+
+    <details class="settings-editor">
+      <summary class="btn btn-ghost btn-sm">Change</summary>
+      <form method="post" action="{{ url_for('settings.save_research') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="section" value="topics">
+        {% with name='topics', values=data.research.topics, max=max_topics,
+                label='What you are working on',
+                placeholder='retrieval augmented generation' %}
+          {% include '_tag_input.html' %}
+        {% endwith %}
+        <button type="submit" class="btn btn-primary btn-sm">Save topics</button>
+      </form>
+    </details>
+  </div>
+
+  {# ---- Context ------------------------------------------------------ #}
+  <div class="settings-row">
+    <div class="settings-row-text">
+      <h3>Research context</h3>
+      <p class="settings-answer">
+        {% set bits = [] %}
+        {% if data.research.primary_goal %}{% set _ = bits.append(data.research.primary_goal) %}{% endif %}
+        {% if data.research.researcher_type %}{% set _ = bits.append(data.research.researcher_type) %}{% endif %}
+        {% if bits %}{{ bits | join(' · ') }}
+          {% if data.research.help_tasks %}
+            <span class="settings-sub">Helps with: {{ data.research.help_tasks | join(', ') }}</span>
+          {% endif %}
+        {% else %}<span class="settings-unset">Not set</span>{% endif %}
+      </p>
+    </div>
+
+    <details class="settings-editor">
+      <summary class="btn btn-ghost btn-sm">Change</summary>
+      <form method="post" action="{{ url_for('settings.save_research') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="section" value="context">
+
+        <fieldset class="field-group">
+          <legend class="field-label">What brings you here</legend>
+          <div class="choice-set">
+            {% for goal in primary_goals %}
+              <label class="choice">
+                <input type="radio" name="primary_goal" value="{{ goal }}"
+                       {{ 'checked' if data.research.primary_goal == goal }}>
+                <span>{{ goal }}</span>
+              </label>
+            {% endfor %}
+          </div>
+        </fieldset>
+
+        <fieldset class="field-group">
+          <legend class="field-label">Which best describes you</legend>
+          <div class="choice-set">
+            {% for kind in researcher_types %}
+              <label class="choice">
+                <input type="radio" name="researcher_type" value="{{ kind }}"
+                       {{ 'checked' if data.research.researcher_type == kind }}>
+                <span>{{ kind }}</span>
+              </label>
+            {% endfor %}
+          </div>
+        </fieldset>
+
+        <fieldset class="field-group">
+          <legend class="field-label">What the assistant should help with</legend>
+          <div class="choice-set">
+            {% for task in help_tasks %}
+              <label class="choice">
+                <input type="checkbox" name="help_tasks" value="{{ task }}"
+                       {{ 'checked' if task in data.research.help_tasks }}>
+                <span>{{ task }}</span>
+              </label>
+            {% endfor %}
+          </div>
+        </fieldset>
+
+        <button type="submit" class="btn btn-primary btn-sm">Save context</button>
+      </form>
+    </details>
+  </div>
+
+  {# ---- Incognito ----------------------------------------------------- #}
+  <div class="settings-row">
+    <div class="settings-row-text">
+      <h3>{{ icon('incognito') }} Incognito mode</h3>
+      <p class="settings-answer">
+        Searches made while this is on are not saved to your recents.
+        {# Scoped deliberately: notes, collections and conversations are things
+           you created on purpose, and making them vanish would be a different
+           promise than the one this label makes. #}
+        <span class="settings-sub">Notes, collections and conversations still save.</span>
+      </p>
+    </div>
+
+    <form method="post" action="{{ url_for('settings.save_incognito') }}"
+          class="settings-control">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="incognito" value="{{ 'off' if data.account.incognito else 'on' }}">
+      <button type="submit" class="toggle{{ ' is-on' if data.account.incognito }}"
+              role="switch" aria-checked="{{ 'true' if data.account.incognito else 'false' }}">
+        <span class="visually-hidden">Incognito mode</span>
+        <span class="toggle-knob" aria-hidden="true"></span>
+      </button>
+    </form>
+  </div>
+</section>
