@@ -263,15 +263,47 @@ def link_user_provider(user_id: str, provider: str, subject: str,
 
 def touch_user_login(user_id: str, display_name: str | None = None,
                      avatar_url: str | None = None) -> None:
+    """
+    Record a sign-in and refresh what the provider tells us.
+
+    The name follows Google ONLY while nobody has set their own. Somebody who
+    renames themselves in settings would otherwise have it undone by their next
+    sign-in — silently, and in a place they would never think to look.
+
+    The avatar always follows: it is a picture from the provider, not something
+    this application lets anybody choose, so there is no local value to protect.
+    """
     run_write(
         """
         UPDATE users
            SET last_login_at = now(),
-               display_name  = COALESCE(%s, display_name),
+               display_name  = CASE WHEN display_name_custom THEN display_name
+                                    ELSE COALESCE(%s, display_name) END,
                avatar_url    = COALESCE(%s, avatar_url)
          WHERE user_id = %s;
         """,
         (display_name, avatar_url, user_id),
+    )
+
+
+def set_display_name(user_id: str, name: str | None) -> dict | None:
+    """
+    Set a chosen name, or clear it back to the provider's.
+
+    Clearing flips the flag off and blanks the name, so the next sign-in
+    repopulates it from Google — "use my Google name" without needing a second
+    column to remember what that was.
+    """
+    if name:
+        return run_write(
+            "UPDATE users SET display_name = %s, display_name_custom = true "
+            "WHERE user_id = %s RETURNING *;",
+            (name, user_id), returning=True,
+        )
+    return run_write(
+        "UPDATE users SET display_name = NULL, display_name_custom = false "
+        "WHERE user_id = %s RETURNING *;",
+        (user_id,), returning=True,
     )
 
 
@@ -1195,3 +1227,122 @@ def delete_conversation(user_id: str, conversation_id: str) -> bool:
         (conversation_id, user_id),
     )
     return bool(deleted)
+
+
+# =============================================================================
+# Onboarding: the profile and the interests behind it (Phase 3.7)
+# =============================================================================
+
+def get_user_profile(user_id: str) -> dict | None:
+    """
+    This person's profile row, or None when they have never answered anything.
+
+    None is meaningful: it is how a brand-new account is told apart from one
+    that started onboarding and stopped. Only the former is redirected into it.
+    """
+    rows = run_query("SELECT * FROM user_profiles WHERE user_id = %s;", (user_id,))
+    return rows[0] if rows else None
+
+
+def upsert_user_profile(user_id: str, fields: dict) -> dict:
+    """
+    Create or update a profile, writing only the keys given.
+
+    `complete` is a flag rather than a timestamp from the caller, because the
+    database is the only thing that knows what "now" is on the server — and
+    COALESCE keeps the ORIGINAL completion time when somebody revisits a
+    finished flow, so "when did you sign up and fill this in" survives them
+    changing one answer a year later.
+    """
+    complete = bool(fields.pop("complete", False))
+
+    columns = ["user_id"]
+    values: list = [user_id]
+    for name in ("onboarding_step", "researcher_type", "primary_goal"):
+        if name in fields:
+            columns.append(name)
+            values.append(fields[name])
+    if "help_tasks" in fields:
+        columns.append("help_tasks")
+        values.append(json.dumps(fields["help_tasks"]))
+
+    updates = ", ".join(f"{c} = EXCLUDED.{c}" for c in columns if c != "user_id")
+    updates = (updates + ", " if updates else "") + "updated_at = now()"
+    if complete:
+        updates += (", onboarding_completed_at = "
+                    "COALESCE(user_profiles.onboarding_completed_at, now())")
+
+    return run_write(
+        f"""
+        INSERT INTO user_profiles ({', '.join(columns)})
+        VALUES ({', '.join(['%s'] * len(columns))})
+        ON CONFLICT (user_id) DO UPDATE SET {updates}
+        RETURNING *;
+        """,
+        tuple(values),
+        returning=True,
+    )
+
+
+def record_interest(user_id: str, kind: str, value: str,
+                    source: str, confidence: float) -> None:
+    """
+    One interest, from one source.
+
+    ON CONFLICT on (user, kind, value, source) — so re-answering onboarding
+    does not create duplicates, and a behavioural signal never overwrites an
+    explicit one: they are different rows by construction.
+
+    `evidence_count` climbs on a repeat and `last_seen_at` moves, which is what
+    a rollup across sources will eventually weigh. `confidence` takes the
+    GREATER of the two: evidence for something does not make it less certain.
+    """
+    run_write(
+        """
+        INSERT INTO user_research_interests (user_id, kind, value, source, confidence)
+        VALUES (%s, %s, %s, %s, %s)
+        ON CONFLICT (user_id, kind, value, source) DO UPDATE SET
+            evidence_count = user_research_interests.evidence_count + 1,
+            confidence     = GREATEST(user_research_interests.confidence, EXCLUDED.confidence),
+            last_seen_at   = now();
+        """,
+        (user_id, kind, value, source, confidence),
+    )
+
+
+def get_user_interests(user_id: str, source: str | None = None) -> list[dict]:
+    """This person's interests, strongest first; optionally from one source."""
+    if source:
+        return run_query(
+            """
+            SELECT kind, value, source, confidence, evidence_count
+              FROM user_research_interests
+             WHERE user_id = %s AND source = %s
+             ORDER BY confidence DESC, value;
+            """,
+            (user_id, source),
+        )
+    return run_query(
+        """
+        SELECT kind, value, source, confidence, evidence_count
+          FROM user_research_interests
+         WHERE user_id = %s
+         ORDER BY confidence DESC, value;
+        """,
+        (user_id,),
+    )
+
+
+def clear_interests(user_id: str, kind: str, source: str) -> None:
+    """
+    Drop one kind from one source, so re-answering a step REPLACES its answer.
+
+    Scoped to the source as well as the kind: deselecting a field in onboarding
+    must not delete the evidence that the person keeps reading that field's
+    papers, which is a different claim made by a different mechanism.
+    """
+    run_write(
+        "DELETE FROM user_research_interests "
+        "WHERE user_id = %s AND kind = %s AND source = %s;",
+        (user_id, kind, source),
+    )
