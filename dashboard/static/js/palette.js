@@ -92,15 +92,20 @@
   if (trigger) { trigger.addEventListener("click", open); }
   if (scrim) { scrim.addEventListener("click", close); }
 
-  document.addEventListener("keydown", function (e) {
-    // Cmd on a Mac, Ctrl everywhere else. main.js had this same combination
-    // bound to the chat-history search and won by being registered first, so
-    // the global palette was unreachable by its own shortcut; that one is now
-    // Ctrl+Shift+F.
-    if ((e.metaKey || e.ctrlKey) && !e.shiftKey && (e.key === "k" || e.key === "K")) {
-      e.preventDefault();
+  // The chord lives in shortcuts.js, not here. This file used to bind its own
+  // document listener for Ctrl+K and lose the race to main.js, which had the
+  // same combination for chat-history search; neither file could see the other.
+  // Now there is one listener and one registry, and a duplicate chord fails the
+  // test suite instead of silently picking a winner by script order.
+  if (window.RCShortcuts) {
+    window.RCShortcuts.register("palette.open", function () {
       return palette.hidden ? open() : close();
-    }
+    });
+  }
+
+  // Escape stays local: it means "close what is in front of you", which only
+  // the thing in front can answer.
+  document.addEventListener("keydown", function (e) {
     if (e.key === "Escape" && !palette.hidden) {
       e.preventDefault();
       close();
