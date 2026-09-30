@@ -24,7 +24,7 @@ from flask import Blueprint, current_app, redirect, render_template, request, se
 
 from config import GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_DISCOVERY_URL
 from middleware.auth import SESSION_ANON_KEY, SESSION_USER_KEY, forget_user
-from services import auth_service
+from services import auth_service, onboarding_service
 
 logger = logging.getLogger(__name__)
 
@@ -54,17 +54,24 @@ def init_oauth(app) -> None:
 
 def safe_next(raw: str | None) -> str:
     """
-    A redirect target that cannot leave this site.
+    A redirect target that cannot leave this site, or "" when there isn't one.
 
     Accepts only a path: it must start with a single `/`. `//evil.com` and
     `https://evil.com` are both rejected, the first because browsers read a
     protocol-relative URL as an absolute one. Without this check, `?next=` is an
     open redirect that makes a phishing link look like it came from us.
+
+    Empty means "nobody asked to go anywhere", and callers supply their own
+    default. It used to return the home page instead, which erased exactly that
+    distinction — and with it the only signal telling a brand-new account apart
+    from someone returning. Every new user was sent to the dashboard rather than
+    onboarding, because `if not asked_for` could never be true once `asked_for`
+    was always a URL.
     """
     if not raw:
-        return url_for("home.index")
+        return ""
     if not raw.startswith("/") or raw.startswith("//"):
-        return url_for("home.index")
+        return ""
     return raw
 
 
@@ -159,14 +166,30 @@ def google_callback():
 
     # Session fixation defence: a brand-new session id for the authenticated
     # session, so a value an attacker planted before login cannot be reused after.
-    destination = session.get("post_login_next") or url_for("home.index")
+    # Read BEFORE the clear below, and kept: the onboarding check needs to know
+    # whether they asked for somewhere specific, and after session.clear() there
+    # is nothing left to ask.
+    asked_for = session.get("post_login_next")
     session.clear()
     session[SESSION_USER_KEY] = str(user["user_id"])
     session.permanent = True
     forget_user(user["user_id"])
 
     logger.info("Signed in user %s", user["user_id"])
-    return redirect(safe_next(destination))
+
+    # A brand-new account goes to onboarding; anyone who has answered anything
+    # at all goes where they were headed. Only the FIRST sign-in is intercepted
+    # — being dropped into a form on every return is how people learn to click
+    # through one without reading it.
+    #
+    # An explicit `next` wins regardless: somebody who followed a link to a
+    # paper asked for that paper, and onboarding can wait for the dashboard.
+    if not asked_for and onboarding_service.needs_onboarding(user["user_id"]):
+        return redirect(url_for("onboarding.start"))
+
+    # Re-sanitised rather than trusted: the value was checked on the way in, but
+    # a session minted by an older build is not something to redirect on faith.
+    return redirect(safe_next(asked_for) or url_for("home.index"))
 
 
 @bp.post("/logout")
