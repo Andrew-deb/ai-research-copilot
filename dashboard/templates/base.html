@@ -662,6 +662,13 @@
   </div>
 </div>
 
+{# FIRST, and before anything that binds a key: every other script calls
+   RCShortcuts.register, and one loaded ahead of this would find it undefined and
+   silently bind nothing. Its own listener is added here, so ordering decides
+   nothing else — which is the point of having a registry at all. #}
+<script src="{{ url_for('static', filename='js/shortcuts.js') }}"></script>
+<script src="{{ url_for('static', filename='js/shortcuts-sheet.js') }}"></script>
+
 <script src="{{ url_for('static', filename='js/main.js') }}"></script>
 {# Outside the signed-in block: the navigation rail is resizable for everyone,
    and rails.js simply finds no notes handle when there is no panel. #}
