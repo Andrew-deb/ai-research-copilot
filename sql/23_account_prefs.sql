@@ -1,0 +1,43 @@
+-- =============================================================================
+-- 23_account_prefs.sql — preferences that belong to the account, not the browser
+-- =============================================================================
+-- Incognito suppresses writes to `user_search_history`, so searches made while
+-- it is on stay out of recents and out of the command palette.
+--
+-- **On `users`, deliberately not on `user_profiles`.**
+--
+-- `user_profiles` looks like the natural home for a preference, and is a trap.
+-- `onboarding_service.needs_onboarding()` decides whether to redirect a new
+-- account by testing whether a profile row exists AT ALL. Writing any
+-- non-onboarding preference there creates that row, and the account is then
+-- permanently treated as having started onboarding — by somebody who has never
+-- seen it.
+--
+-- That is the bug fixed in step 1 of this plan, re-introduced from a different
+-- direction and much harder to spot, because nothing about "save my incognito
+-- setting" suggests it could hide the welcome flow.
+--
+-- The rule that follows: `user_profiles` holds onboarding answers. Account-level
+-- preferences go on `users`.
+--
+-- Default false — the current behaviour, so no existing account changes because
+-- of a migration.
+-- =============================================================================
+
+ALTER TABLE users
+    ADD COLUMN IF NOT EXISTS incognito_mode BOOLEAN NOT NULL DEFAULT false;
+
+-- =============================================================================
+-- Verification
+-- =============================================================================
+-- SELECT email, incognito_mode FROM users ORDER BY email;
+--
+-- Turn it on, run a search, and expect no new row:
+--
+-- SELECT count(*) FROM user_search_history WHERE user_id = '<your-user-id>';
+--
+-- Then confirm the profile row was NOT created as a side effect, which is the
+-- whole reason this column lives where it does:
+--
+-- SELECT (SELECT incognito_mode FROM users WHERE user_id = '<id>')        AS pref_saved,
+--        (SELECT count(*) FROM user_profiles WHERE user_id = '<id>')      AS profile_rows;
