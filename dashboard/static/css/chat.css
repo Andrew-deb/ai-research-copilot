@@ -306,9 +306,50 @@
 .chat-page.is-empty .chat-note { text-align: center; }
 
 @media (max-width: 720px) {
-  .chat-page.is-empty { padding-bottom: 4vh; }
   .chat-msg-user { max-width: 92%; }
   .chat-starters .prompt-chip { white-space: normal; }
+
+  /* ---------- The empty chat on a phone ----------
+     Three things sat wrong: the greeting and the composer were pressed
+     together at the top, the starters hung below the composer, and everything
+     under them was blank to the bottom of the screen.
+
+     The shape that works is the one every messaging app converges on. The
+     composer goes to the bottom edge, where a thumb already is. The starters
+     sit directly above it, because they fill the box they are next to. The
+     greeting floats in whatever space is left, which is what the blank area
+     was for all along - it just had nothing in it.
+
+     `svh`, not `vh`: the small viewport height excludes the browser chrome
+     that appears and disappears while scrolling, so the composer is not parked
+     underneath the URL bar for the first half of every visit. */
+  .chat-page.is-empty {
+    display: flex;
+    flex-direction: column;
+    min-height: calc(100svh - var(--topbar-h) - 24px);
+    padding-bottom: 0;
+    justify-content: flex-start;
+  }
+  .chat-page.is-empty .chat-stage {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+  }
+
+  /* Auto margins on both sides of the greeting centre it in the leftover
+     space without needing to know how much there is. */
+  .chat-page.is-empty .chat-title { order: 1; margin-top: auto; }
+  .chat-page.is-empty .chat-sub { order: 2; margin-bottom: auto; }
+
+  /* Above the composer here, below it on a wide screen. The comment in
+     _chat_composer.html is right that suggestions under an empty box read as
+     the primary control - but that reasoning assumed the box was in the middle
+     of the page. Once the composer is pinned to the bottom edge, "above it" IS
+     under the greeting, and the reading order is unchanged. */
+  .chat-page.is-empty .chat-starters { order: 3; margin-bottom: 10px; }
+  .chat-page.is-empty .composer { order: 4; }
+  .chat-page.is-empty .chat-note { order: 5; margin: 8px 0 0; }
 }
 
 /* ---------- Phase 3.3: rendering one turn ----------
