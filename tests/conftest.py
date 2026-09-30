@@ -84,6 +84,10 @@ class FakeDB:
         self.papers: dict[str, dict] = {}
         self.progress: dict[tuple[str, str], dict] = {}
         self.notes: dict[str, dict] = {}
+        self.profiles: dict[str, dict] = {}
+        # Keyed the way the table is: (user, kind, value, source). Explicit and
+        # behavioural evidence are separate rows by construction.
+        self.interests: dict[tuple, dict] = {}
         # (scope, scope_id, metric) -> count. No day key: a test never spans one.
         self.usage: dict[tuple[str, str, str], int] = {}
         # One dict per ai_operations row, in the order they were written.
@@ -115,6 +119,7 @@ class FakeDB:
         uid = str(uuid.uuid4())
         row = {"user_id": uid, "email": email, "display_name": display_name,
                "auth_provider": "dev", "provider_subject": None, "avatar_url": None,
+               "display_name_custom": False,
                "is_system": False, "last_login_at": None, "created_at": _now()}
         self.users_by_id[uid] = row
         self.users_by_email[email] = row
@@ -138,7 +143,8 @@ class FakeDB:
         uid = str(uuid.uuid4())
         row = {"user_id": uid, "email": email, "display_name": display_name,
                "auth_provider": provider, "provider_subject": subject,
-               "avatar_url": avatar_url, "is_system": False,
+               "avatar_url": avatar_url, "display_name_custom": False,
+               "is_system": False,
                "last_login_at": _now(), "created_at": _now()}
         self.users_by_id[uid] = row
         self.users_by_email[email] = row
@@ -153,13 +159,6 @@ class FakeDB:
         row["avatar_url"] = avatar_url or row.get("avatar_url")
         row["last_login_at"] = _now()
         return dict(row)
-
-    def touch_user_login(self, user_id, display_name=None, avatar_url=None):
-        row = self.users_by_id.get(str(user_id))
-        if row:
-            row["last_login_at"] = _now()
-            row["display_name"] = display_name or row.get("display_name")
-            row["avatar_url"] = avatar_url or row.get("avatar_url")
 
     # ---------- home stats ----------
     def get_dashboard_stats(self, user_id):
@@ -342,6 +341,69 @@ class FakeDB:
         elif scope == "pinned":
             rows = [r for r in rows if r.get("pinned")]
         return rows
+
+    # ---------- onboarding ----------
+    def set_display_name(self, user_id, name):
+        row = self.users_by_id.get(str(user_id))
+        if not row:
+            return None
+        # Mirrors the real UPDATE: clearing the name also clears the flag, so
+        # the next sign-in repopulates it from the provider.
+        row["display_name"] = name or None
+        row["display_name_custom"] = bool(name)
+        return dict(row)
+
+    def touch_user_login(self, user_id, display_name=None, avatar_url=None):
+        row = self.users_by_id.get(str(user_id))
+        if not row:
+            return
+        row["last_login_at"] = _now()
+        # The name follows the provider ONLY while nobody has chosen their own.
+        if not row.get("display_name_custom") and display_name:
+            row["display_name"] = display_name
+        if avatar_url:
+            row["avatar_url"] = avatar_url
+
+    def get_user_profile(self, user_id):
+        row = self.profiles.get(str(user_id))
+        return dict(row) if row else None
+
+    def upsert_user_profile(self, user_id, fields):
+        complete = bool(fields.pop("complete", False))
+        row = self.profiles.setdefault(str(user_id), {
+            "user_id": str(user_id), "onboarding_step": 0,
+            "onboarding_completed_at": None, "researcher_type": None,
+            "primary_goal": None, "help_tasks": None,
+        })
+        row.update(fields)
+        if complete and not row["onboarding_completed_at"]:
+            # COALESCE in the real query: the FIRST completion is kept, so
+            # revisiting a finished flow does not rewrite when they joined.
+            row["onboarding_completed_at"] = _now()
+        return dict(row)
+
+    def record_interest(self, user_id, kind, value, source, confidence):
+        key = (str(user_id), kind, value, source)
+        row = self.interests.get(key)
+        if row:
+            row["evidence_count"] += 1
+            row["confidence"] = max(row["confidence"], confidence)
+        else:
+            self.interests[key] = {
+                "user_id": str(user_id), "kind": kind, "value": value,
+                "source": source, "confidence": confidence, "evidence_count": 1,
+            }
+
+    def get_user_interests(self, user_id, source=None):
+        rows = [dict(r) for k, r in self.interests.items()
+                if k[0] == str(user_id) and (source is None or k[3] == source)]
+        rows.sort(key=lambda r: (-r["confidence"], r["value"]))
+        return rows
+
+    def clear_interests(self, user_id, kind, source):
+        for key in [k for k in self.interests
+                    if k[0] == str(user_id) and k[1] == kind and k[3] == source]:
+            del self.interests[key]
 
     def set_note_pinned(self, user_id, note_id, pinned):
         row = self.notes.get(str(note_id))
