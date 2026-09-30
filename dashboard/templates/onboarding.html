@@ -70,14 +70,14 @@
         field — the thing you would actually search for.
       </p>
 
-      <div class="topic-rows">
-        {% for i in range(max_topics) %}
-          <label class="visually-hidden" for="topic-{{ i }}">Topic {{ i + 1 }}</label>
-          <input id="topic-{{ i }}" type="text" name="topics" maxlength="80"
-                 value="{{ chosen.topic[i] if chosen.topic | length > i else '' }}"
-                 placeholder="{{ ['retrieval augmented generation', 'protein folding', 'causal inference', '', ''][i] }}">
-        {% endfor %}
-      </div>
+      {# Was five fixed boxes. A cap rendered as five empty rectangles turns a
+         limit into a demand, and faces somebody with one project with four
+         blanks to explain. Added one at a time instead. #}
+      {% with name='topics', values=chosen.topic, max=max_topics,
+              label='What you are working on',
+              placeholder='retrieval augmented generation' %}
+        {% include '_tag_input.html' %}
+      {% endwith %}
 
     {# ---- 3. Why they are here ----------------------------------------- #}
     {% elif number == 3 %}
@@ -154,4 +154,7 @@
 </form>
 {% endblock %}
 
-{% block extra_js %}<script src="{{ url_for('static', filename='js/onboarding.js') }}"></script>{% endblock %}
+{% block extra_js %}
+  <script src="{{ url_for('static', filename='js/tag-input.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/onboarding.js') }}"></script>
+{% endblock %}
