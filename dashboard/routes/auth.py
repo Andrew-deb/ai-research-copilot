@@ -18,12 +18,21 @@ this product does.
 """
 
 import logging
+import time
 
 from authlib.integrations.flask_client import OAuth
 from flask import Blueprint, current_app, redirect, render_template, request, session, url_for
 
 from config import GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_DISCOVERY_URL
-from middleware.auth import SESSION_ANON_KEY, SESSION_USER_KEY, forget_user
+from middleware.auth import (
+    REAUTH_KEY,
+    SESSION_ANON_KEY,
+    SESSION_TOKEN_KEY,
+    SESSION_USER_KEY,
+    forget_session,
+    forget_user,
+)
+from repositories import lakebase, sessions
 from services import auth_service, onboarding_service
 
 logger = logging.getLogger(__name__)
@@ -128,6 +137,25 @@ def google():
     return _oauth.google.authorize_redirect(redirect_uri)
 
 
+@bp.get("/auth/reauth")
+def reauth():
+    """
+    Prove this account again, for something a session alone should not authorise.
+
+    `prompt=login` is the whole point: without it Google recognises the existing
+    session and returns instantly, which proves the browser still has a cookie —
+    exactly the thing already in doubt. Forcing the credential is what makes this
+    a check rather than a redirect.
+    """
+    if "google" not in _oauth._clients:
+        return _auth_page("login",
+                          error="Google sign-in is not configured on this deployment."), 503
+
+    session["reauth_next"] = safe_next(request.args.get("next"))
+    return _oauth.google.authorize_redirect(
+        url_for("auth.google_callback", _external=True), prompt="login")
+
+
 @bp.get("/auth/google/callback")
 def google_callback():
     """
@@ -156,6 +184,23 @@ def google_callback():
         return _auth_page("login",
                           error="Please verify your email address with Google first."), 400
 
+    # Re-authentication returns through this same callback, and must not be
+    # allowed to become a sign-in. The account coming back has to be the account
+    # already in the session: without that check, proving *a* Google account
+    # would authorise deleting *this* one, which is the opposite of a check.
+    reauth_next = session.pop("reauth_next", None)
+    if reauth_next is not None:
+        signed_in = session.get(SESSION_USER_KEY)
+        existing = lakebase.get_user_by_provider("google", subject)
+
+        if not signed_in or not existing or str(existing["user_id"]) != str(signed_in):
+            logger.warning("Re-auth returned a different account; refusing.")
+            session.pop(REAUTH_KEY, None)
+            return redirect(url_for("home.index"))
+
+        session[REAUTH_KEY] = time.time()
+        return redirect(safe_next(reauth_next) or url_for("home.index"))
+
     user = auth_service.resolve_or_create_user(
         provider="google",
         subject=subject,
@@ -172,6 +217,7 @@ def google_callback():
     asked_for = session.get("post_login_next")
     session.clear()
     session[SESSION_USER_KEY] = str(user["user_id"])
+    session[SESSION_TOKEN_KEY] = start_session(user["user_id"])
     session.permanent = True
     forget_user(user["user_id"])
 
@@ -192,11 +238,48 @@ def google_callback():
     return redirect(safe_next(asked_for) or url_for("home.index"))
 
 
+def start_session(user_id: str) -> str:
+    """
+    Mint a session token and record the browser presenting it.
+
+    `request.remote_addr` is the real client address because ProxyFix is applied
+    to the whole app — without it every device row would read as Render's proxy,
+    which is the same value for everybody and tells nobody anything.
+
+    A failure to record is logged and swallowed: the token still works, so a
+    database blip costs the device list an entry rather than costing somebody
+    their sign-in.
+    """
+    token = sessions.new_token()
+    try:
+        sessions.record(
+            user_id,
+            token,
+            user_agent=request.headers.get("User-Agent"),
+            ip_address=request.remote_addr,
+        )
+    except Exception as exc:  # noqa: BLE001 - never fail a sign-in over telemetry
+        logger.warning("Could not record session for %s: %s", user_id, exc)
+    return token
+
+
 @bp.post("/logout")
 def logout():
     """POST, not GET: a GET logout can be triggered by an <img> tag on any page."""
     user_id = session.get(SESSION_USER_KEY)
+    token = session.get(SESSION_TOKEN_KEY)
     session.clear()
+
+    if token:
+        # Revoked, not just forgotten. Clearing the cookie stops this browser
+        # presenting it, but the row is what makes the token dead everywhere —
+        # including in a copy of the cookie taken before logout.
+        try:
+            sessions.revoke_by_token(token)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Could not revoke session on logout: %s", exc)
+        forget_session(token)
+
     if user_id:
         forget_user(user_id)
         logger.info("Signed out user %s", user_id)
