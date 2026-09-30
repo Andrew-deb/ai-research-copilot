@@ -1,0 +1,232 @@
+{% extends "base.html" %}
+{% block title %}Settings — Alfred{% endblock %}
+{% block topbar_title %}Settings{% endblock %}
+
+{% block content %}
+<div class="settings">
+  <h1 class="page-title">Settings</h1>
+
+  {# ---- Profile -------------------------------------------------------- #}
+  <section class="panel settings-card">
+    <h2>Profile</h2>
+
+    <form method="post" action="{{ url_for('settings.save_profile') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <label class="field">
+        <span class="field-label">Display name</span>
+        <input type="text" name="display_name" maxlength="80"
+               value="{{ data.identity.display_name or '' }}"
+               placeholder="{{ data.identity.email }}">
+      </label>
+      <p class="field-hint">
+        {% if data.identity.name_is_custom %}
+          This is a name you chose, so signing in again will not change it.
+          Clear the field to go back to your {{ data.identity.provider | title }} name.
+        {% else %}
+          Currently following your {{ data.identity.provider | title }} name. Type
+          your own here and it will stay put.
+        {% endif %}
+      </p>
+
+      <button type="submit" class="btn btn-primary btn-sm">Save name</button>
+    </form>
+
+    {# Shown, never offered. These are the verified identity the application
+       authenticates against — a field here would display a claim rather than
+       a fact. #}
+    <dl class="settings-facts">
+      <div>
+        <dt>Email</dt>
+        <dd>{{ data.identity.email }}</dd>
+      </div>
+      <div>
+        <dt>Signs in with</dt>
+        <dd>{{ data.identity.provider | title }}</dd>
+      </div>
+      {% if data.identity.joined %}
+      <div>
+        <dt>Joined</dt>
+        <dd>{{ data.identity.joined.strftime('%d %B %Y') if data.identity.joined.strftime else data.identity.joined }}</dd>
+      </div>
+      {% endif %}
+    </dl>
+    <p class="field-hint">
+      Your email and sign-in provider come from {{ data.identity.provider | title }}
+      and cannot be edited here — changing them would change who this account is.
+    </p>
+  </section>
+
+  {# ---- Research: fields ------------------------------------------------ #}
+  <section class="panel settings-card">
+    <h2>Research fields</h2>
+    <p class="field-hint">
+      The same choices as onboarding, stored the same way — one choice is one
+      field, and nothing is inferred beyond what you tick.
+      {% if not data.research.onboarding_complete %}
+        <a href="{{ url_for('onboarding.start') }}">Finish setting up</a>.
+      {% endif %}
+    </p>
+
+    <form method="post" action="{{ url_for('settings.save_research') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="section" value="fields">
+
+      <div class="chip-set">
+        {% for field in fields_shown %}
+          <label class="chip">
+            <input type="checkbox" name="fields" value="{{ field }}"
+                   {{ 'checked' if field in data.research.fields }}>
+            <span>{{ field }}</span>
+          </label>
+        {% endfor %}
+      </div>
+
+      <details class="chip-more" {{ 'open' if data.research.fields | select('in', fields_more) | list }}>
+        <summary>Search all fields</summary>
+        <label class="visually-hidden" for="field-filter">Filter fields</label>
+        <input id="field-filter" type="search" class="chip-filter"
+               placeholder="Type to narrow the list" data-chip-filter>
+        <div class="chip-set">
+          {% for field in fields_more %}
+            <label class="chip">
+              <input type="checkbox" name="fields" value="{{ field }}"
+                     {{ 'checked' if field in data.research.fields }}>
+              <span>{{ field }}</span>
+            </label>
+          {% endfor %}
+        </div>
+      </details>
+
+      <button type="submit" class="btn btn-primary btn-sm">Save fields</button>
+    </form>
+  </section>
+
+  {# ---- Research: topics ------------------------------------------------ #}
+  <section class="panel settings-card">
+    <h2>What you are working on</h2>
+    <p class="field-hint">Up to {{ max_topics }}, in your own words.</p>
+
+    <form method="post" action="{{ url_for('settings.save_research') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="section" value="topics">
+
+      <div class="topic-rows">
+        {% for i in range(max_topics) %}
+          <label class="visually-hidden" for="topic-{{ i }}">Topic {{ i + 1 }}</label>
+          <input id="topic-{{ i }}" type="text" name="topics" maxlength="80"
+                 value="{{ data.research.topics[i] if data.research.topics | length > i else '' }}">
+        {% endfor %}
+      </div>
+
+      <button type="submit" class="btn btn-primary btn-sm">Save topics</button>
+    </form>
+  </section>
+
+  {# ---- Research: context ----------------------------------------------- #}
+  <section class="panel settings-card">
+    <h2>Research context</h2>
+
+    <form method="post" action="{{ url_for('settings.save_research') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="section" value="context">
+
+      <fieldset class="field-group">
+        <legend class="field-label">What brings you here</legend>
+        <div class="choice-set">
+          {% for goal in primary_goals %}
+            <label class="choice">
+              <input type="radio" name="primary_goal" value="{{ goal }}"
+                     {{ 'checked' if data.research.primary_goal == goal }}>
+              <span>{{ goal }}</span>
+            </label>
+          {% endfor %}
+        </div>
+      </fieldset>
+
+      <fieldset class="field-group">
+        <legend class="field-label">Which best describes you</legend>
+        <div class="choice-set">
+          {% for kind in researcher_types %}
+            <label class="choice">
+              <input type="radio" name="researcher_type" value="{{ kind }}"
+                     {{ 'checked' if data.research.researcher_type == kind }}>
+              <span>{{ kind }}</span>
+            </label>
+          {% endfor %}
+        </div>
+      </fieldset>
+
+      <fieldset class="field-group">
+        <legend class="field-label">What the assistant should help with</legend>
+        <div class="choice-set">
+          {% for task in help_tasks %}
+            <label class="choice">
+              <input type="checkbox" name="help_tasks" value="{{ task }}"
+                     {{ 'checked' if task in data.research.help_tasks }}>
+              <span>{{ task }}</span>
+            </label>
+          {% endfor %}
+        </div>
+      </fieldset>
+
+      <button type="submit" class="btn btn-primary btn-sm">Save context</button>
+    </form>
+  </section>
+
+  {# ---- Appearance ------------------------------------------------------ #}
+  <section class="panel settings-card">
+    <h2>Appearance</h2>
+    <p class="field-hint">
+      {# Deliberately not stored on the account. A laptop in a bright room and
+         a phone at night want different answers, and syncing them means one
+         device overrules the other. Saying so beats letting somebody discover
+         it when their phone changes colour. #}
+      Theme and sidebar width are remembered <strong>on this device</strong>,
+      not on your account — so each browser you use keeps its own.
+    </p>
+
+    <div class="settings-appearance">
+      <button type="button" class="btn btn-ghost btn-sm" id="settings-theme">
+        Switch theme
+      </button>
+      <button type="button" class="btn btn-ghost btn-sm" id="settings-reset-layout">
+        Reset sidebar widths
+      </button>
+    </div>
+  </section>
+
+  {# ---- Usage ----------------------------------------------------------- #}
+  <section class="panel settings-card">
+    <h2>Usage today</h2>
+
+    {% if data.usage %}
+      <ul class="usage-list">
+        {% for row in data.usage %}
+          <li class="usage-row">
+            <span class="usage-label">{{ row.label }}</span>
+            <span class="usage-bar" role="img"
+                  aria-label="{{ row.used }} of {{ row.limit }} used">
+              <span class="usage-fill" style="width: {{ row.percent }}%"></span>
+            </span>
+            <span class="usage-count">{{ row.used }} / {{ row.limit }}</span>
+          </li>
+        {% endfor %}
+      </ul>
+      <p class="field-hint">
+        {# Read-only, and the only honest option: allowances are operator
+           configuration, not preferences. #}
+        Counts reset daily. These allowances are set for the deployment rather
+        than per account, so they are shown here but not editable.
+      </p>
+    {% else %}
+      <p class="empty-state">Usage is not being metered on this deployment.</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+  <script src="{{ url_for('static', filename='js/onboarding.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/settings.js') }}"></script>
+{% endblock %}
