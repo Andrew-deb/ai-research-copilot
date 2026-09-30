@@ -1,0 +1,48 @@
+{# ===========================================================================
+   _tag_input.html — add things one at a time
+
+   Replaces a row of fixed empty boxes. `MAX_TOPICS` is a cap, and rendering it
+   as five rectangles turned it into a demand: four blank boxes facing somebody
+   who has one project. Here the limit is something you meet, not a quota you
+   fill.
+
+   Entries are hidden inputs inside their own list item, so the form posts the
+   same `name` it always did and the server needs no idea this changed. Removing
+   an entry removes its input with it — no index juggling, no gaps.
+
+   Usage:
+     {% with name='topics', values=data.research.topics, max=max_topics,
+             label='What you are working on', placeholder='retrieval augmented generation' %}
+       {% include '_tag_input.html' %}
+     {% endwith %}
+   =========================================================================== #}
+
+<div class="tag-input" data-tag-input data-name="{{ name }}" data-max="{{ max }}">
+  <ul class="tag-list" data-tag-list
+      {% if not values %}hidden{% endif %}
+      aria-label="{{ label }}">
+    {% for value in values %}
+      <li class="tag-item">
+        <span class="tag-text">{{ value }}</span>
+        <input type="hidden" name="{{ name }}" value="{{ value }}">
+        <button type="button" class="icon-btn tag-remove" data-tag-remove
+                aria-label="Remove {{ value }}">{{ icon('trash') }}</button>
+      </li>
+    {% endfor %}
+  </ul>
+
+  <div class="tag-add">
+    <label class="visually-hidden" for="tag-entry-{{ name }}">{{ label }}</label>
+    {# Enter commits. type="text" rather than a submit-triggering default, and
+       the script cancels the keypress, so Enter adds an entry instead of
+       posting a half-filled form. #}
+    <input type="text" id="tag-entry-{{ name }}" class="tag-entry" data-tag-entry
+           maxlength="80" autocomplete="off"
+           placeholder="{{ placeholder }}">
+    <button type="button" class="btn btn-ghost btn-sm" data-tag-commit>Add</button>
+  </div>
+
+  <p class="field-hint tag-hint" data-tag-hint>
+    Press Enter to add. Up to {{ max }}.
+  </p>
+</div>
