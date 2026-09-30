@@ -364,6 +364,39 @@ class FakeDB:
         if avatar_url:
             row["avatar_url"] = avatar_url
 
+    def set_incognito(self, user_id, enabled):
+        row = self.users_by_id.get(str(user_id))
+        if not row:
+            return None
+        row["incognito_mode"] = bool(enabled)
+        return dict(row)
+
+    def delete_user(self, user_id):
+        uid = str(user_id)
+        row = self.users_by_id.pop(uid, None)
+        if row:
+            self.users_by_email.pop(row["email"], None)
+        # Mirrors the real cascade. Written out per table rather than trusted,
+        # because a fake that quietly keeps rows the database would drop is how
+        # a deletion test passes while leaving somebody's notes behind.
+        self.profiles.pop(uid, None)
+        for store in (self.goals, self.collections, self.notes, self.conversations):
+            for key in [k for k, v in store.items() if str(v.get("user_id")) == uid]:
+                del store[key]
+        for key in [k for k in self.interests if k[0] == uid]:
+            del self.interests[key]
+        for key in [k for k in self.progress if str(k[0]) == uid]:
+            del self.progress[key]
+        for key in [k for k in self.search_history if str(k[0]) == uid]:
+            del self.search_history[key]
+        for key in [k for k in self.usage if k[0] == "user" and k[1] == uid]:
+            del self.usage[key]
+        # Kept and anonymised, not deleted — the operational record survives
+        # without naming anybody.
+        for op in self.ai_operations:
+            if str(op.get("user_id")) == uid:
+                op["user_id"] = None
+
     def get_user_profile(self, user_id):
         row = self.profiles.get(str(user_id))
         return dict(row) if row else None
@@ -698,6 +731,79 @@ def db(monkeypatch):
     monkeypatch.setattr(llm_module, "chat", lambda *a, **k: "Synthesised answer [1].")
     monkeypatch.setattr(llm_module, "is_available", lambda: True)
 
+    # `repositories.sessions` is its own module against its own table, so the
+    # FakeDB patching above does not reach it. Same drift rule applies: every
+    # name the application calls must exist here, and the assertion below fails
+    # loudly rather than letting the suite exercise a repository we do not have.
+    from repositories import sessions as sessions_repo
+
+    fake_sessions: dict[str, dict] = {}
+
+    def s_record(user_id, token, user_agent=None, ip_address=None):
+        row = {"session_id": str(uuid.uuid4()), "user_id": str(user_id),
+               "session_hash": sessions_repo.digest(token),
+               "user_agent": user_agent, "ip_address": ip_address,
+               "created_at": _now(), "last_seen_at": _now(), "revoked_at": None}
+        fake_sessions[row["session_hash"]] = row
+        return {"session_id": row["session_id"], "created_at": row["created_at"]}
+
+    def s_touch_and_validate(token):
+        row = fake_sessions.get(sessions_repo.digest(token))
+        if not row or row["revoked_at"]:
+            return None
+        row["last_seen_at"] = _now()
+        return {"session_id": row["session_id"], "user_id": row["user_id"]}
+
+    def s_list_active(user_id):
+        rows = [dict(r) for r in fake_sessions.values()
+                if r["user_id"] == str(user_id) and not r["revoked_at"]]
+        rows.sort(key=lambda r: r["last_seen_at"], reverse=True)
+        return rows
+
+    def _revoke(rows) -> int:
+        count = 0
+        for row in rows:
+            row["revoked_at"] = _now()
+            count += 1
+        return count
+
+    def s_revoke_one(user_id, session_id):
+        return _revoke([r for r in fake_sessions.values()
+                        if r["session_id"] == str(session_id)
+                        and r["user_id"] == str(user_id) and not r["revoked_at"]])
+
+    def s_revoke_by_token(token):
+        return _revoke([r for r in fake_sessions.values()
+                        if r["session_hash"] == sessions_repo.digest(token)
+                        and not r["revoked_at"]])
+
+    def s_revoke_others(user_id, keep_token):
+        keep = sessions_repo.digest(keep_token)
+        return _revoke([r for r in fake_sessions.values()
+                        if r["user_id"] == str(user_id)
+                        and r["session_hash"] != keep and not r["revoked_at"]])
+
+    def s_revoke_all(user_id):
+        return _revoke([r for r in fake_sessions.values()
+                        if r["user_id"] == str(user_id) and not r["revoked_at"]])
+
+    for name, method in (("record", s_record),
+                         ("touch_and_validate", s_touch_and_validate),
+                         ("list_active", s_list_active),
+                         ("revoke_one", s_revoke_one),
+                         ("revoke_by_token", s_revoke_by_token),
+                         ("revoke_others", s_revoke_others),
+                         ("revoke_all", s_revoke_all)):
+        assert hasattr(sessions_repo, name), f"sessions repository has no {name}"
+        monkeypatch.setattr(sessions_repo, name, method)
+
+    # The middleware imported these by value at module load, so patching the
+    # repository alone would leave it calling the real database.
+    from middleware import auth as auth_mw
+    monkeypatch.setattr(auth_mw.sessions, "touch_and_validate", s_touch_and_validate)
+    auth_mw._SESSION_CACHE.clear()
+    fake.sessions = fake_sessions
+
     # The palette's two lookups are raw SQL against several tables at once —
     # one UNION rather than four round trips — so they go through run_query
     # directly and are NOT covered by the method-by-method patching above.
@@ -798,15 +904,28 @@ def signed_out_client(signed_out_app):
     return signed_out_app.test_client()
 
 
-def sign_in(client, user_id: str) -> None:
+def sign_in(client, user_id: str) -> str:
     """
     Put a user_id in the session, the way the OAuth callback does.
 
     Tests authenticate through the session rather than a header, because the
     header path no longer exists in production and a test-only one would be a
     second way to become a user.
+
+    Both keys, because the callback sets both: a cookie naming a user without a
+    session token is one the server cannot revoke, and the middleware treats it
+    as signed out. Minting the token here keeps this helper a simulation of the
+    real thing rather than a second, weaker way in.
     """
+    from repositories import sessions as sessions_repo
+
+    token = sessions_repo.new_token()
+    sessions_repo.record(str(user_id), token, user_agent="pytest", ip_address="127.0.0.1")
+
     with client.session_transaction() as sess:
         sess.clear()
         sess[auth_module.SESSION_USER_KEY] = str(user_id)
+        sess[auth_module.SESSION_TOKEN_KEY] = token
     auth_module._USER_CACHE.clear()
+    auth_module._SESSION_CACHE.clear()
+    return token

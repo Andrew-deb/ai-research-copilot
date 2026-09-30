@@ -18,6 +18,7 @@ import pathlib
 import pytest
 
 from exceptions import CapabilityDeniedError
+from tests.conftest import sign_in
 from services import agent_service, conversation_service
 
 XHR = {"X-Requested-With": "XMLHttpRequest"}
@@ -582,19 +583,21 @@ def test_regenerate_refuses_a_response_that_performed_a_write(client, db, answer
 
 
 def test_another_user_cannot_select_a_version(client, db, answering):
+    """
+    Becoming the other user goes through sign_in, not by editing user_id in the
+    cookie. Since sessions became revocable, a cookie naming a user but carrying
+    no session token is treated as signed out — so the old shortcut stopped
+    impersonating anybody and quietly fell through to the dev identity, which
+    owns the conversation. The assertion would then have passed for the wrong
+    reason, or in this case failed for the right one.
+    """
     cid = client.post("/chat/ask", json={"question": "private"}, headers=XHR).get_json()["conversation_id"]
     answer_id = db.conversation_messages[cid][1]["message_id"]
     other = db.get_or_create_user(email="other@example.test", display_name="Other")
-    with client.session_transaction() as sess:
-        original = sess.get("user_id")
-        sess["user_id"] = other["user_id"]
+
+    sign_in(client, other["user_id"])
     assert client.post(f"/chat/{cid}/versions/{answer_id}/select", headers=XHR).status_code == 404
     assert client.get(f"/chat/{cid}").status_code == 404
-    with client.session_transaction() as sess:
-        if original:
-            sess["user_id"] = original
-        else:
-            sess.pop("user_id", None)
 
 
 def test_finished_run_cannot_replace_a_newer_selection(client, db, answering):
