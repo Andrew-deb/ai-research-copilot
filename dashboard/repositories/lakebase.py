@@ -307,6 +307,44 @@ def set_display_name(user_id: str, name: str | None) -> dict | None:
     )
 
 
+def set_incognito(user_id: str, enabled: bool) -> dict | None:
+    """
+    On `users`, not `user_profiles` — see sql/23_account_prefs.sql.
+
+    Writing a preference into `user_profiles` would create the row that
+    `needs_onboarding()` tests for, and silently hide the welcome flow from
+    somebody who had never seen it.
+    """
+    return run_write(
+        "UPDATE users SET incognito_mode = %s WHERE user_id = %s RETURNING *;",
+        (bool(enabled), user_id), returning=True,
+    )
+
+
+def delete_user(user_id: str) -> None:
+    """
+    Erase an account.
+
+    Eight tables reference `users` with ON DELETE CASCADE, so collections, notes,
+    conversations, reading progress, goals, search history and the onboarding
+    answers all go with the row. Two things need saying out loud:
+
+    `usage_counters` has no foreign key — it is keyed by (scope, scope_id) so it
+    can count anonymous visitors too — so today's counts must be cleared here or
+    they would outlive the account and be inherited by nobody.
+
+    `mcp_traces` and `ai_operations` are kept and anonymised rather than deleted.
+    They are the record of what the system did, which capacity planning depends
+    on; `ai_operations` already declares ON DELETE SET NULL, and `mcp_traces`
+    predates the foreign key so it is nulled explicitly. The row survives without
+    naming anyone, which is the correct trade between privacy and operations.
+    """
+    run_write("DELETE FROM usage_counters WHERE scope = 'user' AND scope_id = %s;",
+              (str(user_id),))
+    run_write("UPDATE mcp_traces SET user_id = NULL WHERE user_id = %s;", (user_id,))
+    run_write("DELETE FROM users WHERE user_id = %s;", (user_id,))
+
+
 def get_or_create_user(email: str, display_name: str | None = None) -> dict:
     rows = run_query("SELECT * FROM users WHERE email = %s;", (email,))
     if rows:
