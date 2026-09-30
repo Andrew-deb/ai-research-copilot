@@ -68,7 +68,8 @@ def test_an_anonymous_visitor_has_no_settings(anon_client):
 def test_the_verified_identity_is_displayed(client, db):
     _me(client, db)
     body = client.get("/settings").get_data(as_text=True)
-    assert "Signs in with" in body
+    assert "Connected account" in body
+    assert "cannot be changed here" in body
 
 
 def test_the_email_is_not_a_form_field(client, db):
@@ -267,8 +268,11 @@ def test_appearance_is_not_stored_on_the_account(client, db):
     user = _me(client, db)
     data = settings_service.overview(user, "authenticated")
 
-    assert set(data) == {"identity", "research", "usage"}
-    assert not any("theme" in k or "sidebar" in k
+    # `account` holds incognito and the device list, which ARE account-level on
+    # purpose. Appearance is the thing that must not be here.
+    assert set(data) == {"identity", "research", "usage", "account"}
+    assert not any(k in data["account"] for k in ("theme", "font_size", "motion"))
+    assert not any("theme" in k or "font" in k or "motion" in k
                    for k in db.users_by_id[str(user)])
 
 
@@ -281,14 +285,33 @@ def test_the_page_says_it_is_per_device(client, db):
     assert "on this device" in body
 
 
-def test_the_theme_control_delegates_rather_than_reimplementing(client, db):
+def test_every_theme_writer_agrees_on_where_it_is_kept(client, db):
     """
-    One place decides what "switch theme" means, and it already handles
-    storage. Two would drift the moment either changed.
+    There are three now — the header toggle, the settings picker, and the
+    no-flash script that reads the choice before first paint — so they cannot be
+    one function. What they must share is the storage key and the attribute,
+    because a second key would mean the toggle and the picker each remembered a
+    different theme and the page picked whichever ran last.
     """
-    js = (ROOT / "dashboard" / "static" / "js"
-          / "settings.js").read_text(encoding="utf-8")
-    assert 'getElementById("theme-toggle")' in js
+    root = ROOT / "dashboard"
+    writers = [
+        (root / "static" / "js" / "main.js").read_text(encoding="utf-8"),
+        (root / "static" / "js" / "settings.js").read_text(encoding="utf-8"),
+        (root / "templates" / "base.html").read_text(encoding="utf-8"),
+    ]
+    assert all("rc-theme" in source for source in writers)
+    assert all("data-theme" in source for source in writers)
+
+
+def test_the_mode_picker_offers_system(client, db):
+    """
+    The gap the header toggle leaves: it flips between two values, so there was
+    no way to say "follow my operating system" at all.
+    """
+    _me(client, db)
+    body = client.get("/settings").get_data(as_text=True)
+    for mode in ("light", "dark", "system"):
+        assert f'data-mode="{mode}"' in body
 
 
 # ---------------------------------------------------------------------------
@@ -365,3 +388,41 @@ def test_a_bar_never_runs_past_its_own_end(client, db, monkeypatch):
     row = settings_service.usage(_me(client, db), "authenticated")[0]
     assert row["percent"] == 100
     assert row["left"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Layout invariants
+#
+# CSS cannot be rendered here, so these assert the structural rule a broken
+# layout violated rather than the appearance it produced.
+# ---------------------------------------------------------------------------
+
+def _css() -> str:
+    return (ROOT / "dashboard" / "static" / "css"
+            / "base.css").read_text(encoding="utf-8")
+
+
+def _rule(css: str, selector: str) -> str:
+    """The declarations of one rule, by exact selector."""
+    start = css.index(selector + " {") + len(selector) + 2
+    return css[start:css.index("}", start)]
+
+
+def test_an_open_editor_gets_a_line_to_itself():
+    """
+    The Update profile form rendered ON TOP of the row's own text: the editor
+    claims flex-basis 100%, and on a single non-wrapping flex line that width
+    has nowhere to go. Wrapping is what turns "full width" into "its own line",
+    so the two declarations only work together.
+    """
+    css = _css()
+    assert "flex-basis: 100%" in _rule(css, ".settings-editor[open]")
+    assert "flex-wrap: wrap" in _rule(css, ".settings-row")
+
+
+def test_the_open_editor_cannot_be_shrunk_to_fit_beside_the_text():
+    """
+    A flex basis is a starting size a line may still shrink. The explicit width
+    is what stops this being squeezed back alongside the text it must sit under.
+    """
+    assert "width: 100%" in _rule(_css(), ".settings-editor[open]")
