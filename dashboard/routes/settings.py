@@ -16,7 +16,7 @@ from services import account_service, onboarding_service, settings_service
 
 bp = Blueprint("settings", __name__)
 
-_SECTIONS = ("preferences", "account", "security", "appearance")
+_SECTIONS = ("preferences", "account", "security", "appearance", "keyboard")
 
 
 @bp.get("/settings")

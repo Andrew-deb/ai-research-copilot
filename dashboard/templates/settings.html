@@ -22,7 +22,8 @@
          ('preferences', 'Preferences', 'sliders'),
          ('account',     'Account',     'user'),
          ('security',    'Security',    'shield'),
-         ('appearance',  'Appearance',  'palette')] %}
+         ('appearance',  'Appearance',  'palette'),
+         ('keyboard',    'Keyboard',    'keyboard')] %}
       <button type="button" class="settings-nav-link" data-settings-tab="{{ id }}"
               {% if section == id %}aria-current="page"{% endif %}>
         {{ icon(glyph) }}<span>{{ label }}</span>
@@ -35,6 +36,7 @@
     {% include 'settings/_account.html' %}
     {% include 'settings/_security.html' %}
     {% include 'settings/_appearance.html' %}
+    {% include 'settings/_keyboard.html' %}
   </div>
 </div>
 {% endblock %}
