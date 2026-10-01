@@ -33,23 +33,37 @@
 
   const APPLE = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || "");
 
-  function entry(id, keys, scope, group, description) {
-    return { id: id, keys: keys, scope: scope, group: group, description: description };
+  /*
+   * `assignable` is the sixth field and the one worth explaining.
+   *
+   * A shortcut can only be reassigned if something consults the registry when
+   * the key is pressed. The global chords go through the dispatcher below, and
+   * the note formatting keys read their binding from here, so both can change.
+   *
+   * Escape, Enter and the arrow keys are not listed as assignable, and that is
+   * a decision rather than an omission. They are conventions somebody brings
+   * with them rather than preferences they hold: Escape that does not close
+   * things, or Enter that does not send, is a broken application rather than a
+   * customised one.
+   */
+  function entry(id, keys, scope, group, description, assignable) {
+    return { id: id, keys: keys, scope: scope, group: group,
+             description: description, assignable: !!assignable };
   }
 
   /* "Mod" is Cmd on Apple hardware and Ctrl everywhere else. Written once here
      rather than as `metaKey || ctrlKey` at nine call sites. */
   const REGISTRY = [
-    entry("palette.open", "Mod+K", "global", "Navigate", "Open the command palette"),
-    entry("chat.search", "Mod+Shift+F", "global", "Navigate", "Search your chat history"),
-    entry("help.shortcuts", "Mod+/", "global", "Navigate", "Show keyboard shortcuts"),
+    entry("palette.open", "Mod+K", "global", "Navigate", "Open the command palette", true),
+    entry("chat.search", "Mod+Shift+F", "global", "Navigate", "Search your chat history", true),
+    entry("help.shortcuts", "Mod+/", "global", "Navigate", "Show keyboard shortcuts", true),
 
     entry("chat.send", "Enter", "composer", "Writing", "Send the message"),
     entry("chat.newline", "Shift+Enter", "composer", "Writing", "Start a new line instead of sending"),
     entry("chat.saveEdit", "Mod+Enter", "composer", "Writing", "Save an edited message"),
 
-    entry("note.bold", "Mod+B", "editor", "Notes", "Bold the selection"),
-    entry("note.italic", "Mod+I", "editor", "Notes", "Italicise the selection"),
+    entry("note.bold", "Mod+B", "editor", "Notes", "Bold the selection", true),
+    entry("note.italic", "Mod+I", "editor", "Notes", "Italicise the selection", true),
     entry("note.rename", "Enter", "heading", "Notes", "Rename from the title, then Enter to confirm"),
 
     entry("list.down", "ArrowDown", "palette", "Lists", "Move down the results"),
@@ -63,6 +77,103 @@
 
     entry("ui.dismiss", "Escape", "overlay", "Everywhere", "Close the panel, dialog or menu in front of you")
   ];
+
+  /* ----------------------------------------------------------- overrides -- */
+
+  /*
+   * Reassignments live in localStorage, so they belong to this browser.
+   *
+   * The same choice as the theme and the text size, and for a sharper reason: a
+   * chord is a property of the keyboard in front of you. Mod+/ is one keystroke
+   * on a UK layout and two on a German one, and syncing a binding chosen on a
+   * laptop to a phone would move a shortcut that phone cannot type.
+   *
+   * Every access is wrapped. localStorage throws rather than returning null in
+   * a private window, and a customised shortcut is not worth a page that fails
+   * to load.
+   */
+  const STORE = "rc-shortcuts";
+
+  function overrides() {
+    try { return JSON.parse(localStorage.getItem(STORE) || "{}") || {}; }
+    catch (e) { return {}; }
+  }
+
+  function persist(map) {
+    try { localStorage.setItem(STORE, JSON.stringify(map)); }
+    catch (e) { /* private mode */ }
+  }
+
+  function find(id) {
+    return REGISTRY.filter(function (e) { return e.id === id; })[0];
+  }
+
+  /* The binding in force: what somebody chose, or what shipped. Everything that
+     reads a shortcut goes through this, so a reassignment takes effect without
+     anything else knowing reassignment exists. */
+  function keysFor(id) {
+    const chosen = overrides()[id];
+    const item = find(id);
+    return chosen || (item && item.keys) || "";
+  }
+
+  function isCustom(id) {
+    return Object.prototype.hasOwnProperty.call(overrides(), id);
+  }
+
+  /* Order-independent, so Mod+Shift+F and Shift+Mod+F are one chord. */
+  function chordOf(keys) {
+    return keys.split("+").map(function (p) { return p.toLowerCase(); }).sort().join("+");
+  }
+
+  /*
+   * Who else would answer this chord — the check the registry was built for.
+   *
+   * A collision inside one scope means the keystroke has no defined answer. A
+   * collision with a GLOBAL means the local binding is unreachable wherever the
+   * global listener runs first, which is the shape the original Ctrl+K bug had.
+   */
+  function conflictFor(id, keys) {
+    const mine = find(id);
+    if (!mine) { return null; }
+    const chord = chordOf(keys);
+
+    for (let i = 0; i < REGISTRY.length; i += 1) {
+      const other = REGISTRY[i];
+      if (other.id === id) { continue; }
+      if (chordOf(keysFor(other.id)) !== chord) { continue; }
+      if (other.scope === mine.scope || other.scope === "global" || mine.scope === "global") {
+        return other;
+      }
+    }
+    return null;
+  }
+
+  function setBinding(id, keys) {
+    const item = find(id);
+    if (!item || !item.assignable) { return { ok: false, reason: "fixed" }; }
+
+    const clash = conflictFor(id, keys);
+    if (clash) { return { ok: false, reason: "conflict", conflict: clash }; }
+
+    const map = overrides();
+    // Choosing the original back is a reset, not an override — otherwise the
+    // row would read "custom" while matching the default exactly.
+    if (chordOf(keys) === chordOf(item.keys)) { delete map[id]; }
+    else { map[id] = keys; }
+    persist(map);
+    return { ok: true };
+  }
+
+  function resetBinding(id) {
+    const map = overrides();
+    delete map[id];
+    persist(map);
+  }
+
+  function resetAll() {
+    persist({});
+  }
 
   /* ------------------------------------------------------------ matching -- */
 
@@ -125,12 +236,15 @@
     for (let i = 0; i < REGISTRY.length; i += 1) {
       const item = REGISTRY[i];
       if (item.scope !== "global" || !handlers[item.id]) { continue; }
-      if (!matches(event, item.keys)) { continue; }
+      // keysFor, not item.keys: the whole point of the override is that
+      // dispatch follows it without this loop knowing it exists.
+      const keys = keysFor(item.id);
+      if (!matches(event, keys)) { continue; }
 
       // A chord with no modifier must not fire while somebody is typing it into
       // a field. Every global chord currently has one, so this is a guard for
       // the next entry rather than for any of these.
-      if (item.keys.indexOf("Mod") === -1 && isTyping(event.target)) { return; }
+      if (keys.indexOf("Mod") === -1 && isTyping(event.target)) { return; }
 
       event.preventDefault();
       handlers[item.id](event);
@@ -142,6 +256,12 @@
     REGISTRY: REGISTRY,
     register: register,
     matches: matches,
-    format: format
+    format: format,
+    keysFor: keysFor,
+    isCustom: isCustom,
+    setBinding: setBinding,
+    resetBinding: resetBinding,
+    resetAll: resetAll,
+    conflictFor: conflictFor
   };
 })();
