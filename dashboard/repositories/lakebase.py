@@ -556,7 +556,7 @@ def record_ai_operation(**fields) -> None:
     the migration is applied should not take down the request it was measuring.
     """
     allowed = (
-        "metric", "tier", "user_id", "provider", "model",
+        "metric", "tier", "user_id", "mode", "provider", "model",
         "input_tokens", "output_tokens", "estimated_cost_usd", "latency_ms",
         "llm_turns", "tool_calls", "embedding_calls", "ok", "error",
     )
