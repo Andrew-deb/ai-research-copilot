@@ -1,0 +1,26 @@
+{# ===========================================================================
+   Keyboard — the full list, shown rather than hidden behind a button.
+
+   Its own section rather than a row under Appearance, where it was: shortcuts
+   are not how the product looks, and a reference list buried under theme
+   controls is one nobody finds.
+
+   The list is rendered into the container below by shortcuts-sheet.js, from the
+   same registry that dispatches the keys — so the page cannot describe a
+   shortcut the application does not have. The Ctrl+/ dialog uses the same
+   renderer; this is the same list, not a copy of it.
+   =========================================================================== #}
+
+<section class="settings-section" id="section-keyboard" data-settings-panel="keyboard" hidden>
+  <h2 class="settings-heading">Keyboard</h2>
+
+  <p class="settings-callout">
+    Press <kbd>Ctrl</kbd> <kbd>/</kbd> anywhere in the application to bring this
+    list up without coming here. The shortcuts are fixed for now and cannot be
+    reassigned.
+  </p>
+
+  {# Populated on load. Empty in a browser with JavaScript off, which is also
+     true of every shortcut it would list. #}
+  <div class="shortcuts-inline" data-shortcuts-list></div>
+</section>
