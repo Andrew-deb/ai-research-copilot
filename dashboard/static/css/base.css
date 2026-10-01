@@ -1038,7 +1038,6 @@ h1, h2, h3,
   .topbar-actions { gap: 2px; }
   .mode-switch { font-size: 12.5px; }
 }
-}
 
 /* =========================================================================
    Public sidebar — auth actions, and the way back out of the demo
@@ -2900,3 +2899,241 @@ kbd {
 #confirm-dialog { max-width: 400px; }
 #confirm-dialog h2 { font-size: 15.5px; margin: 0 0 8px; }
 #confirm-dialog p { margin: 0; font-size: 13px; line-height: 1.6; color: var(--text-muted); }
+
+/* --- Usage analytics --------------------------------------------------------
+   Plain elements, no charting library. The chart is a row of divs with
+   percentage heights: no dependency to load, both themes for free, and it
+   cannot be the reason a settings page fails to render. */
+
+.usage-tabs { display: flex; gap: 4px; margin: 16px 0 18px; }
+.usage-tab {
+  padding: 6px 14px;
+  border: 0;
+  border-radius: 999px;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.usage-tab:hover { background: var(--surface-2); color: var(--text); }
+.usage-tab.is-selected { background: var(--surface-3); color: var(--text); font-weight: 500; }
+
+.usage-range { display: inline-flex; gap: 2px; padding: 2px; border-radius: 999px;
+  background: var(--surface-3); margin-bottom: 18px; }
+
+/* Four numbers, which is as many as anybody reads at a glance. */
+.usage-totals {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 10px;
+  margin-bottom: 22px;
+}
+.usage-total {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.usage-total-value { display: block; font-size: 19px; font-weight: 600; letter-spacing: -0.02em; }
+.usage-total-label { display: block; margin-top: 2px; color: var(--text-muted); font-size: 11.5px; }
+
+.usage-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 92px;
+  margin-bottom: 24px;
+  padding: 0 1px;
+}
+.usage-chart-col {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  /* So a quiet day is still a readable target rather than a hairline. */
+  background: linear-gradient(var(--surface-2), var(--surface-2)) no-repeat bottom / 100% 2px;
+}
+.usage-chart-bar {
+  display: block;
+  width: 100%;
+  border-radius: 3px 3px 0 0;
+  background: var(--brand);
+  min-height: 0;
+}
+
+.usage-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.usage-table th, .usage-table td { padding: 9px 8px; text-align: right; }
+.usage-table th:first-child, .usage-table td:first-child { text-align: left; }
+.usage-table thead th {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--border);
+}
+.usage-table tbody th { font-weight: 500; }
+.usage-table tbody tr + tr th,
+.usage-table tbody tr + tr td { border-top: 1px solid var(--border); }
+.usage-table td { font-variant-numeric: tabular-nums; color: var(--text-muted); }
+.usage-errors { color: var(--danger); }
+
+@media (max-width: 560px) {
+  /* The two latency columns are the first to go: they are the detail you look
+     for deliberately, not the thing you came to check. */
+  .usage-table th:nth-child(4), .usage-table td:nth-child(4),
+  .usage-table th:nth-child(5), .usage-table td:nth-child(5) { display: none; }
+}
+
+/* The honesty line under the cost figure. Quiet, but not hidden: a total that
+   omits unpriced requests is a wrong number rather than a partial one. */
+.usage-caveat {
+  margin: 0 0 22px;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+@media (max-width: 560px) {
+  /* Cost joins the latency columns in going first on a narrow screen: the
+     headline figure is already in the totals above. */
+  .usage-table th:nth-child(4), .usage-table td:nth-child(4) { display: none; }
+}
+
+.usage-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px;
+  margin-bottom: 18px; }
+.usage-controls .usage-range { margin-bottom: 0; }
+.usage-features { display: flex; flex-wrap: wrap; gap: 6px; }
+
+.chip-filter-btn {
+  padding: 5px 11px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: none;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.chip-filter-btn:hover { border-color: var(--border-strong); color: var(--text); }
+.chip-filter-btn.is-selected {
+  border-color: var(--brand);
+  background: var(--brand-tint);
+  color: var(--text);
+}
+
+/* --- Dropdown ---------------------------------------------------------------
+   Button and menu rather than <select>: a native drop-down is drawn by the
+   operating system, so it opens as a white box inside a dark page however the
+   closed control is styled. */
+
+.dropdown { position: relative; }
+
+.dropdown-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px 6px 13px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.dropdown-toggle:hover { border-color: var(--border-strong); }
+.dropdown-toggle:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.dropdown-caret { width: 13px; height: 13px; color: var(--text-muted); flex: none; }
+.dropdown-toggle[aria-expanded="true"] .dropdown-caret { transform: rotate(180deg); }
+
+/* Downward here, unlike the composer's, which sits at the foot of the page. */
+.dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  min-width: 180px;
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+.dropdown-menu[hidden] { display: none; }
+
+.dropdown-menu [role="option"] {
+  display: block;
+  width: 100%;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.dropdown-menu [role="option"]:hover { background: var(--surface-2); }
+.dropdown-menu [role="option"][aria-selected="true"] { background: var(--brand-tint); }
+
+/* Pushed to the far edge: the range control is the primary choice and keeps the
+   left, where reading starts. */
+.usage-feature-picker { margin-left: auto; }
+
+/* --- Reassignable shortcuts -------------------------------------------------
+   The Change and Reset affordances live in the keys cell, beside the chord they
+   act on, so there is no question which row a button belongs to. */
+
+.shortcut-list dd { display: flex; align-items: center; gap: 6px; }
+
+.shortcut-change {
+  padding: 2px 8px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: none;
+  color: var(--text-subtle);
+  font: inherit;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+/* Visible on hover or focus, not permanently: a list whose every row carries
+   two buttons reads as a form rather than as a reference. */
+.shortcut-list > div:hover .shortcut-change,
+.shortcut-change:focus-visible {
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.shortcut-fixed { color: var(--text-subtle); font-size: 11px; }
+
+/* Mid-capture the row is listening to the keyboard, so it says so loudly
+   enough that nobody wonders why their next keystroke did nothing. */
+.shortcut-list > div.is-capturing {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+.shortcut-list > div.is-capturing dd { color: var(--brand-tint-fg, var(--brand)); font-size: 12.5px; }
+
+/* A changed binding is marked, so "why is this not what the docs say" has an
+   answer on the page. */
+.shortcut-list > div.is-custom dt::after {
+  content: "changed";
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  color: var(--text-muted);
+  font-size: 10.5px;
+}
+
+.shortcut-note {
+  display: block;
+  margin-top: 2px;
+  color: var(--danger);
+  font-size: 11.5px;
+}
