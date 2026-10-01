@@ -87,8 +87,8 @@ def _get_json(url: str, timeout: float = 5.0) -> dict:
         return json.loads(resp.read())
 
 
-def _rpc(url: str, method: str, timeout: float = 10.0) -> dict:
-    payload = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": {}}).encode()
+def _rpc(url: str, method: str, timeout: float = 10.0, params=None) -> dict:
+    payload = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params or {}}).encode()
     req = urllib.request.Request(
         url, data=payload,
         headers={"Content-Type": "application/json", "Accept": "application/json, text/event-stream"},
@@ -97,8 +97,8 @@ def _rpc(url: str, method: str, timeout: float = 10.0) -> dict:
         return json.loads(resp.read())
 
 
-@pytest.fixture(scope="module")
-def flattened_server(tmp_path_factory):
+@pytest.fixture(scope="module", params=["research_mcp_server", "assistant.server"])
+def flattened_server(tmp_path_factory, request):
     """Copy mcp_server/'s *contents* to a temp root (what Databricks does) and run it."""
     pytest.importorskip("mcp.server.fastmcp", reason="needs mcp<2 (FastMCP 1.x API)")
 
@@ -109,14 +109,14 @@ def flattened_server(tmp_path_factory):
     port = _free_port()
     env = {
         "PATH": "", "SYSTEMROOT": "", "PYTHONUNBUFFERED": "1",
-        "MCP_TRANSPORT": "streamable-http", "DATABRICKS_APP_PORT": str(port),
+        "DATABASE_URL": "", "MCP_TRANSPORT": "streamable-http", "DATABRICKS_APP_PORT": str(port),
     }
     import os
     env = {**os.environ, **env, "PATH": os.environ.get("PATH", ""),
            "SYSTEMROOT": os.environ.get("SYSTEMROOT", "")}
 
     proc = subprocess.Popen(
-        [sys.executable, "-m", "research_mcp_server"],
+        [sys.executable, "-m", request.param],
         cwd=str(root), env=env,
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
     )
@@ -148,14 +148,18 @@ def test_health_routes_answer(flattened_server):
     assert _get_json(f"{flattened_server}/healthz")["status"] == "ok"
     root = _get_json(f"{flattened_server}/")
     assert root["status"] == "ok"
-    assert root["server"] == "ai-research-copilot"
+    assert root["server"] in ("ai-research-copilot", "wick-workspace")
 
 
 def test_serves_thirteen_tools_from_flattened_layout(flattened_server):
     result = _rpc(f"{flattened_server}/mcp", "tools/list")
     names = {t["name"] for t in result["result"]["tools"]}
-    assert names == EXPECTED_TOOLS
-    assert len(names) == 13
+    expected = EXPECTED_TOOLS if _get_json(flattened_server + "/")["server"] == "ai-research-copilot" else {
+        "find_workspace_resources", "get_workspace_resource", "get_workspace_paper",
+        "get_reading_progress", "create_collection", "add_paper_to_collection",
+        "remove_paper_from_collection", "mark_paper_status", "create_note",
+    }
+    assert names == expected
 
 
 def test_no_stray_health_tool(flattened_server):
@@ -207,3 +211,14 @@ lakebase.get_notes_for_paper.assert_called_once_with(user_id="owner", paper_id="
 '''
     subprocess.run([sys.executable, "-c", script], cwd=MCP_DIR, check=True,
                    capture_output=True, text=True)
+
+
+def test_wick_protocol_refuses_research_and_anonymous_personal_actions(flattened_server):
+    if _get_json(flattened_server + "/")["server"] != "wick-workspace":
+        return
+    for name, arguments in (("search_papers", {"query": "transformers"}),
+                            ("create_note", {"note_text": "Body"}),
+                            ("get_reading_progress", {})):
+        result = _rpc(flattened_server + "/mcp", "tools/call",
+                      params={"name": name, "arguments": arguments})
+        assert result["result"]["isError"]

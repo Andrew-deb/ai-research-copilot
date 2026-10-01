@@ -76,3 +76,20 @@ curl -s -X POST localhost:8080/mcp \
 | `semantic-scholar` | `api-key` | Semantic Scholar API key |
 | `openrouter` | `api-key` | OpenRouter API key |
 | `openalex` | `email` | OpenAlex polite pool email |
+
+## Wick's independent workspace server
+
+From this source root, run `python -m assistant.server`. Wick serves streamable
+HTTP at `/mcp` with `/healthz` and exactly nine tools: finite workspace discovery,
+resource reads, local paper metadata, personal reading progress, collection
+creation/membership changes, reading status, and rich note creation. It never
+registers Research's discovery, comparison, topic or planning tools. Shared
+operations remain in `shared_resource`; Research's 13-tool entry point is unchanged.
+
+The Databricks App proxy must authenticate the trusted Render caller before the
+identity header is accepted. Identity middleware is mandatory for Wick startup.
+Private reads/writes require an attributable acting user; anonymous lookup only
+sees supported public pages, global papers, and explicitly curated collections.
+The standalone command is a development/startup contract, not a deployment or
+new service-authentication implementation. Self-contained deployment packaging,
+App grants, and live identity/ownership verification are the next release step.
