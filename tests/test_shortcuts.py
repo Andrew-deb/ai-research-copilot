@@ -184,14 +184,40 @@ def test_the_registry_loads_before_anything_that_registers_against_it():
 
 def test_the_sheet_is_reachable_by_key_and_by_hand(client, db):
     """
-    Mod+/ for people who know, a button in Settings for people who do not —
-    which is most people, and the reason this page exists at all.
+    Mod+/ for people who know it, and Settings for people who do not — which is
+    most people, and the reason that section exists at all.
     """
     by_id = {e["id"]: e for e in registry()}
     assert by_id["help.shortcuts"]["keys"] == "Mod+/"
 
     client.get("/dashboard")
-    assert "data-shortcuts-open" in client.get("/settings").get_data(as_text=True)
+    assert "data-shortcuts-list" in client.get("/settings").get_data(as_text=True)
+
+
+def test_settings_shows_the_list_rather_than_a_button_that_reveals_it(client, db):
+    """
+    Pressing a button to reveal a reference list, on a page whose entire subject
+    is that list, is a click that buys nothing. The button was right while this
+    lived under Appearance and wrong the moment it got a section of its own.
+    """
+    client.get("/dashboard")
+    body = client.get("/settings").get_data(as_text=True)
+
+    keyboard = body.split('data-settings-panel="keyboard"')[1]
+    assert "data-shortcuts-list" in keyboard
+    assert "data-shortcuts-open" not in keyboard
+
+
+def test_the_page_and_the_dialog_are_the_same_list(client, db):
+    """
+    One renderer for both. Two would be two lists to keep in step — the problem
+    the registry exists to remove, reintroduced one level up.
+    """
+    sheet = (JS / "shortcuts-sheet.js").read_text(encoding="utf-8")
+
+    assert sheet.count("function render(") == 1
+    assert "render(dialog)" in sheet
+    assert "render(inline)" in sheet
 
 
 def test_the_sheet_says_the_keys_cannot_be_changed(client, db):

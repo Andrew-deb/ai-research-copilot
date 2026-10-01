@@ -317,9 +317,19 @@ def test_the_list_has_no_scrollbar_of_its_own():
 
 
 def test_the_scrollbars_that_remain_are_thin():
+    """
+    The rule became global and gained a `height`, because the settings nav
+    scrolls sideways on a phone and a horizontal scrollbar takes its size from
+    height rather than width. Asserted as properties rather than as one exact
+    declaration, which is what pinned this to a shape it has outgrown.
+    """
     css = _css()
     assert "scrollbar-width: thin" in css
-    assert "::-webkit-scrollbar { width: 8px; }" in css
+
+    rule = css[css.index("::-webkit-scrollbar {"):]
+    rule = rule[:rule.index("}")]
+    assert "width: 8px" in rule
+    assert "height: 8px" in rule
 
 
 def test_the_thumb_is_held_off_the_text():
