@@ -1,14 +1,13 @@
 {# ===========================================================================
-   Keyboard — the full list, shown rather than hidden behind a button.
+   Keyboard — the full list, and the ones you can change.
 
-   Its own section rather than a row under Appearance, where it was: shortcuts
-   are not how the product looks, and a reference list buried under theme
-   controls is one nobody finds.
+   The blanket line that used to sit here said every shortcut was fixed. That
+   became untrue the moment any of them could be reassigned, and a sentence that
+   is true of most rows is worse than none: it stops people looking. Each row
+   now says for itself whether it can change.
 
-   The list is rendered into the container below by shortcuts-sheet.js, from the
-   same registry that dispatches the keys — so the page cannot describe a
-   shortcut the application does not have. The Ctrl+/ dialog uses the same
-   renderer; this is the same list, not a copy of it.
+   Rendered by shortcuts-sheet.js from the registry that dispatches the keys,
+   so the page cannot describe a shortcut the application does not have.
    =========================================================================== #}
 
 <section class="settings-section" id="section-keyboard" data-settings-panel="keyboard" hidden>
@@ -16,11 +15,22 @@
 
   <p class="settings-callout">
     Press <kbd>Ctrl</kbd> <kbd>/</kbd> anywhere in the application to bring this
-    list up without coming here. The shortcuts are fixed for now and cannot be
-    reassigned.
+    list up without coming here. Shortcuts are remembered
+    <strong>on this device</strong> — a chord is a property of the keyboard in
+    front of you, and one chosen on a laptop may be unavailable on a phone.
   </p>
 
   {# Populated on load. Empty in a browser with JavaScript off, which is also
      true of every shortcut it would list. #}
   <div class="shortcuts-inline" data-shortcuts-list></div>
+
+  <div class="settings-row">
+    <div class="settings-row-text">
+      <h3>Reset shortcuts</h3>
+      <p class="settings-sub">Put every shortcut back to the one it shipped with.</p>
+    </div>
+    <button type="button" class="btn btn-ghost btn-sm" data-shortcuts-reset>
+      Reset to defaults
+    </button>
+  </div>
 </section>
