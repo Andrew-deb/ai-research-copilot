@@ -24,7 +24,11 @@
   var input = document.getElementById("palette-input");
   var results = document.getElementById("palette-results");
   var scrim = document.getElementById("palette-scrim");
-  var trigger = document.getElementById("palette-open");
+  // Two of them: the labelled pill on a wide screen, and the icon in the action
+  // row on a phone, where the pill has nowhere to sit and Ctrl+K is not
+  // something most phone keyboards can type.
+  var triggers = [document.getElementById("palette-open"),
+                  document.getElementById("palette-open-mobile")];
 
   var items = [];        // flattened, in the order they appear
   var cursor = -1;
@@ -89,7 +93,9 @@
     if (lastFocused && lastFocused.focus) { lastFocused.focus(); }
   }
 
-  if (trigger) { trigger.addEventListener("click", open); }
+  triggers.forEach(function (trigger) {
+    if (trigger) { trigger.addEventListener("click", open); }
+  });
   if (scrim) { scrim.addEventListener("click", close); }
 
   // The chord lives in shortcuts.js, not here. This file used to bind its own
