@@ -306,3 +306,115 @@ def test_one_account_is_not_deleted_with_another(db, owner):
 
     assert db.get_user_by_id(bystander) is not None
     assert [c for c in db.collections.values() if str(c["user_id"]) == str(bystander)]
+
+
+# ---------------------------------------------------------------------------
+# Asking first
+#
+# Four buttons reading "Sign out" sit in one list. One ends an old laptop's
+# session, one ends the session you are reading the page in, and one ends every
+# session you have. They are indistinguishable until something distinguishes
+# them, which is what the confirmation is for.
+# ---------------------------------------------------------------------------
+
+import pathlib
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+
+
+def test_every_sign_out_asks_before_it_acts(db, signed_out_client, owner):
+    from repositories import sessions as s
+
+    s.record(owner, s.new_token(), "Mozilla/5.0 Firefox/130.0", None)
+    body = signed_out_client.get("/settings").get_data(as_text=True)
+    security = body.split('data-settings-panel="security"')[1].split("</section>")[0]
+
+    # The whole opening tag, not the line it starts on: these attributes wrap
+    # across several lines, so a line-based check reads half a tag.
+    tags = [chunk.split(">")[0] for chunk in security.split("<form ")[1:]]
+
+    # Sign-out forms only. Deletion has its own, stronger confirmation — a typed
+    # email and a round trip through Google — and wrapping that in a one-line
+    # "are you sure?" as well would be a dialog in front of a dialog.
+    sign_outs = [t for t in tags if "sessions" in t or "/logout" in t]
+    assert len(sign_outs) >= 2, tags
+
+    for tag in sign_outs:
+        assert "data-confirm=" in tag, tag.strip()
+
+
+def test_the_confirmation_names_the_specific_device(db, signed_out_client, owner):
+    """
+    "Are you sure?" over a list of identical buttons tells you nothing about
+    which one you pressed.
+    """
+    from repositories import sessions as s
+
+    s.record(owner, s.new_token(), "Mozilla/5.0 Firefox/130.0", None)
+    body = signed_out_client.get("/settings").get_data(as_text=True)
+
+    assert "Sign out of Firefox" in body
+
+
+def test_cancel_takes_the_focus_not_the_action():
+    """The safe option should be the one an accidental Enter picks."""
+    js = (ROOT / "dashboard" / "static" / "js"
+          / "settings.js").read_text(encoding="utf-8")
+    assert "cancel.focus()" in js
+
+
+def test_confirming_once_does_not_confirm_forever():
+    """
+    The approval is consumed on use, so submitting the same form again asks
+    again. Reusing one variable for "being asked" and "has said yes" is what
+    made the first version re-open the dialog it had just answered.
+    """
+    js = (ROOT / "dashboard" / "static" / "js"
+          / "settings.js").read_text(encoding="utf-8")
+    assert "approved = null; return;" in js
+
+
+# ---------------------------------------------------------------------------
+# Signing out everywhere
+# ---------------------------------------------------------------------------
+
+def test_signing_out_everywhere_includes_this_device(db, signed_out_client, owner):
+    """
+    The difference from "others". This is the button somebody presses when they
+    think the account is compromised, and sparing the current session because it
+    happens to be the one asking would be the wrong reading of "all".
+    """
+    from repositories import sessions as s
+
+    here = None
+    with signed_out_client.session_transaction() as session:
+        here = session.get("sid")
+    elsewhere = s.new_token()
+    s.record(owner, elsewhere, "Other laptop", None)
+
+    signed_out_client.post("/account/sessions/revoke-all")
+
+    assert s.touch_and_validate(here) is None
+    assert s.touch_and_validate(elsewhere) is None
+
+
+def test_signing_out_everywhere_clears_the_cookie_too(db, signed_out_client, owner):
+    """
+    The row is revoked, so the cookie is already dead. A page that carried on
+    looking signed in until the next request would be lying about the thing
+    somebody just pressed a button to change.
+    """
+    signed_out_client.post("/account/sessions/revoke-all")
+
+    with signed_out_client.session_transaction() as session:
+        assert not session.get("user_id")
+
+
+def test_the_two_buttons_are_not_the_same_button(db, signed_out_client, owner):
+    from repositories import sessions as s
+
+    s.record(owner, s.new_token(), "Other laptop", None)
+    body = signed_out_client.get("/settings").get_data(as_text=True)
+
+    assert "/account/sessions/revoke-others" in body
+    assert "/account/sessions/revoke-all" in body
