@@ -38,13 +38,27 @@
             </p>
           </div>
 
-          {# The current device has no sign-out button: doing it from here would
-             end the session you are reading this in, which reads as the page
-             breaking rather than as a security action succeeding. Log out does
-             that, deliberately and from somewhere you expect it. #}
-          {% if not device.is_current %}
+          {# Every row gets a button, including this one. It previously did not,
+             on the reasoning that ending your own session from here would read
+             as the page breaking — but the result was a list of devices where
+             the common case, one device, offered no way to sign out of
+             anything. A labelled button that logs you out is not a surprise;
+             an inert list is. #}
+          {# Every sign-out asks first. These sit next to one another in a list,
+             and the difference between tidying up an old laptop and ending the
+             session you are reading this in is one row. #}
+          {% if device.is_current %}
+            <form method="post" action="{{ url_for('auth.logout') }}"
+                  data-confirm="Sign out of this device? You will need to sign in again to get back to your work."
+                  data-confirm-action="Sign out">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit" class="btn btn-ghost btn-sm">Sign out</button>
+            </form>
+          {% else %}
             <form method="post"
-                  action="{{ url_for('account.revoke_session', session_id=device.session_id) }}">
+                  action="{{ url_for('account.revoke_session', session_id=device.session_id) }}"
+                  data-confirm="Sign out of {{ device.label }}? Anyone using it will have to sign in again."
+                  data-confirm-action="Sign out">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button type="submit" class="btn btn-ghost btn-sm">Sign out</button>
             </form>
@@ -55,14 +69,31 @@
       {% endfor %}
     </ul>
 
-    {% if data.account.devices | length > 1 %}
-      <form method="post" action="{{ url_for('account.revoke_other_sessions') }}">
+    <div class="device-actions">
+      {# Two buttons, because they answer different questions. "Others" is
+         housekeeping and leaves you working; "all" is what you press when you
+         think the account is compromised, and it has to include this browser or
+         it does not mean what it says. #}
+      {% if data.account.devices | length > 1 %}
+        <form method="post" action="{{ url_for('account.revoke_other_sessions') }}"
+              data-confirm="Sign out of every other device? This one stays signed in."
+              data-confirm-action="Sign out others">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn btn-ghost btn-sm">
+            Sign out of every other device
+          </button>
+        </form>
+      {% endif %}
+
+      <form method="post" action="{{ url_for('account.revoke_all_sessions') }}"
+            data-confirm="Sign out everywhere, including this device? Use this if you think someone else has access to your account. You will be signed out immediately."
+            data-confirm-action="Sign out everywhere">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-        <button type="submit" class="btn btn-ghost btn-sm">
-          Sign out of every other device
+        <button type="submit" class="btn btn-ghost btn-sm btn-quiet-danger">
+          Sign out everywhere
         </button>
       </form>
-    {% endif %}
+    </div>
   </div>
 
   {# ---- Deletion ------------------------------------------------------- #}
@@ -79,6 +110,18 @@
       Delete account
     </button>
   </div>
+
+  {# One dialog for every form carrying data-confirm. The buttons it guards look
+     identical to each other in the list above — that is the whole problem it
+     solves, so its wording comes from the form rather than from here. #}
+  <dialog class="modal" id="confirm-dialog">
+    <h2>Are you sure?</h2>
+    <p data-confirm-message></p>
+    <div class="modal-actions">
+      <button type="button" class="btn btn-ghost btn-sm" data-confirm-cancel>Cancel</button>
+      <button type="button" class="btn btn-primary btn-sm" data-confirm-proceed>Continue</button>
+    </div>
+  </dialog>
 
   <dialog class="modal modal-danger" id="delete-account-dialog">
     <form method="post" action="{{ url_for('account.begin_delete') }}">

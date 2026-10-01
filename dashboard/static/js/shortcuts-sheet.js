@@ -16,21 +16,12 @@
 
   let dialog = null;
 
-  function build() {
-    dialog = document.createElement("dialog");
-    dialog.className = "modal shortcuts-sheet";
-    dialog.id = "shortcuts-sheet";
-
-    const heading = document.createElement("h2");
-    heading.textContent = "Keyboard shortcuts";
-    dialog.appendChild(heading);
-
-    const note = document.createElement("p");
-    note.className = "settings-sub";
-    note.textContent = "These are fixed for now — they cannot be reassigned.";
-    dialog.appendChild(note);
-
-    // Grouped in the order the registry declares them, so the sheet reads the
+  /* Renders the registry into any container. Used twice — the Keyboard section
+     of Settings, which shows the list outright, and the dialog that Mod+/ opens
+     from anywhere. One renderer, because two would be two lists to keep in
+     step, which is the problem this whole file exists to avoid. */
+  function render(container) {
+    // Grouped in the order the registry declares them, so the list reads the
     // way somebody works rather than alphabetically.
     const groups = [];
     api.REGISTRY.forEach(function (item) {
@@ -42,7 +33,7 @@
     groups.forEach(function (group) {
       const title = document.createElement("h3");
       title.textContent = group.name;
-      dialog.appendChild(title);
+      container.appendChild(title);
 
       const list = document.createElement("dl");
       list.className = "shortcut-list";
@@ -65,8 +56,25 @@
         list.appendChild(row);
       });
 
-      dialog.appendChild(list);
+      container.appendChild(list);
     });
+  }
+
+  function build() {
+    dialog = document.createElement("dialog");
+    dialog.className = "modal shortcuts-sheet";
+    dialog.id = "shortcuts-sheet";
+
+    const heading = document.createElement("h2");
+    heading.textContent = "Keyboard shortcuts";
+    dialog.appendChild(heading);
+
+    const note = document.createElement("p");
+    note.className = "settings-sub";
+    note.textContent = "These are fixed for now — they cannot be reassigned.";
+    dialog.appendChild(note);
+
+    render(dialog);
 
     const actions = document.createElement("div");
     actions.className = "modal-actions";
@@ -80,6 +88,12 @@
 
     document.body.appendChild(dialog);
   }
+
+  // Settings shows the list outright rather than behind a button. Pressing a
+  // button to reveal a reference list, on a page whose whole subject is that
+  // list, is a click that buys nothing.
+  const inline = document.querySelector("[data-shortcuts-list]");
+  if (inline) { render(inline); }
 
   function toggle() {
     if (!dialog) { build(); }
