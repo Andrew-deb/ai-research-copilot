@@ -435,6 +435,22 @@ def update_paper_sequence(collection_id: str, paper_id: str, sequence_order: int
     )
 
 
+def update_paper_orders(collection_id: str, paper_orders: list[tuple[str, int]]) -> None:
+    """Apply a validated ordering in one statement and transaction."""
+    if not paper_orders:
+        return
+    paper_ids, sequence_orders = zip(*paper_orders)
+    run_write(
+        """
+        UPDATE collection_papers AS cp
+        SET sequence_order = proposed.sequence_order
+        FROM unnest(%s::uuid[], %s::int[]) AS proposed(paper_id, sequence_order)
+        WHERE cp.collection_id = %s AND cp.paper_id = proposed.paper_id;
+        """,
+        (list(paper_ids), list(sequence_orders), collection_id),
+    )
+
+
 # =============================================================================
 # Reading progress
 # =============================================================================
