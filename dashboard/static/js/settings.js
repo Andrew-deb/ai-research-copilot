@@ -149,6 +149,233 @@
     });
   });
 
+  /* -------------------------------------------------------------- usage -- */
+
+  /*
+   * The Analytics tab. Fetched when opened, not with the page: two aggregate
+   * queries against a database several hundred milliseconds away, for a view
+   * most visits never look at.
+   *
+   * Drawn as plain elements rather than with a charting library. The whole
+   * chart is a row of divs with percentage heights, which needs no dependency,
+   * inherits both themes for free, and cannot be the reason a settings page
+   * fails to load.
+   */
+  const analyticsBox = document.querySelector("[data-usage-analytics]");
+  if (analyticsBox) {
+    let loadedFor = null;     // the window+feature drawn, so a re-click is free
+
+    function number(value) {
+      return (value || 0).toLocaleString();
+    }
+
+    /* Model costs here are fractions of a cent, and "$0.00" is the one answer
+       that is actively wrong: it says free when the true figure is small.
+       Below a cent the number gets the digits it needs; above, two decimals,
+       because at that point it reads as money and should look like it. */
+    function usd(value) {
+      const amount = value || 0;
+      if (amount === 0) { return "$0"; }
+      if (amount < 0.01) { return "$" + amount.toFixed(4); }
+      return "$" + amount.toFixed(2);
+    }
+
+    function ms(value) {
+      if (value == null) { return "—"; }
+      return value >= 1000 ? (value / 1000).toFixed(1) + "s" : Math.round(value) + "ms";
+    }
+
+    function el(tag, className, text) {
+      const node = document.createElement(tag);
+      if (className) { node.className = className; }
+      if (text != null) { node.textContent = text; }
+      return node;
+    }
+
+    function draw(data) {
+      analyticsBox.replaceChildren();
+
+      if (data.unavailable) {
+        analyticsBox.append(el("p", "empty-state",
+          "Usage history could not be loaded just now."));
+        return;
+      }
+      if (!data.has_data) {
+        // Said in words. A grid of zeros looks identical whether somebody has
+        // run nothing or nothing is being recorded, and those are not the same.
+        analyticsBox.append(el("p", "empty-state",
+          data.feature_label
+            ? "No " + data.feature_label + " activity in the last " + data.days + " days."
+            : "Nothing recorded in the last " + data.days + " days."));
+        return;
+      }
+
+      const totals = el("div", "usage-totals");
+      [["Requests", number(data.totals.operations)],
+       ["Tokens", number(data.totals.tokens)],
+       ["Model cost", usd(data.totals.cost_usd)],
+       ["Errors", number(data.totals.failures)]].forEach(function (pair) {
+        const card = el("div", "usage-total");
+        card.append(el("span", "usage-total-value", pair[1]),
+                    el("span", "usage-total-label", pair[0]));
+        totals.appendChild(card);
+      });
+      analyticsBox.appendChild(totals);
+
+      if (data.daily && data.daily.length) {
+        const chart = el("div", "usage-chart");
+        chart.setAttribute("role", "img");
+        chart.setAttribute("aria-label",
+          "Requests per day over the last " + data.days + " days, peaking at " +
+          data.peak + ".");
+        data.daily.forEach(function (day) {
+          const column = el("div", "usage-chart-col");
+          const bar = el("span", "usage-chart-bar");
+          // A day with activity never renders as nothing: a zero-height bar and
+          // an empty day would be the same picture.
+          bar.style.height = (day.operations ? Math.max(day.height, 4) : 0) + "%";
+          column.appendChild(bar);
+          column.title = day.day + ": " + day.operations +
+            (day.operations === 1 ? " request" : " requests");
+          chart.appendChild(column);
+        });
+        analyticsBox.appendChild(chart);
+      }
+
+      // Only for requests that actually called a model and came back without a
+      // price. A turn that never reached a provider is not unpriced, it is
+      // free — and a warning about money that was never at stake is noise.
+      if (data.totals.cost_unknown) {
+        const n = data.totals.cost_unknown;
+        const caveat = el("p", "usage-caveat",
+          n === 1
+            ? "One request is missing from the cost: the model answered it but "
+              + "returned no price."
+            : n + " requests are missing from the cost: the model answered them "
+              + "but returned no price.");
+        analyticsBox.appendChild(caveat);
+      }
+
+      const table = el("table", "usage-table");
+      const head = el("thead");
+      const headRow = el("tr");
+      ["Feature", "Requests", "Tokens", "Cost", "Median", "95th", "Errors"]
+        .forEach(function (label) { headRow.appendChild(el("th", null, label)); });
+      head.appendChild(headRow);
+      table.appendChild(head);
+
+      const tbody = el("tbody");
+      data.features.forEach(function (feature) {
+        const row = el("tr");
+        row.append(
+          el("th", null, feature.label),
+          el("td", null, number(feature.operations)),
+          el("td", null, number(feature.tokens)),
+          el("td", null, usd(feature.cost_usd)),
+          el("td", null, ms(feature.median_ms)),
+          el("td", null, ms(feature.p95_ms)),
+          el("td", feature.failures ? "usage-errors" : null,
+             feature.failures ? feature.failures + " (" + feature.failure_rate + "%)" : "—")
+        );
+        tbody.appendChild(row);
+      });
+      table.appendChild(tbody);
+      analyticsBox.appendChild(table);
+    }
+
+    async function load(days, feature) {
+      const key = days + ":" + (feature || "");
+      if (loadedFor === key) { return; }
+      analyticsBox.replaceChildren(el("p", "empty-state", "Loading…"));
+      try {
+        const response = await fetch(
+          "/settings/usage?days=" + days + (feature ? "&feature=" + feature : ""), {
+          headers: { "X-Requested-With": "XMLHttpRequest" }
+        });
+        if (!response.ok) { throw new Error("Request failed"); }
+        draw(await response.json());
+        loadedFor = key;
+      } catch (e) {
+        loadedFor = null;     // so the next open tries again rather than sulking
+        analyticsBox.replaceChildren(
+          el("p", "empty-state", "Usage history could not be loaded just now."));
+      }
+    }
+
+    document.querySelectorAll("[data-usage-tab]").forEach(function (tab) {
+      tab.addEventListener("click", function () {
+        const name = tab.dataset.usageTab;
+        document.querySelectorAll("[data-usage-view]").forEach(function (view) {
+          view.hidden = view.dataset.usageView !== name;
+        });
+        document.querySelectorAll("[data-usage-tab]").forEach(function (each) {
+          const on = each === tab;
+          each.classList.toggle("is-selected", on);
+          each.setAttribute("aria-selected", on ? "true" : "false");
+        });
+        if (name === "analytics") { load(currentDays(), currentFeature()); }
+      });
+    });
+
+    function currentDays() {
+      const active = document.querySelector("[data-usage-days].is-selected");
+      return parseInt(active ? active.dataset.usageDays : "7", 10);
+    }
+
+    const featurePicker = document.querySelector("[data-dropdown]");
+    const featureToggle = featurePicker && featurePicker.querySelector("[data-dropdown-toggle]");
+    const featureMenu = featurePicker && featurePicker.querySelector(".dropdown-menu");
+
+    function currentFeature() {
+      return featureToggle ? featureToggle.value : "";
+    }
+
+    document.querySelectorAll("[data-usage-days]").forEach(function (button) {
+      button.addEventListener("click", function () {
+        document.querySelectorAll("[data-usage-days]").forEach(function (each) {
+          each.classList.toggle("is-selected", each === button);
+        });
+        load(parseInt(button.dataset.usageDays, 10), currentFeature());
+      });
+    });
+
+    if (featurePicker) {
+      function setFeatureMenu(open) {
+        featureMenu.hidden = !open;
+        featureToggle.setAttribute("aria-expanded", open ? "true" : "false");
+      }
+
+      featureToggle.addEventListener("click", function (event) {
+        event.stopPropagation();
+        setFeatureMenu(featureMenu.hidden);
+      });
+
+      featureMenu.addEventListener("click", function (event) {
+        const option = event.target.closest("[role=option]");
+        if (!option) { return; }
+
+        featureToggle.value = option.dataset.usageFeature;
+        featurePicker.querySelector(".dropdown-value").textContent = option.textContent;
+        featureMenu.querySelectorAll("[role=option]").forEach(function (each) {
+          each.setAttribute("aria-selected", each === option ? "true" : "false");
+        });
+        setFeatureMenu(false);
+        featureToggle.focus();
+        load(currentDays(), featureToggle.value);
+      });
+
+      document.addEventListener("click", function (event) {
+        if (!featurePicker.contains(event.target)) { setFeatureMenu(false); }
+      });
+      document.addEventListener("keydown", function (event) {
+        if (event.key === "Escape" && !featureMenu.hidden) {
+          setFeatureMenu(false);
+          featureToggle.focus();
+        }
+      });
+    }
+  }
+
   /* ------------------------------------------------------ confirm first -- */
 
   /*

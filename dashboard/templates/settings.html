@@ -21,6 +21,7 @@
     {% for id, label, glyph in [
          ('preferences', 'Preferences', 'sliders'),
          ('account',     'Account',     'user'),
+         ('usage',       'Usage',       'chart'),
          ('security',    'Security',    'shield'),
          ('appearance',  'Appearance',  'palette'),
          ('keyboard',    'Keyboard',    'keyboard')] %}
@@ -34,6 +35,7 @@
   <div class="settings-body">
     {% include 'settings/_preferences.html' %}
     {% include 'settings/_account.html' %}
+    {% include 'settings/_usage.html' %}
     {% include 'settings/_security.html' %}
     {% include 'settings/_appearance.html' %}
     {% include 'settings/_keyboard.html' %}

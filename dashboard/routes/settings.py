@@ -7,16 +7,19 @@ topics" from "I have no topics", and would quietly wipe a section somebody
 never opened.
 """
 
-from flask import Blueprint, redirect, render_template, request, session, url_for
+from flask import (Blueprint, jsonify, redirect, render_template, request,
+                   session, url_for)
 
 from middleware.auth import SESSION_TOKEN_KEY, current_tier, current_user_id
 from middleware.capabilities import require_capability
 from routes.helpers import action_response
-from services import account_service, onboarding_service, settings_service
+from services import (account_service, onboarding_service, settings_service,
+                      usage_service)
 
 bp = Blueprint("settings", __name__)
 
-_SECTIONS = ("preferences", "account", "security", "appearance", "keyboard")
+_SECTIONS = ("preferences", "account", "usage", "security", "appearance",
+             "keyboard")
 
 
 @bp.get("/settings")
@@ -44,6 +47,23 @@ def page():
         help_tasks=onboarding_service.HELP_TASKS,
         max_topics=onboarding_service.MAX_TOPICS,
     )
+
+
+@bp.get("/settings/usage")
+@require_capability("notes:write")
+def usage_analytics():
+    """
+    The Analytics tab's data, fetched when the tab is opened rather than with
+    the page.
+
+    Two aggregate queries against a database with a round-trip floor of several
+    hundred milliseconds, for a tab most visits never open. Rendering them with
+    every /settings load would put that cost on somebody changing their display
+    name.
+    """
+    days = request.args.get("days", usage_service.DEFAULT_WINDOW, type=int)
+    return jsonify(usage_service.analytics(
+        current_user_id(), days, request.args.get("feature")))
 
 
 @bp.post("/settings/profile")
