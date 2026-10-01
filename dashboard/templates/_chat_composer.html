@@ -28,12 +28,42 @@
       {% if context %}
       <button type="button" id="chat-context-clear" class="composer-context" title="Remove context">Context: {{ context.label }} ×</button>
       {% endif %}
-      <div class="chat-mode-choice">
-        <label class="sr-only" for="chat-mode">Chat mode</label>
-        <select id="chat-mode" aria-label="Chat mode" title="Choose Research or Wick">
-          <option value="research" {{ 'selected' if chat_mode == 'research' }}>Research</option>
-          <option value="wick" {{ 'selected' if chat_mode == 'wick' }}>Wick</option>
-        </select>
+      {# A button and a menu rather than a <select>.
+
+         A native select's drop-down is drawn by the operating system: its
+         background, its type and its spacing are not ours to set, so inside a
+         dark composer it opened as a white box with black text. This is the
+         same button-plus-menu the account switcher uses, which means it also
+         has room to say what each mode is for — something <option> has nowhere
+         to put.
+
+         The button keeps `id="chat-mode"` and a real `value`, and dispatches a
+         `change` event, so the code reading the mode never learns this stopped
+         being a select. #}
+      <div class="chat-mode-choice" data-mode-picker>
+        <button type="button" class="mode-pick" id="chat-mode" value="{{ chat_mode }}"
+                aria-haspopup="listbox" aria-expanded="false"
+                aria-label="Chat mode" title="Choose Research or Wick">
+          <span class="mode-pick-value">{{ 'Wick' if chat_mode == 'wick' else 'Research' }}</span>
+          <svg class="mode-pick-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="m6 9 6 6 6-6"/>
+          </svg>
+        </button>
+
+        <div class="mode-pick-menu" role="listbox" aria-labelledby="chat-mode" hidden>
+          <button type="button" role="option" data-value="research"
+                  aria-selected="{{ 'false' if chat_mode == 'wick' else 'true' }}">
+            <span class="mode-pick-name">Research</span>
+            <span class="mode-pick-hint">Finds papers and cites them</span>
+          </button>
+          <button type="button" role="option" data-value="wick"
+                  aria-selected="{{ 'true' if chat_mode == 'wick' else 'false' }}">
+            <span class="mode-pick-name">Wick</span>
+            <span class="mode-pick-hint">Works on your collections and notes</span>
+          </button>
+        </div>
+
         <span class="sr-only" id="chat-mode-description">{{ 'Workspace operations' if chat_mode == 'wick' else 'Paper discovery and research' }}</span>
       </div>
     {% endif %}
