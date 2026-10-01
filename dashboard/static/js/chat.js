@@ -29,6 +29,48 @@
       clearContext.remove();
     });
   }
+  /* The mode picker is a button and a menu, not a select — a native drop-down
+     is drawn by the operating system and opened as a white box inside a dark
+     composer. It still exposes `.value` and still fires `change`, so the
+     handler below never learns the difference. */
+  var modeWrap = document.querySelector("[data-mode-picker]");
+  if (modeWrap && modePicker) {
+    var modeMenu = modeWrap.querySelector(".mode-pick-menu");
+    var modeLabel = modePicker.querySelector(".mode-pick-value");
+
+    var setMenu = function (open) {
+      modeMenu.hidden = !open;
+      modePicker.setAttribute("aria-expanded", open ? "true" : "false");
+    };
+
+    modePicker.addEventListener("click", function (e) {
+      e.stopPropagation();
+      setMenu(modeMenu.hidden);
+    });
+
+    modeMenu.addEventListener("click", function (e) {
+      var option = e.target.closest("[role=option]");
+      if (!option) { return; }
+
+      modePicker.value = option.dataset.value;
+      modeLabel.textContent = option.querySelector(".mode-pick-name").textContent;
+      modeMenu.querySelectorAll("[role=option]").forEach(function (each) {
+        each.setAttribute("aria-selected", each === option ? "true" : "false");
+      });
+      setMenu(false);
+      modePicker.focus();
+      // What the rest of this file already listens for.
+      modePicker.dispatchEvent(new Event("change"));
+    });
+
+    document.addEventListener("click", function (e) {
+      if (!modeWrap.contains(e.target)) { setMenu(false); }
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && !modeMenu.hidden) { setMenu(false); modePicker.focus(); }
+    });
+  }
+
   if (modePicker) {
     modePicker.addEventListener("change", function () {
       page.dataset.chatMode = modePicker.value;

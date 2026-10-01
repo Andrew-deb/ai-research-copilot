@@ -347,7 +347,16 @@
      the primary control - but that reasoning assumed the box was in the middle
      of the page. Once the composer is pinned to the bottom edge, "above it" IS
      under the greeting, and the reading order is unchanged. */
-  .chat-page.is-empty .chat-starters { order: 3; margin-bottom: 10px; }
+  /* Right-aligned on a phone: they sit just above the composer, and a thumb
+     reaching from the send button travels a shorter way to the near edge than
+     across to the far one. Centred is right on a wide screen, where the whole
+     stack is centred and nothing is within thumb reach anyway. */
+  .chat-page.is-empty .chat-starters {
+    order: 3;
+    margin-bottom: 10px;
+    justify-content: flex-end;
+    text-align: right;
+  }
   .chat-page.is-empty .composer { order: 4; }
   .chat-page.is-empty .chat-note { order: 5; margin: 8px 0 0; }
 }
@@ -874,11 +883,75 @@
 .composer-footer { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .chat-mode-choice { display: flex; align-items: center; gap: 8px; flex: none;
   min-width: 0; margin-left: auto; }
-.chat-mode-choice select { width: auto; max-width: 125px; padding: 5px 22px 5px 8px;
-  color: var(--text); background: var(--surface); border: 0; border-radius: 8px;
-  font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
-.chat-mode-choice select:hover { background: var(--surface-2); }
-.chat-mode-choice select:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+
+/* ---------- Mode picker ----------
+   A button and a menu, because a native select's drop-down belongs to the
+   operating system: it opened as a white box with black type inside a dark
+   composer, and no amount of styling the closed control changes that. */
+
+.chat-mode-choice { position: relative; }
+
+.mode-pick {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 140px;
+  padding: 5px 7px 5px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.mode-pick:hover { background: var(--surface-2); }
+.mode-pick:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+.mode-pick-caret { width: 13px; height: 13px; color: var(--text-muted); flex: none; }
+.mode-pick[aria-expanded="true"] .mode-pick-caret { transform: rotate(180deg); }
+
+/* Opens upward: the composer sits at the foot of the page on every surface that
+   has one, so a menu dropping down would open off the bottom of the screen. */
+.mode-pick-menu {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  right: 0;
+  z-index: 40;
+  min-width: 232px;
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+.mode-pick-menu[hidden] { display: none; }
+
+.mode-pick-menu [role="option"] {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.mode-pick-menu [role="option"]:hover { background: var(--surface-2); }
+.mode-pick-menu [role="option"][aria-selected="true"] { background: var(--brand-tint); }
+
+.mode-pick-name { display: block; font-size: 13px; font-weight: 600; }
+/* The line a native <option> has nowhere to put, and the reason two words in a
+   drop-down needed explaining at all. */
+.mode-pick-hint {
+  display: block;
+  margin-top: 1px;
+  color: var(--text-muted);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
 .composer-context { min-width: 0; max-width: 55%; padding: 5px 8px; overflow: hidden;
   white-space: nowrap; text-overflow: ellipsis; border: 0; border-radius: 8px;
   background: var(--surface-2); color: var(--text-muted); font: inherit; font-size: 11px;
