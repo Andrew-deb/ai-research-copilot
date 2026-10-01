@@ -804,6 +804,84 @@ def db(monkeypatch):
     auth_mw._SESSION_CACHE.clear()
     fake.sessions = fake_sessions
 
+    # Usage analytics aggregates in SQL rather than in Python, so like the
+    # palette it goes through run_query directly and is not covered by the
+    # method patching above. Mirrored here against fake.ai_operations.
+    from repositories import usage_analytics as usage_repo
+
+    def _in_window(op, days):
+        occurred = op.get("occurred_at") or _now()
+        return (_now() - occurred).days < days
+
+    def _feature_of(op):
+        # Mirrors FEATURES in the repository: NULL mode reads as research,
+        # because rows written before mode existed do not know which they were.
+        if op["metric"] == "agent_query":
+            return "wick" if op.get("mode") == "wick" else "research"
+        return {"rag_query": "ask", "semantic_search": "search"}.get(op["metric"])
+
+    def ua_by_metric(user_id, days=7, feature=None):
+        mine = [o for o in fake.ai_operations
+                if str(o.get("user_id")) == str(user_id) and _in_window(o, days)
+                and (feature is None or _feature_of(o) == feature)]
+        rows = {}
+        for op in mine:
+            key = (op["metric"], _feature_of(op))
+            row = rows.setdefault(key, {
+                "metric": op["metric"],
+                "mode": (op.get("mode") or "research")
+                        if op["metric"] == "agent_query" else None,
+                "operations": 0, "failures": 0,
+                "input_tokens": 0, "output_tokens": 0, "llm_turns": 0,
+                "tool_calls": 0, "cost_usd": 0, "cost_unknown": 0,
+                "_latencies": []})
+            row["operations"] += 1
+            row["failures"] += 0 if op.get("ok", True) else 1
+            for field in ("input_tokens", "output_tokens", "llm_turns", "tool_calls"):
+                row[field] += op.get(field) or 0
+            # Mirrors COALESCE(sum(...)) plus the count of rows that called a
+            # model and still came back without a price. A row with no model
+            # call is not unpriced — it spent nothing.
+            if op.get("estimated_cost_usd") is None:
+                if (op.get("llm_turns") or 0) > 0:
+                    row["cost_unknown"] += 1
+            else:
+                row["cost_usd"] += op["estimated_cost_usd"]
+            if op.get("latency_ms") is not None:
+                row["_latencies"].append(op["latency_ms"])
+
+        out = []
+        for row in rows.values():
+            latencies = sorted(row.pop("_latencies"))
+            # percentile_disc: a latency that actually happened, not an
+            # interpolation between two that did.
+            row["median_ms"] = latencies[int(len(latencies) * 0.5)] if latencies else None
+            row["p95_ms"] = (latencies[min(int(len(latencies) * 0.95), len(latencies) - 1)]
+                             if latencies else None)
+            out.append(row)
+        return sorted(out, key=lambda r: -r["operations"])
+
+    def ua_by_day(user_id, days=7, feature=None):
+        today = _now().date()
+        counts = {}
+        for op in fake.ai_operations:
+            if str(op.get("user_id")) != str(user_id):
+                continue
+            if feature is not None and _feature_of(op) != feature:
+                continue
+            day = (op.get("occurred_at") or _now()).date()
+            counts[day] = counts.get(day, 0) + 1
+        # Every day in the window, including the empty ones — a chart drawn only
+        # from days that have rows draws a line straight over a fortnight's
+        # silence.
+        return [{"day": today - datetime.timedelta(days=offset),
+                 "operations": counts.get(today - datetime.timedelta(days=offset), 0)}
+                for offset in range(days - 1, -1, -1)]
+
+    for name, method in (("by_metric", ua_by_metric), ("by_day", ua_by_day)):
+        assert hasattr(usage_repo, name), f"usage_analytics has no {name}"
+        monkeypatch.setattr(usage_repo, name, method)
+
     # The palette's two lookups are raw SQL against several tables at once —
     # one UNION rather than four round trips — so they go through run_query
     # directly and are NOT covered by the method-by-method patching above.
