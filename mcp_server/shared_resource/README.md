@@ -1,6 +1,17 @@
-# Shared MCP domain operations
+# Shared Alfred layers
 
-Research service modules remain compatibility adapters. They supply the Lakebase
+The shared package is organized by architectural layer. `services/` contains
+collection, paper, note, progress, goal, and reading-plan modules;
+`exceptions.py` contains their common errors. Notes are separate from progress,
+and goals are separate from reading-plan ordering.
+
+Reusable `repositories/`, `brokers/`, or `middleware/` layers will be added when
+their implementations are extracted for both servers. Server-specific tool
+catalogs, prompts, startup/configuration, and policies stay with their servers.
+Business services continue to receive their dependencies explicitly; moving an
+infrastructure module here does not make it a dependency of every service.
+
+Research's top-level service modules remain compatibility adapters. They supply the Lakebase
 repository to this package; tool registration and acting-user resolution remain
 in the MCP interface. Future Wick adapters can use these operations without
 importing Research's tool catalog, prompt, config, or identity middleware.

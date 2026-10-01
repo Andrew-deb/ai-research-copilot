@@ -2,7 +2,8 @@
 
 from typing import List, Optional
 
-from alfred_domain import planning_service as domain
+from shared_resource.services import planning_service as domain
+from shared_resource.services import goal_service as goals
 from repositories import lakebase
 
 
@@ -30,7 +31,7 @@ def reorder_reading_plan(collection_id: str, paper_orders: List[dict], user_id: 
 
 def create_learning_goal(user_id: str, title: str, description: Optional[str] = None) -> dict:
     """Create a new learning goal for a user."""
-    return domain.create_learning_goal(
+    return goals.create_learning_goal(
         lakebase,
         user_id=user_id,
         title=title,
@@ -40,9 +41,9 @@ def create_learning_goal(user_id: str, title: str, description: Optional[str] = 
 
 def get_learning_goals(user_id: str, status: Optional[str] = None) -> List[dict]:
     """Retrieve learning goals for a user (optionally filtered by active/completed/archived)."""
-    return domain.get_learning_goals(lakebase, user_id=user_id, status=status)
+    return goals.get_learning_goals(lakebase, user_id=user_id, status=status)
 
 
 def update_goal_status(goal_id: str, user_id: str, status: str) -> dict:
     """Update goal status to 'active', 'completed', or 'archived'."""
-    return domain.update_goal_status(lakebase, goal_id=goal_id, user_id=user_id, status=status)
+    return goals.update_goal_status(lakebase, goal_id=goal_id, user_id=user_id, status=status)

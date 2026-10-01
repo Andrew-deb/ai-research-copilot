@@ -2,7 +2,7 @@
 
 from typing import List, Optional
 
-from alfred_domain import collection_service as domain
+from shared_resource.services import collection_service as domain
 from repositories import lakebase
 
 

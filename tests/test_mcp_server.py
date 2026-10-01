@@ -168,7 +168,7 @@ def test_research_adapters_and_bulk_ordering_remain_deployable():
     """Exercise legacy service names in their own interpreter, with no database."""
     script = '''
 from unittest.mock import Mock
-from alfred_domain.errors import ValidationError as SharedValidationError
+from shared_resource.exceptions import ValidationError as SharedValidationError
 from exceptions import ValidationError
 from services import collection_service, progress_service, planning_service
 from repositories import lakebase
@@ -197,6 +197,13 @@ assert parameters == (["paper"], [1], "collection")
 lakebase.run_write.reset_mock()
 lakebase.update_paper_orders("collection", [])
 lakebase.run_write.assert_not_called()
+
+lakebase.create_learning_goal = Mock(return_value={"goal_id": "goal"})
+assert planning_service.create_learning_goal("owner", " Goal ")["goal_id"] == "goal"
+lakebase.create_learning_goal.assert_called_once_with(user_id="owner", title="Goal", description=None)
+lakebase.get_notes_for_paper = Mock(return_value=[{"note_id": "note"}])
+assert progress_service.get_notes_for_paper("owner", "paper") == [{"note_id": "note"}]
+lakebase.get_notes_for_paper.assert_called_once_with(user_id="owner", paper_id="paper")
 '''
     subprocess.run([sys.executable, "-c", script], cwd=MCP_DIR, check=True,
                    capture_output=True, text=True)

@@ -1,5 +1,5 @@
 """
-alfred_domain/errors.py — shared domain exception classes.
+shared_resource/exceptions.py — shared domain exception classes.
 
 Services raise these typed exceptions. The MCP error handler and
 Flask error handler (in dashboard) convert them to structured responses.

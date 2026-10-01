@@ -1,6 +1,6 @@
 """Local corpus lookup; external discovery is a separate Research operation."""
 
-from .errors import PaperNotFoundError, ValidationError
+from ..exceptions import PaperNotFoundError, ValidationError
 
 
 def require_paper(repository, paper_id: str) -> dict:

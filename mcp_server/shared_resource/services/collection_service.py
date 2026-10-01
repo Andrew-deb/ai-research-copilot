@@ -1,5 +1,5 @@
 """
-alfred_domain/collection_service.py — Collection Management Service.
+shared_resource/services/collection_service.py — Collection Management Service.
 
 Handles creating collections, managing papers within collections, ordering sequences,
 and retrieving collection contents for users.
@@ -8,8 +8,8 @@ and retrieving collection contents for users.
 import logging
 from typing import List, Optional
 
-from .errors import CollectionNotFoundError, PaperNotFoundError, ValidationError
-from .papers import require_paper
+from ..exceptions import CollectionNotFoundError, ValidationError
+from .paper_service import require_paper
 
 logger = logging.getLogger(__name__)
 

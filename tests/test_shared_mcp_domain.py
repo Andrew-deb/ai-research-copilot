@@ -5,9 +5,9 @@ from unittest.mock import Mock
 
 import pytest
 
-from mcp_server.alfred_domain import collection_service, planning_service, progress_service
-from mcp_server.alfred_domain.errors import CollectionNotFoundError, ValidationError
-from mcp_server.alfred_domain.papers import require_paper
+from mcp_server.shared_resource.services import collection_service, note_service, planning_service, progress_service
+from mcp_server.shared_resource.exceptions import CollectionNotFoundError, ValidationError
+from mcp_server.shared_resource.services.paper_service import require_paper
 
 
 @pytest.fixture
@@ -96,7 +96,7 @@ def test_personal_progress_keeps_actor_and_normalizes_status(repo):
 
 def test_paper_note_retains_legacy_fields_and_scoped_write(repo):
     repo.save_note.return_value = {"note_id": "note", "note_text": "Summary", "created_at": "now"}
-    result = progress_service.save_note(repo, "owner", "paper", "  Summary  ")
+    result = note_service.save_note(repo, "owner", "paper", "  Summary  ")
     repo.save_note.assert_called_once_with(user_id="owner", paper_id="paper", note_text="Summary")
     assert result == {"status": "success", "note_id": "note", "paper_id": "paper",
                       "paper_title": "A paper", "note_text": "Summary", "created_at": "now"}
@@ -105,7 +105,7 @@ def test_paper_note_retains_legacy_fields_and_scoped_write(repo):
 @pytest.mark.parametrize("actor", [None, ""])
 def test_personal_write_never_falls_back_to_demo(repo, actor):
     with pytest.raises(ValidationError):
-        progress_service.save_note(repo, actor, "paper", "Summary")
+        note_service.save_note(repo, actor, "paper", "Summary")
     with pytest.raises(ValidationError):
         progress_service.mark_paper_status(repo, actor, "paper", "reading")
     repo.save_note.assert_not_called()

@@ -1,6 +1,6 @@
 """Compatibility exports for existing Research services and brokers."""
 
-from alfred_domain.errors import (
+from shared_resource.exceptions import (
     CollectionNotFoundError, EmbeddingError, ExternalAPIError, GoalNotFoundError,
     NoteNotFoundError, PaperNotFoundError, ResearchCopilotError, ValidationError,
 )
