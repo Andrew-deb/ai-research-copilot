@@ -149,6 +149,75 @@
     });
   });
 
+  /* ------------------------------------------------------ confirm first -- */
+
+  /*
+   * Any form carrying data-confirm asks before it submits.
+   *
+   * Written once and driven by the attribute rather than wired per button,
+   * because the thing that makes these dangerous is that they look identical:
+   * four "Sign out" buttons in a list, one of which ends the session you are
+   * reading the page in and one of which ends every session you have. The
+   * dialog is where they stop looking identical.
+   */
+  const confirmDialog = document.getElementById("confirm-dialog");
+  if (confirmDialog) {
+    const message = confirmDialog.querySelector("[data-confirm-message]");
+    const proceed = confirmDialog.querySelector("[data-confirm-proceed]");
+    const cancel = confirmDialog.querySelector("[data-confirm-cancel]");
+
+    let pending = null;     // what the dialog is currently asking about
+    let approved = null;    // what the person has just said yes to
+
+    function open(form) {
+      pending = form;
+      message.textContent = form.dataset.confirm;
+      proceed.textContent = form.dataset.confirmAction || "Continue";
+
+      if (typeof confirmDialog.showModal === "function") { confirmDialog.showModal(); }
+      else { confirmDialog.setAttribute("open", ""); }
+
+      // Focus lands on Cancel, not on the action: the safe option should be the
+      // one an accidental Enter picks.
+      if (cancel) { cancel.focus(); }
+    }
+
+    function close() {
+      if (typeof confirmDialog.close === "function") { confirmDialog.close(); }
+      else { confirmDialog.removeAttribute("open"); }
+      pending = null;
+    }
+
+    document.addEventListener("submit", (event) => {
+      const form = event.target.closest("form[data-confirm]");
+      if (!form) { return; }
+
+      // The second pass, after a yes. Cleared immediately so a later submit of
+      // the same form has to be confirmed again.
+      if (form === approved) { approved = null; return; }
+
+      event.preventDefault();
+      open(form);
+    }, true);
+
+    if (proceed) {
+      proceed.addEventListener("click", () => {
+        const form = pending;
+        close();
+        if (!form) { return; }
+
+        // Set AFTER close(), which clears `pending` — reusing that one variable
+        // meant the resubmit arrived with it already null and re-opened the
+        // dialog it had just answered.
+        approved = form;
+        if (form.requestSubmit) { form.requestSubmit(); } else { form.submit(); }
+      });
+    }
+
+    if (cancel) { cancel.addEventListener("click", close); }
+    confirmDialog.addEventListener("close", () => { pending = null; });
+  }
+
   /* ------------------------------------------------------------- delete -- */
 
   const dialog = document.getElementById("delete-account-dialog");
