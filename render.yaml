@@ -14,10 +14,12 @@ services:
     name: alfred
     runtime: python
     plan: free
-    rootDir: dashboard # dashboard/ is the import root — imports are flat
+    # Build from repo root so authoritative prompts can be bundled.
+    # Runtime still uses the flat dashboard artifact as its working directory.
+    rootDir: .
     region: oregon
     healthCheckPath: /healthz
-    buildCommand: pip install -r requirements.txt
+    buildCommand: python mcp_server/deploy/build.py --target render && pip install -r dist/deploy/render/requirements.txt
     # One worker: the free instance is 512 MB / 0.1 CPU. Threads (not processes)
     # give concurrency, and every slow call here is I/O — Postgres, OpenRouter, HF.
     #
@@ -31,7 +33,7 @@ services:
     # dashboard/config.py explains the relationship and warns at boot if the gap
     # between them is too small to cover synthesis and delivery.
     startCommand: >-
-      gunicorn app:app
+      cd dist/deploy/render && gunicorn app:app
       --bind 0.0.0.0:$PORT
       --workers 1
       --threads 4

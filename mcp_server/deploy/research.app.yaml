@@ -1,0 +1,12 @@
+command:
+  - "python"
+  - "-m"
+  - "research.server"
+
+env:
+  - name: "PYTHONUNBUFFERED"
+    value: "1"
+  - name: "PYTHONPATH"
+    value: "/app/python/source_code"
+  - name: "MCP_TRANSPORT"
+    value: "streamable-http"
