@@ -78,6 +78,23 @@ def revoke_other_sessions():
     )
 
 
+@bp.post("/account/sessions/revoke-all")
+@require_capability("notes:write")
+def revoke_all_sessions():
+    """
+    Everything, including this browser — so it ends by signing you out.
+
+    The session is cleared here rather than left to expire on its own: the row
+    is already revoked, so the cookie is dead, and a page that carried on
+    looking signed in until the next request would be lying about the thing
+    somebody just pressed a button to change.
+    """
+    revoked = account_service.sign_out_everywhere(current_user_id())
+    logger.info("Signed out of all %s sessions", revoked)
+    session.clear()
+    return redirect(url_for("home.index"))
+
+
 # ---------------------------------------------------------------------------
 # Deletion
 # ---------------------------------------------------------------------------
