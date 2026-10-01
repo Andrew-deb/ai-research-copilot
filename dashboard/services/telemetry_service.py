@@ -43,7 +43,7 @@ class Operation:
     the block ends, however it ends.
     """
 
-    __slots__ = ("metric", "tier", "user_id", "provider", "model",
+    __slots__ = ("metric", "tier", "user_id", "mode", "provider", "model",
                  "input_tokens", "output_tokens", "estimated_cost_usd",
                  "llm_turns", "tool_calls", "embedding_calls", "ok", "error")
 
@@ -51,6 +51,10 @@ class Operation:
         self.metric = metric
         self.tier = tier
         self.user_id = user_id
+        # Which flavour of this metric. Only the agent has two (research and
+        # wick); everything else leaves it None, and `metric` already says
+        # everything there is to say.
+        self.mode: str | None = None
         self.provider: str | None = None
         self.model: str | None = None
         self.input_tokens: int | None = None
@@ -128,6 +132,7 @@ def measure(metric: str, tier: str, user_id: str | None = None,
             tier=op.tier,
             latency_ms=int((time.perf_counter() - started) * 1000),
             user_id=op.user_id,
+            mode=op.mode,
             provider=op.provider,
             model=op.model,
             input_tokens=op.input_tokens,
