@@ -513,7 +513,14 @@ def get_progress_stats(user_id: str) -> dict:
 # Notes
 # =============================================================================
 
-def save_note(user_id: str, paper_id: str, note_text: str) -> dict:
+def save_note(user_id: str, paper_id: str | None, note_text: str,
+              title: str | None = None, tags: list[str] | None = None) -> dict:
+    if title is not None or tags:
+        return run_write(
+            "INSERT INTO notes (user_id, paper_id, note_text, title, tags) "
+            "VALUES (%s, %s, %s, %s, %s) RETURNING *;",
+            (user_id, paper_id, note_text, title, tags or []), returning=True,
+        )
     return run_write(
         "INSERT INTO notes (user_id, paper_id, note_text) VALUES (%s, %s, %s) RETURNING *;",
         (user_id, paper_id, note_text),

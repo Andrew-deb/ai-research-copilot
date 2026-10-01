@@ -27,6 +27,10 @@ class NoteNotFoundError(ResearchCopilotError):
     """Raised when a note ID does not exist or does not belong to the user."""
 
 
+class WorkspaceResourceNotFoundError(ResearchCopilotError):
+    """A workspace resource is missing or inaccessible; do not reveal which."""
+
+
 class ValidationError(ResearchCopilotError):
     """Raised when input fails domain validation rules (e.g., empty title, invalid status)."""
 

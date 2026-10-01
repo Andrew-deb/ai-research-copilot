@@ -31,9 +31,38 @@ Collection mutations require an attributable owner and reject curated examples.
 Ordering is validated before persistence and written atomically by the
 repository. Paper lookup stays local; external discovery remains Research's
 responsibility. Existing tool signatures, response fields, and demo read behavior
-are retained. The legacy paper-note API remains paper-only; standalone notes,
-title/tag validation, bounded workspace reads, and action approval are later
-increments, not new tools enabled by this extraction.
+are retained. The legacy paper-note API remains paper-only. Rich note creation
+and bounded workspace reads now exist as service contracts; registering Wick's
+tools and action approval remain subsequent increments.
 
 No new environment variables, dependencies, schema migrations, or deployment
 root changes are required for this increment.
+
+## Workspace contracts
+
+`services/workspace_service.py` provides finite resource discovery and owner-scoped
+retrieval. `repositories/workspace_repository.py` holds the parameterized SQL and
+receives the runtime's database executor. It imports neither configuration nor a
+database driver. The runtime adapter in the top-level `services/workspace_service.py`
+supplies Lakebase; it does not register tools or determine the acting user.
+
+Resource kinds are paper, collection, note, goal and a finite page allowlist.
+Anonymous discovery excludes private kinds and only reads explicitly curated
+collections. Private reads require identity before querying. Results have typed
+references and provenance; the trusted dashboard will map references to routes.
+This layer never visits arbitrary URLs or executes page actions.
+
+Search and list requests are capped at 50 items with numeric offset cursors up
+to 10,000. Note content uses 4,000-character chunks, up to the 10,000-character
+note contract. Paper abstracts and collection/goal descriptions have explicit
+truncation indicators. Goal reads do not run semantic matching. Offset cursors
+are reauthorized on every request and may shift if items change between pages.
+
+`note_service.create_note` accepts standalone or paper-linked notes, titles and
+tags. It uses the dashboard's limits and normalization for valid text inputs,
+and rejects non-text tag elements. Research's `save_note` retains its signature,
+paper requirement and response fields, and now uses the same 10,000-character
+body limit as the dashboard. Rich metadata needs the existing sql/16–18 note
+schema; curated reads need the existing `is_curated` column. No new migration is
+introduced. Note reads also use the existing sql/19 pin column. The dashboard continues using its current services until shared
+runtime packaging is integrated; it is not importing MCP's flat modules.
