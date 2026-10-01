@@ -76,3 +76,39 @@ curl -s -X POST localhost:8080/mcp \
 | `semantic-scholar` | `api-key` | Semantic Scholar API key |
 | `openrouter` | `api-key` | OpenRouter API key |
 | `openalex` | `email` | OpenAlex polite pool email |
+
+## Wick's independent workspace server
+
+From this source root, run `python -m assistant.server`. Wick serves streamable
+HTTP at `/mcp` with `/healthz` and exactly nine tools: finite workspace discovery,
+resource reads, local paper metadata, personal reading progress, collection
+creation/membership changes, reading status, and rich note creation. It never
+registers Research's discovery, comparison, topic or planning tools. Shared
+operations remain in `shared_resource`; Research's 13-tool entry point is unchanged.
+
+The Databricks App proxy must authenticate the trusted Render caller before the
+identity header is accepted. Identity middleware is mandatory for Wick startup.
+Private reads/writes require an attributable acting user; anonymous lookup only
+sees supported public pages, global papers, and explicitly curated collections.
+The standalone command is a development/startup contract, not a deployment or
+new service-authentication implementation. Self-contained deployment packaging,
+App grants, and live identity/ownership verification are the next release step.
+
+### Render routing
+
+- `RESEARCH_MCP_SERVER_URL` selects Research; the legacy `MCP_SERVER_URL` remains
+  its compatibility fallback.
+- `WICK_MCP_SERVER_URL` selects Wick and must be configured separately. There is
+  no fallback to Research if it is absent or fails. Existing Databricks caller
+  credentials may be shared if both Apps grant that caller access.
+- Tool schema caches are keyed by mode and endpoint; each turn binds its selected
+  mode and acting user. Wick rejects a mismatched server catalog before model work.
+- The dedicated prompt source is `agent/wick_system_prompt.md`, selected by the
+  Render orchestration rather than the MCP server. Until deployment packaging
+  includes that source in the Render artifact, the dashboard uses a separate
+  workspace-specific fallback, never Research's base prompt.
+
+The initial server preserves collection removal with the existing conversational
+confirmation guidance. This is **not** structured Allow once/Always allow enforcement.
+Note deletion/overwrite tools remain unregistered; scoped approvals, revocation,
+and resumable runs require a later increment. No new migration is introduced.

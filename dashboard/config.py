@@ -96,6 +96,17 @@ DATABRICKS_CLIENT_SECRET: str | None = _get_secret(
 # Must end in /mcp — the app root redirects to a login page and only /mcp speaks
 # the protocol.
 MCP_SERVER_URL: str | None = os.getenv("MCP_SERVER_URL") or None
+# Preserve the existing Research setting during cutover. Wick has no fallback.
+RESEARCH_MCP_SERVER_URL: str | None = os.getenv("RESEARCH_MCP_SERVER_URL") or MCP_SERVER_URL
+WICK_MCP_SERVER_URL: str | None = os.getenv("WICK_MCP_SERVER_URL") or None
+
+
+def mcp_endpoint(mode: str = "research") -> str | None:
+    if mode == "research":
+        return RESEARCH_MCP_SERVER_URL
+    if mode == "wick":
+        return WICK_MCP_SERVER_URL
+    raise ValueError("Unknown MCP mode.")
 
 # Measured against the deployed app: OAuth token 5.7s cold, initialize 3.3s,
 # tools/list 1.5s. The token and the tool schemas are cached and the session is
@@ -143,10 +154,10 @@ AGENT_TIMEOUT_HEADROOM_SECONDS: int = 60
 AGENT_MAX_TOKENS: int = int(os.getenv("AGENT_MAX_TOKENS", "2400"))
 
 
-def mcp_is_configured() -> bool:
+def mcp_is_configured(mode: str = "research") -> bool:
     """True when every value the agent needs to reach the MCP server is present."""
     return bool(DATABRICKS_HOST and DATABRICKS_CLIENT_ID
-                and DATABRICKS_CLIENT_SECRET and MCP_SERVER_URL)
+                and DATABRICKS_CLIENT_SECRET and mcp_endpoint(mode))
 
 
 # --- Flask ---

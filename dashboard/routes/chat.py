@@ -256,7 +256,8 @@ def ask():
     if mode == "regenerate" and question != prepared["original_question"]:
         abort(400, description="Regeneration must use the original prompt.")
 
-    if not agent_service.is_connected():
+    if not (agent_service.is_connected() if chat_mode == "research" else
+            agent_service.is_connected(chat_mode)):
         # Validates first, so a malformed question is still a 400 rather than
         # being masked by the unavailability behind it.
         options = {"tier": tier, "user_id": user_id}
