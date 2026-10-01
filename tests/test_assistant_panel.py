@@ -92,7 +92,11 @@ def test_wick_mode_in_full_chat_and_panel_cannot_claim_research(client):
     response = client.get("/chat?mode=wick")
     assert response.status_code == 200
     assert b'data-chat-mode="wick"' in response.data
-    assert b'<option value="wick" selected>' in response.data
+    # The picker stopped being a <select>: a native drop-down is drawn by the
+    # operating system and opened as a white box inside a dark composer. What
+    # matters is unchanged — the control reports wick, and says so.
+    assert b'aria-selected="true"' in response.data
+    assert b'id="chat-mode" value="wick"' in response.data
     composer = response.get_data(as_text=True).split('<form class="composer', 1)[1].split("</form>", 1)[0]
     assert 'id="chat-mode"' in composer
     assert 'class="composer-footer"' in composer
