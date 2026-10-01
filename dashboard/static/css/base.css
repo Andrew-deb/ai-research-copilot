@@ -2889,3 +2889,14 @@ kbd {
   margin: 26px 0 6px;
 }
 .shortcuts-inline h3:first-child { margin-top: 14px; }
+
+/* Quieter than .btn-danger: this is a security action somebody may well want,
+   not a destructive one they should hesitate over. Red only on approach. */
+.btn-quiet-danger { color: var(--text-muted); }
+.btn-quiet-danger:hover { color: var(--danger); border-color: var(--danger); }
+
+.device-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+
+#confirm-dialog { max-width: 400px; }
+#confirm-dialog h2 { font-size: 15.5px; margin: 0 0 8px; }
+#confirm-dialog p { margin: 0; font-size: 13px; line-height: 1.6; color: var(--text-muted); }
