@@ -27,7 +27,7 @@ def search_papers(query: str, limit: int = 10) -> List[dict]:
         raise ValidationError("Search query cannot be empty.")
 
     logger.info(f"Searching papers for query: '{query}' (limit={limit})")
-    
+
     # 1. Discover candidates from OpenAlex
     candidates = openalex_broker.search_works(query=query, per_page=limit)
     if not candidates:
@@ -108,7 +108,7 @@ def get_paper_details(paper_id_or_doi: str) -> dict:
                     oa_paper["semantic_scholar_id"] = s2.get("semantic_scholar_id")
                     oa_paper["tldr"] = s2.get("tldr")
                     oa_paper["influence_score"] = s2.get("influence_score")
-            
+
             paper = lakebase.upsert_paper(oa_paper)
             if oa_paper.get("_authors"):
                 lakebase.upsert_paper_authors(paper["paper_id"], oa_paper["_authors"])
@@ -194,7 +194,7 @@ def explain_topic(topic: str) -> dict:
         raise ValidationError("Topic name cannot be empty.")
 
     clean_topic = topic.strip()
-    
+
     # 1. Check Lakebase cache
     cached = lakebase.get_topic_context(clean_topic)
     if cached and cached.get("wikipedia_summary"):

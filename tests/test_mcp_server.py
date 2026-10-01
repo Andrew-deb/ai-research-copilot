@@ -162,3 +162,41 @@ def test_no_stray_health_tool(flattened_server):
     # A `health` *tool* would mean the Databricks sample server is deployed, not ours.
     names = {t["name"] for t in _rpc(f"{flattened_server}/mcp", "tools/list")["result"]["tools"]}
     assert names.isdisjoint({"health", "healthz", "ping", "status"})
+
+
+def test_research_adapters_and_bulk_ordering_remain_deployable():
+    """Exercise legacy service names in their own interpreter, with no database."""
+    script = '''
+from unittest.mock import Mock
+from alfred_domain.errors import ValidationError as SharedValidationError
+from exceptions import ValidationError
+from services import collection_service, progress_service, planning_service
+from repositories import lakebase
+
+assert ValidationError is SharedValidationError
+lakebase.get_collection = Mock(return_value={"user_id": "owner"})
+lakebase.get_paper = Mock(return_value={"paper_id": "paper", "title": "Paper"})
+lakebase.get_collection_papers = Mock(return_value=[
+    {"paper_id": "paper", "title": "Paper", "publication_year": 2020}])
+lakebase.add_paper_to_collection = Mock()
+lakebase.save_note = Mock(return_value={"note_id": "note", "note_text": "Body", "created_at": "now"})
+lakebase.run_write = Mock()
+
+membership = collection_service.add_paper_to_collection("collection", "paper", 4, "owner")
+assert membership["sequence_order"] == 4
+lakebase.add_paper_to_collection.assert_called_once_with("collection", "paper", 4)
+assert progress_service.save_note("owner", "paper", " Body ")["note_text"] == "Body"
+lakebase.save_note.assert_called_once_with(user_id="owner", paper_id="paper", note_text="Body")
+
+plan = planning_service.generate_reading_plan("collection", "owner")
+assert plan["reading_plan"][0]["paper_id"] == "paper"
+assert lakebase.run_write.call_count == 1
+sql, parameters = lakebase.run_write.call_args.args
+assert "unnest" in sql
+assert parameters == (["paper"], [1], "collection")
+lakebase.run_write.reset_mock()
+lakebase.update_paper_orders("collection", [])
+lakebase.run_write.assert_not_called()
+'''
+    subprocess.run([sys.executable, "-c", script], cwd=MCP_DIR, check=True,
+                   capture_output=True, text=True)
