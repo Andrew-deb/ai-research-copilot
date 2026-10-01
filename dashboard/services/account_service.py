@@ -83,6 +83,21 @@ def sign_out_others(user_id: str, keep_token: str) -> int:
     return revoked
 
 
+def sign_out_everywhere(user_id: str) -> int:
+    """
+    Every session, this one included.
+
+    Distinct from `sign_out_others` on purpose. That one is housekeeping — tidy
+    up the laptop at the office. This is the panic button: somebody thinks their
+    account is compromised, and leaving the current session alive because it
+    happens to be the one asking would be exactly the wrong reading of "all".
+    """
+    revoked = sessions.revoke_all(user_id)
+    forget_sessions(user_id)
+    logger.info("Revoked all %s sessions for user %s", revoked, user_id)
+    return revoked
+
+
 def set_incognito(user_id: str, enabled: bool) -> dict:
     user = lakebase.set_incognito(user_id, enabled)
     forget_user(user_id)
