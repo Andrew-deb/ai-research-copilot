@@ -343,7 +343,12 @@ def _run_turn(question: str, tier: str, user_id: str | None,
     the row is written.
     """
     tally = llm_client.Usage()
-    with telemetry_service.measure(quota_service.AGENT_QUERY, tier, user_id) as op:
+    # `metric` stays agent_query for both modes — it is the quota key, and
+    # splitting it would hand every account two separate agent allowances. The
+    # mode rides alongside so the usage page can tell Research from Wick, which
+    # cost very different amounts.
+    with telemetry_service.measure(quota_service.AGENT_QUERY, tier, user_id,
+                                   mode=chat_mode) as op:
         try:
             history = (prepared["history"] if prepared is not None else
                        conversation_service.agent_context(user_id, conversation_id))
