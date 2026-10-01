@@ -48,11 +48,12 @@ USER_ID_HEADER = "X-RC-User-Id"
 
 _config_lock = threading.Lock()
 _databricks_config = None       # databricks.sdk.core.Config, token cached inside
-_tool_cache: list[dict] | None = None
+_tool_cache: dict[tuple[str, str], list[dict]] = {}
+_cache_lock = threading.Lock()
 
 
-def is_configured() -> bool:
-    return config.mcp_is_configured()
+def is_configured(mode: str = "research") -> bool:
+    return config.mcp_is_configured(mode)
 
 
 def _root_cause(exc: BaseException) -> BaseException:
@@ -84,7 +85,7 @@ def _as_external(exc: BaseException) -> ExternalAPIError:
     # so throws away the only useful part. Observed live: OpenAlex rate-limited
     # a search, and because the error travelled up inside an anyio
     # ExceptionGroup rather than as itself, it was relabelled "Could not reach
-    # the research service" — which was both wrong and the opposite of a lead.
+    # the selected MCP service" — which was both wrong and the opposite of a lead.
     if isinstance(cause, ResearchCopilotError):
         logger.error("MCP tool failure: %s", cause)
         return cause if isinstance(cause, ExternalAPIError) else ExternalAPIError(str(cause))
@@ -94,13 +95,13 @@ def _as_external(exc: BaseException) -> ExternalAPIError:
 
     text = str(cause)
     if "503" in text or "502" in text or "504" in text:
-        return ExternalAPIError("The research service is not running right now.")
+        return ExternalAPIError("The selected MCP service is not running right now.")
     if "401" in text or "403" in text:
-        return ExternalAPIError("The research service refused our credentials.")
-    return ExternalAPIError("Could not reach the research service.")
+        return ExternalAPIError("The selected MCP service refused our credentials.")
+    return ExternalAPIError("Could not reach the selected MCP service.")
 
 
-def _auth_headers(user_id: str | None) -> dict[str, str]:
+def _auth_headers(user_id: str | None, mode: str = "research") -> dict[str, str]:
     """
     Service-principal credentials, plus the acting user when there is one.
 
@@ -110,8 +111,8 @@ def _auth_headers(user_id: str | None) -> dict[str, str]:
     """
     global _databricks_config
 
-    if not is_configured():
-        raise ExternalAPIError("The research assistant is not configured.")
+    if not (is_configured() if mode == "research" else is_configured(mode)):
+        raise ExternalAPIError("The selected assistant is not configured.")
 
     if _databricks_config is None:
         with _config_lock:
@@ -128,7 +129,7 @@ def _auth_headers(user_id: str | None) -> dict[str, str]:
         headers = dict(_databricks_config.authenticate())
     except Exception as exc:
         logger.error("Databricks OAuth failed: %s", exc)
-        raise ExternalAPIError("Could not authenticate to the research service.") from exc
+        raise ExternalAPIError("Could not authenticate to the selected MCP service.") from exc
 
     # Only sent when we actually have a user. An absent header is what tells the
     # MCP server there is no application user, which it must treat as a refusal
@@ -139,13 +140,13 @@ def _auth_headers(user_id: str | None) -> dict[str, str]:
 
 
 @asynccontextmanager
-async def _session(user_id: str | None) -> AsyncIterator[Any]:
+async def _session(user_id: str | None, mode: str = "research") -> AsyncIterator[Any]:
     from mcp import ClientSession
     from mcp.client.streamable_http import streamablehttp_client
 
-    headers = _auth_headers(user_id)
+    headers = _auth_headers(user_id, mode)
     async with streamablehttp_client(
-        config.MCP_SERVER_URL, headers=headers, timeout=config.MCP_TIMEOUT_SECONDS
+        config.mcp_endpoint(mode), headers=headers, timeout=config.MCP_TIMEOUT_SECONDS
     ) as (read, write, _):
         async with ClientSession(read, write) as session:
             await session.initialize()
@@ -164,8 +165,10 @@ class Turn:
     Async internals stay private; `run` is the only way in, and it is sync.
     """
 
-    def __init__(self, user_id: str | None = None):
+    def __init__(self, user_id: str | None = None, mode: str = "research"):
+        config.mcp_endpoint(mode)  # Reject invalid mode before opening a session.
         self.user_id = user_id
+        self.mode = mode
 
     def run(self, plan):
         """
@@ -184,7 +187,7 @@ class Turn:
             raise _as_external(exc) from exc
 
     async def _run(self, plan):
-        async with _session(self.user_id) as session:
+        async with _session(self.user_id, self.mode) as session:
             loop = asyncio.get_running_loop()
 
             def call_tool(name: str, arguments: dict) -> Any:
@@ -234,7 +237,7 @@ def _text(result) -> str:
     return "\n".join(parts)
 
 
-def list_tools(force: bool = False) -> list[dict]:
+def list_tools(force: bool = False, mode: str = "research") -> list[dict]:
     """
     Tool schemas from the server, cached for the life of the process.
 
@@ -244,11 +247,16 @@ def list_tools(force: bool = False) -> list[dict]:
     """
     global _tool_cache
 
-    if _tool_cache is not None and not force:
-        return _tool_cache
+    endpoint = config.mcp_endpoint(mode)
+    if not endpoint:
+        raise ExternalAPIError("The selected assistant is not configured.")
+    key = (mode, endpoint)
+    with _cache_lock:
+        if key in _tool_cache and not force:
+            return _tool_cache[key]
 
     async def _fetch():
-        async with _session(None) as session:
+        async with _session(None, mode) as session:
             listed = await session.list_tools()
             return [
                 {
@@ -260,16 +268,19 @@ def list_tools(force: bool = False) -> list[dict]:
             ]
 
     try:
-        _tool_cache = asyncio.run(_fetch())
+        tools = asyncio.run(_fetch())
+        with _cache_lock:
+            _tool_cache[key] = tools
     except ResearchCopilotError:
         raise
     except BaseException as exc:          # noqa: BLE001
         raise _as_external(exc) from exc
-    return _tool_cache
+    return tools
 
 
 def reset_cache() -> None:
     """Drop cached credentials and schemas — for tests and for config reloads."""
     global _databricks_config, _tool_cache
     _databricks_config = None
-    _tool_cache = None
+    with _cache_lock:
+        _tool_cache = {}

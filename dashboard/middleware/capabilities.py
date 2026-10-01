@@ -33,6 +33,7 @@ LIBRARY_WRITE = "library:write"
 NOTES_WRITE = "notes:write"
 GOALS_WRITE = "goals:write"
 PROGRESS_WRITE = "progress:write"
+WORKSPACE_READ = "workspace:read"  # Private workspace reads require an account.
 SEARCH_SEMANTIC = "search:semantic"
 RAG_ASK = "rag:ask"
 AGENT_QUERY = "agent:query"
@@ -49,7 +50,7 @@ CAPABILITIES: dict[str, frozenset[str]] = {
     # "can use" is not "can use without limit".
     TIER_ANONYMOUS: _ANONYMOUS,
     "authenticated": _ANONYMOUS | {
-        LIBRARY_WRITE, NOTES_WRITE, GOALS_WRITE, PROGRESS_WRITE, CHAT_HISTORY,
+        LIBRARY_WRITE, NOTES_WRITE, GOALS_WRITE, PROGRESS_WRITE, CHAT_HISTORY, WORKSPACE_READ,
     },
 }
 

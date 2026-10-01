@@ -56,7 +56,7 @@ def test_panel_rejects_foreign_context_before_rendering(client, db):
 
 def test_panel_stream_gets_durable_assistant_origin_before_run(client, db, monkeypatch):
     from routes import chat
-    monkeypatch.setattr(chat.agent_service, "is_connected", lambda: True)
+    monkeypatch.setattr(chat.agent_service, "is_connected", lambda mode="research": True)
     monkeypatch.setattr(chat, "consume_quota", lambda metric: None)
 
     def fake_stream(question, tier, user_id, conversation_id, **options):
@@ -128,7 +128,7 @@ def test_context_choices_are_scoped_to_current_user(client, db):
 
 def test_new_full_chat_wick_turn_is_listed_with_wick_history(client, db, monkeypatch):
     from routes import chat
-    monkeypatch.setattr(chat.agent_service, "is_connected", lambda: True)
+    monkeypatch.setattr(chat.agent_service, "is_connected", lambda mode="research": True)
     monkeypatch.setattr(chat, "consume_quota", lambda metric: None)
     monkeypatch.setattr(chat, "_run_turn", lambda *args, **kwargs: {
         "status": "ok", "question": "Show collections", "answer": "Here are your collections.",

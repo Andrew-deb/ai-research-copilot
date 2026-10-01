@@ -83,7 +83,11 @@ def test_every_mcp_tool_has_a_decision_recorded():
     text = io.open(src, encoding="utf-8").read()
     exposed = set(re.findall(r"@mcp\.tool\(\)\s*(?:\n[^\n]*)*?\ndef (\w+)", text))
     assert exposed, "found no MCP tools — the parse is wrong, not the server"
-    assert exposed == set(agent_service.TOOL_CAPABILITIES)
+    wick = src.parent / "assistant" / "server.py"
+    wick_exposed = set(re.findall(r"@mcp\.tool\(\)\s*(?:\n[^\n]*)*?\ndef (\w+)", wick.read_text()))
+    assert exposed == agent_service.RESEARCH_TOOLS
+    assert wick_exposed == agent_service.WICK_TOOLS
+    assert exposed | wick_exposed == set(agent_service.TOOL_CAPABILITIES)
 
 
 def test_anonymous_may_use_every_read_tool():

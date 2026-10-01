@@ -28,7 +28,7 @@ import re
 
 import pytest
 
-from services.agent_service import TOOL_CAPABILITIES
+from services.agent_service import WRITE_TOOLS
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 SERVER = ROOT / "mcp_server" / "research_mcp_server.py"
@@ -38,18 +38,19 @@ def _accessor_by_tool() -> dict[str, set[str]]:
     """Which identity accessor each tool function calls."""
     found: dict[str, set[str]] = {}
     current = None
-    for line in SERVER.read_text(encoding="utf-8").splitlines():
-        match = re.match(r"\s*def (\w+)\(", line)
-        if match:
-            current = match.group(1)
-        if current and "user_id=" in line:
-            for accessor in ("require_current_user_id", "get_current_user_id"):
-                if accessor + "()" in line:
-                    found.setdefault(current, set()).add(accessor)
+    for server in (SERVER, SERVER.parent / "assistant" / "server.py"):
+        current = None
+        for line in server.read_text(encoding="utf-8").splitlines():
+            match = re.match(r"\s*def (\w+)\(", line)
+            if match:
+                current = match.group(1)
+            if current:
+                for accessor in ("require_current_user_id", "get_current_user_id"):
+                    if accessor + "()" in line:
+                        found.setdefault(current, set()).add(accessor)
     return found
 
 
-WRITE_TOOLS = tuple(n for n, cap in TOOL_CAPABILITIES.items() if cap is not None)
 
 
 # ---------------------------------------------------------------------------
@@ -106,7 +107,8 @@ def test_a_signed_in_caller_may_now_use_every_write():
     from services import agent_service
 
     for tool in WRITE_TOOLS:
-        agent_service.ensure_callable("authenticated", tool)   # must not raise
+        mode = "research" if tool in agent_service.RESEARCH_TOOLS else "wick"
+        agent_service.ensure_callable("authenticated", tool, mode)   # must not raise
 
 
 def test_the_catalogs_agree_with_the_capability_table():
@@ -118,7 +120,7 @@ def test_the_catalogs_agree_with_the_capability_table():
     from services import agent_service
 
     anonymous = set(agent_service.callable_tools("anonymous"))
-    signed_in = set(agent_service.callable_tools("authenticated"))
+    signed_in = set(agent_service.callable_tools("authenticated")) | set(agent_service.callable_tools("authenticated", "wick"))
 
     assert not (anonymous & set(WRITE_TOOLS))
     assert set(WRITE_TOOLS) <= signed_in

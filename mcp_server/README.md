@@ -93,3 +93,22 @@ sees supported public pages, global papers, and explicitly curated collections.
 The standalone command is a development/startup contract, not a deployment or
 new service-authentication implementation. Self-contained deployment packaging,
 App grants, and live identity/ownership verification are the next release step.
+
+### Render routing
+
+- `RESEARCH_MCP_SERVER_URL` selects Research; the legacy `MCP_SERVER_URL` remains
+  its compatibility fallback.
+- `WICK_MCP_SERVER_URL` selects Wick and must be configured separately. There is
+  no fallback to Research if it is absent or fails. Existing Databricks caller
+  credentials may be shared if both Apps grant that caller access.
+- Tool schema caches are keyed by mode and endpoint; each turn binds its selected
+  mode and acting user. Wick rejects a mismatched server catalog before model work.
+- The dedicated prompt source is `agent/wick_system_prompt.md`, selected by the
+  Render orchestration rather than the MCP server. Until deployment packaging
+  includes that source in the Render artifact, the dashboard uses a separate
+  workspace-specific fallback, never Research's base prompt.
+
+The initial server preserves collection removal with the existing conversational
+confirmation guidance. This is **not** structured Allow once/Always allow enforcement.
+Note deletion/overwrite tools remain unregistered; scoped approvals, revocation,
+and resumable runs require a later increment. No new migration is introduced.
