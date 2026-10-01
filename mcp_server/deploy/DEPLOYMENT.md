@@ -6,7 +6,41 @@ Research source/deployment and Render settings available until the new release
 passes live checks. The source remains authoritative; never edit business logic
 inside generated artifacts.
 
-## 1. Build a release
+## 1. GitHub publication and manual Databricks deployment (default)
+
+After merging the publication workflow into `main`, open GitHub **Actions →
+Validate and publish MCP deployments**. A main push runs it automatically; use
+**Run workflow → main** to retry or publish on demand. Pull requests run validation
+without permission to publish. The first successful main run creates:
+
+| App | Git branch | Deployment source directory |
+| --- | --- | --- |
+| Existing Research App | `deploy/research` | Repository root (empty path) |
+| `mcp-alfred-assistant` (Wick) | `deploy/assistant` | Repository root (empty path) |
+
+Select the existing repository and corresponding branch in each App's Git
+**deployment source**, then click **Deploy** manually. These branches already
+contain `app.yaml`, requirements and all shared dependencies at their root. Do not
+select `mcp_server/assistant` or `dist/release-candidate/assistant` in those branches.
+The creation wizard's **Directory in repo** field is a template destination, not
+this deployment-source setting. Avoid generating template files over existing code;
+configure the existing-code Git source when deploying the created App.
+
+The workflow tests the complete suite, builds all three artifacts, and transfers
+the same validated artifact to a publication job. Only trusted main runs have
+`contents: write`; no Databricks credentials or automatic App deployment are used.
+Publication verifies source revision and file hashes, skips stale main builds,
+keeps deployment history, and pushes both branches atomically without force.
+Never edit generated branches: change main source and let the next run publish.
+If repository settings prohibit workflow pushes or protect these generated branches,
+the publish job fails visibly; grant this workflow branch publication access without
+relaxing main's protection. For rollback, manually deploy a previous known-good
+commit on the appropriate deployment branch and retain its manifest revision.
+
+Render remains Blueprint-managed using `render.yaml`; its root/build/start settings
+already build the dashboard artifact. This workflow does not deploy Render.
+
+### Local build or workspace-upload fallback
 
 From the repository root with Python 3.12 and a clean checkout:
 
@@ -55,10 +89,9 @@ These tests intentionally do not access live Lakebase, Databricks, or model APIs
 
 ## 2. Capacity and identity before provisioning
 
-Confirm the actual workspace allows another concurrent App within the existing
-free allowance. This project has a $0 discretionary paid AI budget; do not upgrade
-plans or assume a second App is free. If capacity is unavailable, keep Research
-running and Wick unavailable; record the blocker instead of merging their catalogs.
+The user confirmed Databricks Free Edition allows three Apps, covering the planned
+Apps. Keep deployments within that allowance and the $0 discretionary paid AI
+budget. Render is managed through its Blueprint, not a manually configured service.
 
 Keep three identities distinct:
 
