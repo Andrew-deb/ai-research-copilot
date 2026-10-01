@@ -249,7 +249,22 @@ window.RCNotes.formatting = function (field, toolbar) {
   });
 
   // The two shortcuts people press without being told they exist.
+  //
+  // Asked of the registry rather than hardcoded, so these can be reassigned in
+  // Settings. The fallback keeps them working if shortcuts.js has not loaded —
+  // a formatting key is not worth losing to a script that failed to fetch.
   field.addEventListener("keydown", function (e) {
+    var api = window.RCShortcuts;
+    if (api) {
+      if (api.matches(e, api.keysFor("note.bold"))) {
+        e.preventDefault(); return apply({ wrap: "**", hint: "bold text" });
+      }
+      if (api.matches(e, api.keysFor("note.italic"))) {
+        e.preventDefault(); return apply({ wrap: "*", hint: "italic text" });
+      }
+      return;
+    }
+
     if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey) { return; }
     var key = e.key.toLowerCase();
     if (key === "b") { e.preventDefault(); apply({ wrap: "**", hint: "bold text" }); }
