@@ -25,6 +25,18 @@ def _js() -> str:
     return (ROOT / "dashboard" / "static" / "js"
             / "notes.js").read_text(encoding="utf-8")
 
+def _handler(js: str) -> str:
+    """
+    The formatting keydown listener, on its own.
+
+    Sliced to the listener's own closing line rather than the first `});`, which
+    also closes the `apply({...})` calls inside it, and rather than a character
+    count, which silently cut the italic branch off when the handler grew.
+    """
+    body = js.split("The two shortcuts")[1]
+    return body.split("\n  });")[0]
+
+
 
 def _partial() -> str:
     return (ROOT / "dashboard" / "templates"
@@ -128,18 +140,39 @@ def test_the_word_count_and_the_unsaved_guard_both_notice():
 
 
 def test_the_two_shortcuts_people_press_without_being_told():
+    """
+    Asked of the registry now, so they can be reassigned in Settings. The
+    literal keys moved there; what stays here is that both are still wired.
+    """
     js = _js()
-    shortcuts = js.split("The two shortcuts")[1][:420]
+    shortcuts = _handler(js)
+    assert 'keysFor("note.bold")' in shortcuts
+    assert 'keysFor("note.italic")' in shortcuts
+
+
+def test_the_shortcuts_still_work_without_the_registry():
+    """
+    A formatting key is not worth losing to a script that failed to fetch, so
+    the hardcoded pair survives as a fallback behind the lookup.
+    """
+    js = _js()
+    shortcuts = _handler(js)
     assert '"b"' in shortcuts and '"i"' in shortcuts
 
 
 def test_the_shortcuts_do_not_steal_other_combinations():
     """
-    Ctrl+Shift+B and Ctrl+Alt+I belong to the browser, not to this.
+    Ctrl+Shift+B and Ctrl+Alt+I belong to the browser, not to this. The registry
+    path gets this from `matches`, which compares every modifier including the
+    ones a chord does not ask for; the fallback checks them itself.
     """
     js = _js()
-    guard = js.split("The two shortcuts")[1][:240]
+    guard = _handler(js)
     assert "e.shiftKey" in guard and "e.altKey" in guard
+
+    registry = (ROOT / "dashboard" / "static" / "js"
+                / "shortcuts.js").read_text(encoding="utf-8")
+    assert "event.shiftKey === want.shift" in registry
 
 
 # ---------------------------------------------------------------------------
