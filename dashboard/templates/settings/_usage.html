@@ -1,0 +1,116 @@
+{# ===========================================================================
+   Usage — what this account has done.
+
+   Its own section rather than a block at the foot of Account: it is the one
+   part of settings that is a dataset rather than a set of controls, and it
+   carries tabs of its own.
+
+   Two tabs, answering two different questions.
+
+     Today      how much of your allowance is left. Server-rendered, because
+                it is one cheap lookup and it is what most people came for.
+     Analytics  what your use looks like over a week or a month. Fetched when
+                the tab is opened — two aggregate queries against a database
+                several hundred milliseconds away, for a view most visits never
+                open.
+
+   Nothing here is editable. The allowances are operator configuration, and a
+   settings page that let somebody raise their own ceiling would not be a
+   settings page.
+   =========================================================================== #}
+
+<section class="settings-section" id="section-usage" data-settings-panel="usage" hidden>
+  <h2 class="settings-heading">Usage</h2>
+
+  <div class="usage-tabs" role="tablist" aria-label="Usage views">
+    <button type="button" class="usage-tab is-selected" role="tab"
+            aria-selected="true" data-usage-tab="today">Today</button>
+    <button type="button" class="usage-tab" role="tab"
+            aria-selected="false" data-usage-tab="analytics">Analytics</button>
+  </div>
+
+  {# ---- Today ---------------------------------------------------------- #}
+  <div class="usage-view" data-usage-view="today">
+    {% if data.usage %}
+      <ul class="usage-list">
+        {% for row in data.usage %}
+          <li class="usage-row">
+            <span class="usage-label">{{ row.label }}</span>
+            <span class="usage-bar" role="img"
+                  aria-label="{{ row.used }} of {{ row.limit }} used">
+              <span class="usage-fill" style="width: {{ row.percent }}%"></span>
+            </span>
+            <span class="usage-count">{{ row.used }} / {{ row.limit }}</span>
+          </li>
+        {% endfor %}
+      </ul>
+      {# "Set for the deployment rather than per account" was operator language
+         in a sentence aimed at the person using the product. #}
+      <p class="field-hint">
+        Counts reset daily. These limits apply to everyone here and cannot be
+        changed.
+      </p>
+    {% else %}
+      <p class="empty-state">Usage is not being metered on this deployment.</p>
+    {% endif %}
+  </div>
+
+  {# ---- Analytics ------------------------------------------------------- #}
+  <div class="usage-view" data-usage-view="analytics" hidden>
+    <div class="usage-controls">
+      <div class="usage-range" role="group" aria-label="Time range">
+        <button type="button" class="segmented-option is-selected" data-usage-days="7">7 days</button>
+        <button type="button" class="segmented-option" data-usage-days="30">30 days</button>
+      </div>
+
+      {# A menu rather than a row of chips, and on the right: five chips beside
+         the range control read as a second set of tabs competing with the real
+         ones above them. A closed menu states the current filter in one line
+         and takes the space of one control.
+
+         Button-and-menu rather than <select>, for the reason the composer's
+         mode picker is: a native drop-down is drawn by the operating system and
+         opens as a white box inside a dark page. #}
+      <div class="dropdown usage-feature-picker" data-dropdown>
+        <button type="button" class="dropdown-toggle" data-dropdown-toggle
+                value="" aria-haspopup="listbox" aria-expanded="false"
+                aria-label="Filter by feature">
+          <span class="dropdown-value">All features</span>
+          <svg class="dropdown-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="m6 9 6 6 6-6"/>
+          </svg>
+        </button>
+
+        <div class="dropdown-menu" role="listbox" hidden>
+          {% for value, label in [
+               ('',         'All features'),
+               ('research', 'Research agent'),
+               ('wick',     'Wick'),
+               ('ask',      'Ask in search'),
+               ('search',   'Searches')] %}
+            <button type="button" role="option" data-usage-feature="{{ value }}"
+                    aria-selected="{{ 'true' if not value else 'false' }}">{{ label }}</button>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+
+    {# Filled by settings.js from /settings/usage. Empty until then rather than
+       pre-rendered with zeros, which would read as "you have done nothing". #}
+    <div class="usage-analytics" data-usage-analytics aria-live="polite">
+      <p class="empty-state">Loading…</p>
+    </div>
+
+    <p class="field-hint">
+      {# The sentence that stops a number being read as an invoice. It comes
+         first deliberately: somebody who sees a dollar figure on an account page
+         assumes the worst before they finish reading. #}
+      <strong>You are not charged for any of this.</strong> Model cost is what
+      these requests cost to run, shown so you can see what your free allowance
+      is actually worth — and so anyone running their own copy of Alfred can see
+      what it is costing them. It is the provider's own figure, not an estimate
+      of ours.
+    </p>
+  </div>
+</section>
