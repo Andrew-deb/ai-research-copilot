@@ -86,29 +86,4 @@
     </div>
   {% endif %}
 
-  {# ---- Usage ---------------------------------------------------------- #}
-  <h2 class="settings-heading">Usage today</h2>
-  {% if data.usage %}
-    <ul class="usage-list">
-      {% for row in data.usage %}
-        <li class="usage-row">
-          <span class="usage-label">{{ row.label }}</span>
-          <span class="usage-bar" role="img"
-                aria-label="{{ row.used }} of {{ row.limit }} used">
-            <span class="usage-fill" style="width: {{ row.percent }}%"></span>
-          </span>
-          <span class="usage-count">{{ row.used }} / {{ row.limit }}</span>
-        </li>
-      {% endfor %}
-    </ul>
-    <p class="field-hint">
-      {# Read-only, and the only honest option: allowances are operator
-         configuration, not preferences. A settings page that let somebody raise
-         their own ceiling would not be a settings page. #}
-      Counts reset daily. These allowances are set for the deployment rather than
-      per account, so they are shown here but not editable.
-    </p>
-  {% else %}
-    <p class="empty-state">Usage is not being metered on this deployment.</p>
-  {% endif %}
 </section>
