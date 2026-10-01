@@ -308,9 +308,16 @@ def is_connected(mode: str = "research") -> bool:
 # System prompt
 # ---------------------------------------------------------------------------
 
-_PROMPT_PATH = pathlib.Path(__file__).resolve().parents[2] / "agent" / "system_prompt.md"
+_DASHBOARD_ROOT = pathlib.Path(__file__).resolve().parents[1]
+_SOURCE_PROMPT_DIR = _DASHBOARD_ROOT.parent / "agent"
+_BUNDLED_PROMPT_DIR = _DASHBOARD_ROOT / "prompts"
+_PROMPT_PATH = (_BUNDLED_PROMPT_DIR / "system_prompt.md" if
+                (_BUNDLED_PROMPT_DIR / "system_prompt.md").is_file() else
+                _SOURCE_PROMPT_DIR / "system_prompt.md")
 _prompt_cache: str | None = None
-_WICK_PROMPT_PATH = _PROMPT_PATH.with_name("wick_system_prompt.md")
+_WICK_PROMPT_PATH = (_BUNDLED_PROMPT_DIR / "wick_system_prompt.md" if
+                     (_BUNDLED_PROMPT_DIR / "wick_system_prompt.md").is_file() else
+                     _SOURCE_PROMPT_DIR / "wick_system_prompt.md")
 _wick_prompt_cache: str | None = None
 _WICK_FALLBACK_PROMPT = (
     "You are Wick, Alfred's workspace assistant. Use only the available tools. "

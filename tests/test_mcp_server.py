@@ -97,14 +97,21 @@ def _rpc(url: str, method: str, timeout: float = 10.0, params=None) -> dict:
         return json.loads(resp.read())
 
 
-@pytest.fixture(scope="module", params=["research_mcp_server", "assistant.server"])
+@pytest.fixture(scope="module", params=["research_mcp_server", "assistant.server", "built-research", "built-assistant"])
 def flattened_server(tmp_path_factory, request):
     """Copy mcp_server/'s *contents* to a temp root (what Databricks does) and run it."""
     pytest.importorskip("mcp.server.fastmcp", reason="needs mcp<2 (FastMCP 1.x API)")
 
     root = tmp_path_factory.mktemp("source_code")
-    shutil.copytree(MCP_DIR, root, dirs_exist_ok=True,
-                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    if request.param.startswith("built-"):
+        from tests.test_deployment_packaging import load_builder
+        target = request.param.removeprefix("built-")
+        root = load_builder().build(target, root)
+        entrypoint = "research.server" if target == "research" else "assistant.server"
+    else:
+        shutil.copytree(MCP_DIR, root, dirs_exist_ok=True,
+                        ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".env"))
+        entrypoint = request.param
 
     port = _free_port()
     env = {
@@ -116,7 +123,7 @@ def flattened_server(tmp_path_factory, request):
            "SYSTEMROOT": os.environ.get("SYSTEMROOT", "")}
 
     proc = subprocess.Popen(
-        [sys.executable, "-m", request.param],
+        [sys.executable, "-m", entrypoint],
         cwd=str(root), env=env,
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
     )
