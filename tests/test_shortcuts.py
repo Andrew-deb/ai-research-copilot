@@ -23,15 +23,17 @@ import pytest
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 JS = ROOT / "dashboard" / "static" / "js"
 
-# entry("id", "Mod+K", "scope", "Group", "Description")
+# entry("id", "Mod+K", "scope", "Group", "Description"[, assignable])
 _ENTRY = re.compile(
-    r'entry\(\s*"([^"]+)"\s*,\s*"([^"]+)"\s*,\s*"([^"]+)"\s*,\s*"([^"]+)"\s*,\s*"([^"]+)"\s*\)')
+    r'entry\(\s*"([^"]+)"\s*,\s*"([^"]+)"\s*,\s*"([^"]+)"\s*,\s*"([^"]+)"\s*,'
+    r'\s*"([^"]+)"\s*(?:,\s*(true|false)\s*)?\)')
 
 
 def registry() -> list[dict]:
     source = (JS / "shortcuts.js").read_text(encoding="utf-8")
-    return [{"id": i, "keys": k, "scope": s, "group": g, "description": d}
-            for i, k, s, g, d in _ENTRY.findall(source)]
+    return [{"id": i, "keys": k, "scope": sc, "group": g, "description": d,
+             "assignable": a == "true"}
+            for i, k, sc, g, d, a in _ENTRY.findall(source)]
 
 
 def _chord(keys: str) -> frozenset:
@@ -220,10 +222,151 @@ def test_the_page_and_the_dialog_are_the_same_list(client, db):
     assert "render(inline)" in sheet
 
 
-def test_the_sheet_says_the_keys_cannot_be_changed(client, db):
+def test_the_sheet_points_at_where_keys_are_changed(client, db):
     """
-    Rebinding is deliberately not built. Saying so beats letting somebody hunt
-    for a control that was never there.
+    It used to say they could not be. That became untrue the moment any of them
+    could, and a blanket claim that is true of most rows is worse than none —
+    it stops people looking.
     """
     sheet = (JS / "shortcuts-sheet.js").read_text(encoding="utf-8")
-    assert "cannot be reassigned" in sheet
+    assert "cannot be reassigned" not in sheet
+    assert "Settings" in sheet
+
+
+# ---------------------------------------------------------------------------
+# Reassignment
+#
+# The registry was built so the collision check could exist; rebinding is what
+# it was always one step away from. What matters is that the same check now runs
+# against a person's choice rather than only against the shipped defaults.
+# ---------------------------------------------------------------------------
+
+def _shortcuts_js() -> str:
+    return (JS / "shortcuts.js").read_text(encoding="utf-8")
+
+
+def test_only_shortcuts_something_consults_are_assignable():
+    """
+    A shortcut can be reassigned only if something reads the registry when the
+    key is pressed. Escape, Enter and the arrows are dispatched by the component
+    they belong to — and are conventions people bring with them rather than
+    preferences they hold.
+    """
+    assignable = {e["id"] for e in registry() if e["assignable"]}
+
+    assert {"palette.open", "chat.search", "help.shortcuts"} <= assignable
+    assert {"note.bold", "note.italic"} <= assignable
+    assert not assignable & {"ui.dismiss", "chat.send", "chat.newline",
+                             "list.up", "list.down", "list.choose"}
+
+
+def test_every_assignable_shortcut_is_actually_wired_through_the_registry():
+    """
+    Marking something assignable that nobody looks up produces a control that
+    appears to work and changes nothing.
+    """
+    sources = {
+        "palette.open": (JS / "palette.js").read_text(encoding="utf-8"),
+        "chat.search": (JS / "main.js").read_text(encoding="utf-8"),
+        "help.shortcuts": (JS / "shortcuts-sheet.js").read_text(encoding="utf-8"),
+        "note.bold": (JS / "notes.js").read_text(encoding="utf-8"),
+        "note.italic": (JS / "notes.js").read_text(encoding="utf-8"),
+    }
+    for item in registry():
+        if not item["assignable"]:
+            continue
+        source = sources.get(item["id"], "")
+        assert (f'register("{item["id"]}"' in source
+                or f'keysFor("{item["id"]}")' in source), item["id"]
+
+
+def test_dispatch_follows_the_override_not_the_default():
+    """
+    The point of the whole thing. The loop reads keysFor, so a reassignment
+    takes effect without the dispatcher knowing reassignment exists.
+    """
+    js = _shortcuts_js()
+    dispatch = js.split("document.addEventListener(\"keydown\"")[1]
+    assert "keysFor(item.id)" in dispatch
+    assert "matches(event, item.keys)" not in dispatch
+
+
+def test_a_new_binding_is_checked_against_the_live_ones():
+    """
+    Against keysFor, not against the shipped keys: otherwise two reassignments
+    could be made to collide with each other, which is the original bug with
+    extra steps.
+    """
+    js = _shortcuts_js()
+    conflict = js.split("function conflictFor")[1].split("function setBinding")[0]
+    assert "keysFor(other.id)" in conflict
+    assert 'other.scope === "global"' in conflict
+
+
+def test_choosing_the_original_back_clears_the_override():
+    """
+    Otherwise the row reads "changed" while matching the default exactly.
+    """
+    js = _shortcuts_js()
+    assert "delete map[id]" in js.split("function setBinding")[1]
+
+
+def test_a_fixed_shortcut_refuses_reassignment_at_the_source():
+    """
+    Hiding the button is presentation. The refusal has to be in the function, or
+    the only thing stopping it is the page not offering it.
+    """
+    js = _shortcuts_js()
+    setter = js.split("function setBinding")[1].split("function resetBinding")[0]
+    assert "item.assignable" in setter
+
+
+def test_reassignments_are_per_device():
+    """
+    Same choice as the theme, for a sharper reason: a chord is a property of the
+    keyboard in front of you, and one chosen on a laptop may be untypeable on a
+    phone.
+    """
+    js = _shortcuts_js()
+    assert "localStorage" in js
+    assert "rc-shortcuts" in js
+
+    body = (ROOT / "dashboard" / "templates" / "settings"
+            / "_keyboard.html").read_text(encoding="utf-8")
+    assert "on this device" in body
+
+
+def test_storage_failures_do_not_take_the_page_down():
+    """localStorage throws in a private window rather than returning null."""
+    js = _shortcuts_js()
+    store = js.split("const STORE")[1].split("function find")[0]
+    assert store.count("catch") >= 2
+
+
+def test_capture_ignores_the_modifier_being_held():
+    """
+    A listener taking the first keydown records "Control" the instant somebody
+    reaches for Ctrl+J, before they have finished pressing it.
+    """
+    sheet = (JS / "shortcuts-sheet.js").read_text(encoding="utf-8")
+    assert "MODIFIERS.indexOf(event.key) !== -1" in sheet
+
+
+def test_capture_can_be_backed_out_of():
+    sheet = (JS / "shortcuts-sheet.js").read_text(encoding="utf-8")
+    assert 'event.key === "Escape"' in sheet
+
+
+def test_a_bare_letter_is_refused():
+    """It would fire while somebody is typing it into the page."""
+    sheet = (JS / "shortcuts-sheet.js").read_text(encoding="utf-8")
+    assert "Use a combination that includes" in sheet
+
+
+def test_the_settings_page_offers_the_controls(client, db):
+    client.get("/dashboard")
+    body = client.get("/settings").get_data(as_text=True)
+    keyboard = body.split('data-settings-panel="keyboard"')[1]
+
+    assert "data-shortcuts-reset" in keyboard
+    assert "cannot be reassigned" not in keyboard

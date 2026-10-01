@@ -353,8 +353,10 @@ def test_no_limit_is_ever_a_form_field(client, db):
     _me(client, db)
     body = client.get("/settings").get_data(as_text=True)
 
-    usage = body.split("Usage today")[1].split("</section>")[0]
-    assert "usage-row" in usage          # the card really rendered its numbers
+    # Anchored to the panel, not to its heading: usage moved to a section of
+    # its own and the heading lost the word "today" with it.
+    usage = body.split('data-settings-panel="usage"')[1].split("</section>")[0]
+    assert "usage-row" in usage          # the panel really rendered its numbers
     assert "<input" not in usage
     assert "<select" not in usage
 
