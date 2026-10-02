@@ -118,3 +118,38 @@ def test_wick_refuses_wrong_server_catalog(monkeypatch):
         {"name": "search_papers", "description": "", "input_schema": {}}])
     with pytest.raises(ExternalAPIError, match="incompatible"):
         agent_service._tool_schemas("authenticated", "wick")
+
+
+def test_wick_refreshes_stale_catalog_once(monkeypatch):
+    calls = []
+    def listed(**kwargs):
+        calls.append(kwargs)
+        names = agent_service.WICK_TOOLS if kwargs.get("force") else agent_service.WICK_TOOLS - {"search_workspace_papers"}
+        return [{"name": name, "description": "", "input_schema": {}} for name in names]
+    monkeypatch.setattr(mcp_client, "list_tools", listed)
+    result = agent_service._tool_schemas("authenticated", "wick")
+    assert {item["function"]["name"] for item in result} == agent_service.WICK_TOOLS
+    assert calls == [{"mode": "wick"}, {"force": True, "mode": "wick"}]
+
+
+def test_wick_persistent_mismatch_logs_names_and_stops(monkeypatch, caplog):
+    calls = []
+    def listed(**kwargs):
+        calls.append(kwargs)
+        return [{"name": "search_papers", "description": "", "input_schema": {}}]
+    monkeypatch.setattr(mcp_client, "list_tools", listed)
+    with pytest.raises(ExternalAPIError, match="incompatible"):
+        agent_service._tool_schemas("authenticated", "wick")
+    assert len(calls) == 2
+    assert "missing=" in caplog.text and "search_workspace_papers" in caplog.text
+    assert "unexpected=['search_papers']" in caplog.text
+
+
+def test_wick_valid_catalog_does_not_refresh(monkeypatch):
+    calls = []
+    def listed(**kwargs):
+        calls.append(kwargs)
+        return [{"name": name, "description": "", "input_schema": {}} for name in agent_service.WICK_TOOLS]
+    monkeypatch.setattr(mcp_client, "list_tools", listed)
+    agent_service._tool_schemas("authenticated", "wick")
+    assert calls == [{"mode": "wick"}]
