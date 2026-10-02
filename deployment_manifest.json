@@ -2,7 +2,7 @@
   "files": {
     "app.yaml": "743e1ba52b7560fff858d339bc6d7ecb3e6bf2fde3b42b039ffd7be11d51a279",
     "assistant/__init__.py": "ce3467102aaeeb67a0c9e4a52a1326ba71532d32a99f5b597c6252edba1f2965",
-    "assistant/server.py": "13d03193b8f4b91316a75eab01c1ca262171ef26a2bd9dacf8ddc121937fc4c0",
+    "assistant/server.py": "69b5fb5173c5a7d13b88033b1ae7ff65008bc538d5e6a21320855a5eca64302d",
     "config.py": "e708e817ff827c58627f61675f853f4743a2c6c7efad6624b516d9a98ea6e08f",
     "exceptions.py": "c2472660363577e9d0bbbca056324669d1575db0a042a71406a11d4026d8508b",
     "middleware/__init__.py": "727f796c3e83101ca6472e1d3e0f1d2c4cb7e88af14ee1124ac148538ff47e3c",
@@ -10,7 +10,7 @@
     "middleware/request_context.py": "29229d7ad321e38eb23ae766bd800e1b3a1f97817d81270a0b5b17a02a122469",
     "middleware/trace_middleware.py": "679581602686715fe387c22284a12a78a7ab4ea8fc1d9d2a436598131d699623",
     "repositories/__init__.py": "c379118e755ba04ab9cb9c902132e022a16b4e32a269f32c3022a23d45950fc1",
-    "repositories/lakebase.py": "617b3c5565a113701bfcc309328e0ecf6cb86fb1fcf42799ac988f3bcb78318f",
+    "repositories/lakebase.py": "cde0315240e0b5899a577af12f6d456805333c414683d95d4e508aed6dcefecc",
     "requirements.txt": "302bd2fbcefc67cb5dfab6f7b9215573f6e556169edbab32a4ca32c316eb0ab7",
     "services/__init__.py": "a3db55bfc0fbe75d37f28fcc026bcebd66090357581132010aa7aaa0cf8768b6",
     "services/collection_service.py": "942eb3c30c58a61ca06b15abb86ea3c0c66b3ff602815a50495277f1dde8d782",
@@ -19,17 +19,20 @@
     "shared_resource/__init__.py": "26d778e931ab33ca88232c36a319d7dd709d9090fe25a8d47b8b1927eb62af5b",
     "shared_resource/exceptions.py": "30d4cc794e6f57202a2d88d18ca82d8e4f79533718821f35a33ec945e35802ab",
     "shared_resource/repositories/__init__.py": "f77b219203cdafed0ae6ea7867fb72cf33780a028d7572bc00b8145a4658fdaf",
+    "shared_resource/repositories/collection_membership_repository.py": "d9724dbaa779fa64dab6c9f8ac8c322e569b40c6bcb937c9d8b1cfcd6ad83d48",
+    "shared_resource/repositories/paper_search_repository.py": "79ec04b658b8678da8f2a709f8be61d176ff40a5b5f1b39069e7d758957620ff",
     "shared_resource/repositories/workspace_repository.py": "fc66c39fe1926887c0a96f8a250a0c971063b9d3ccd1cd6a18252c585eeca295",
     "shared_resource/services/__init__.py": "0f74aea2d87e1efacbe8041d7b193e36e7a9cee49e69d3cb546aa14a6e280f5d",
-    "shared_resource/services/collection_service.py": "44666879a7dbae9d08a939afe1549a110a27329a3825bbb44927c2c3be7dda6d",
+    "shared_resource/services/collection_service.py": "6aeb76441c12f89460d567f3b25b42e0982e536cc647c16c7a02842840ce32f4",
     "shared_resource/services/goal_service.py": "66ba6ff0aa4eb68107af6250f733415bc82599c8a87f3abb09990cb2b03f2912",
     "shared_resource/services/note_service.py": "68643daab57cb2e122d7c822b891f4ddad406b43a0c4af8f808ff2a2a3d1fa01",
+    "shared_resource/services/paper_search_service.py": "d56508b9dded75c5c14ccb6a977a37290a8a9ba30f0e6048c1ea973459cbfb10",
     "shared_resource/services/paper_service.py": "fc9b5654881d9969fe0e144a94e314f51c3c16b02c12c887b1de44ff4b8b4cbf",
     "shared_resource/services/planning_service.py": "b7b7f1fa49be07e8a9d3ca6b7543954b2d712fa56e2903692fae87bd09c881a3",
     "shared_resource/services/progress_service.py": "bd374dcdd9b7b5d63663ce635a6e88bfc5c1dc7f052374156da63c9961da273d",
     "shared_resource/services/workspace_service.py": "13aa4b8127c3c53b2a53364bf6407e04aabc5e72d98b4f64e978840e4b01d172"
   },
-  "source_revision": "f63c53c5a2b22f91331e9cc71039ac999a8463a4",
+  "source_revision": "96c3fdc37655c86fddce479cbce60b0db3cf2890",
   "target": "assistant",
   "tools": [
     "add_paper_to_collection",
@@ -40,6 +43,7 @@
     "get_workspace_paper",
     "get_workspace_resource",
     "mark_paper_status",
-    "remove_paper_from_collection"
+    "remove_paper_from_collection",
+    "search_workspace_papers"
   ]
 }

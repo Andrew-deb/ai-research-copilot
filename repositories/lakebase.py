@@ -666,3 +666,9 @@ def write_trace(trace: dict) -> None:
             trace.get("error_message"),
         ),
     )
+
+
+def append_paper_to_collection(collection_id: str, paper_id: str) -> int:
+    from shared_resource.repositories.collection_membership_repository import append_paper
+    import sys
+    return append_paper(sys.modules[__name__], collection_id, paper_id)

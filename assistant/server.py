@@ -14,6 +14,8 @@ from middleware.identity_middleware import IdentityMiddleware
 from middleware.request_context import get_bound_user_id, require_current_user_id
 from middleware.trace_middleware import trace_tool
 from services import collection_service, progress_service, workspace_service
+from repositories import lakebase
+from shared_resource.services import paper_search_service, collection_service as shared_collections
 
 mcp = FastMCP(
     name="wick-workspace",
@@ -37,6 +39,14 @@ def find_workspace_resources(query: str = "", kinds: list[str] | None = None,
                              limit: int = 20, cursor: str | None = None) -> dict:
     """Find bounded authorized page/paper/note/collection/goal references. Never imports papers."""
     return workspace_service.find_workspace_resources(get_bound_user_id(), query, kinds, limit, cursor)
+
+
+@mcp.tool()
+@trace_tool("search_workspace_papers")
+def search_workspace_papers(query: str = "", saved_only: bool = False,
+                            limit: int = 20, cursor: str | None = None) -> dict:
+    """Search existing corpus titles/abstracts/authors with ranked keyword matching. No external discovery/imports. Empty query browses papers; saved_only searches the acting user's saved papers. Return IDs internally, never ask users for IDs."""
+    return paper_search_service.search_workspace_papers(lakebase, get_bound_user_id(), query, saved_only, limit, cursor)
 
 
 @mcp.tool()
@@ -73,7 +83,9 @@ def create_collection(name: str, description: str | None = None) -> dict:
 @trace_tool("add_paper_to_collection")
 def add_paper_to_collection(collection_id: str, paper_id: str, sequence_order: int = 0) -> dict:
     """Add an existing paper to an owned, writable collection."""
-    return collection_service.add_paper_to_collection(collection_id, paper_id, sequence_order, require_current_user_id())
+    if sequence_order != 0:
+        return collection_service.add_paper_to_collection(collection_id, paper_id, sequence_order, require_current_user_id())
+    return shared_collections.append_paper_to_collection(lakebase, collection_id, paper_id, require_current_user_id())
 
 
 @mcp.tool()
