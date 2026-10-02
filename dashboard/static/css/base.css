@@ -3141,3 +3141,12 @@ kbd {
 /* Unmetered: a label and a count, no bar. The bar's whole job is to show how
    much of something is left, and there is no something. */
 .usage-row-plain { grid-template-columns: 1fr auto; }
+
+/* The breakdown under a shared allowance. Its own grid row, spanning the full
+   width, so it reads as a footnote to the bar rather than a fourth column. */
+.usage-split {
+  grid-column: 1 / -1;
+  margin-top: 2px;
+  color: var(--text-subtle);
+  font-size: 11.5px;
+}

@@ -47,6 +47,17 @@
                  and inventing one would draw a limit that does not exist. #}
               <span class="usage-count">{{ row.used }}</span>
             {% endif %}
+
+            {# What a shared allowance went on. Research and Wick draw on the
+               same one, so the bar above cannot say which — and labelling the
+               row for either of them would be wrong half the time. #}
+            {% if row.breakdown %}
+              <span class="usage-split">
+                {% for part in row.breakdown %}
+                  {{ part.used }} {{ part.label }}{{ " · " if not loop.last }}
+                {% endfor %}
+              </span>
+            {% endif %}
           </li>
         {% endfor %}
       </ul>
@@ -54,7 +65,7 @@
       {% if today.metered %}
         <p class="field-hint">
           Counts reset daily. These limits apply to everyone here and cannot be
-          changed.
+          changed. The research agent and Wick draw on the same allowance.
         </p>
       {% else %}
         <p class="field-hint">

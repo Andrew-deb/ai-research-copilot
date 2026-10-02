@@ -676,3 +676,112 @@ def test_a_failure_costs_the_tab_and_not_the_page(db, me, monkeypatch):
     data = usage_service.today(me, "authenticated")
     assert data["rows"] == []
     assert data.get("unavailable") is True
+
+
+# ---------------------------------------------------------------------------
+# Shared allowances
+#
+# `agent_query` is ONE allowance covering TWO features. The research agent and
+# Wick draw on it together, deliberately — splitting the metric would have given
+# every account two separate allowances, a pricing change disguised as a
+# reporting one.
+#
+# The Today tab borrowed a feature label for that row and reported a day of pure
+# Wick usage as "Research agent".
+# ---------------------------------------------------------------------------
+
+def test_the_shared_row_is_named_for_the_allowance_not_a_feature(db, me):
+    rows = {r["metric"]: r for r in usage_service.today(me, "authenticated")["rows"]}
+
+    assert rows["agent_query"]["label"] == "Agent questions"
+    assert rows["agent_query"]["label"] != "Research agent"
+
+
+def test_a_day_of_wick_is_not_reported_as_research(db, me):
+    """
+    The bug, exactly. The bar is right — one allowance, shared — so the fix is
+    the label and a line saying what it went on.
+    """
+    from services import quota_service
+
+    for _ in range(4):
+        quota_service.check_and_consume("agent_query", "authenticated", "user", me)
+        _op(db, me, metric="agent_query", mode="wick")
+
+    row = next(r for r in usage_service.today(me, "authenticated")["rows"]
+               if r["metric"] == "agent_query")
+
+    assert row["used"] == 4
+    assert [(p["label"], p["used"]) for p in row["breakdown"]] == [("Wick", 4)]
+
+
+def test_a_mixed_day_shows_both_largest_first(db, me):
+    for _ in range(2):
+        _op(db, me, metric="agent_query", mode="wick")
+    for _ in range(5):
+        _op(db, me, metric="agent_query", mode="research")
+
+    row = next(r for r in usage_service.today(me, "authenticated")["rows"]
+               if r["metric"] == "agent_query")
+
+    assert [(p["label"], p["used"]) for p in row["breakdown"]] == [
+        ("Research agent", 5), ("Wick", 2)]
+
+
+def test_an_all_research_day_needs_no_breakdown(db, me):
+    """
+    "5 Research agent" under a bar labelled Agent questions is the same sentence
+    twice. A breakdown that never varies is noise.
+    """
+    for _ in range(5):
+        _op(db, me, metric="agent_query", mode="research")
+
+    row = next(r for r in usage_service.today(me, "authenticated")["rows"]
+               if r["metric"] == "agent_query")
+    assert row["breakdown"] == []
+
+
+def test_allowances_that_cover_one_feature_get_no_breakdown(db, me):
+    _op(db, me, metric="rag_query")
+    _op(db, me, metric="semantic_search")
+
+    for row in usage_service.today(me, "authenticated")["rows"]:
+        if row["metric"] != "agent_query":
+            assert row["breakdown"] == []
+
+
+def test_the_bar_still_comes_from_the_counter(db, me):
+    """
+    The breakdown reads `ai_operations`; the bar must keep reading
+    `usage_counters`. A request refused by the quota increments the counter and
+    never reaches the telemetry, so the two can legitimately disagree — and the
+    number that decides whether the next request is allowed has to be the one on
+    the bar.
+    """
+    from services import quota_service
+
+    quota_service.check_and_consume("agent_query", "authenticated", "user", me)
+    quota_service.check_and_consume("agent_query", "authenticated", "user", me)
+    _op(db, me, metric="agent_query", mode="wick")      # telemetry only
+
+    row = next(r for r in usage_service.today(me, "authenticated")["rows"]
+               if r["metric"] == "agent_query")
+    assert row["used"] == 2
+    assert row["breakdown"][0]["used"] == 1
+
+
+def test_a_broken_breakdown_does_not_cost_the_allowance(db, me, monkeypatch):
+    from repositories import usage_analytics
+
+    monkeypatch.setattr(usage_analytics, "today",
+                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("reset")))
+
+    data = usage_service.today(me, "authenticated")
+    assert data["metered"] is True
+    assert data["rows"]
+
+
+def test_the_page_says_the_allowance_is_shared(client, db, me):
+    body = client.get("/settings").get_data(as_text=True)
+    usage = body.split('data-settings-panel="usage"')[1].split("</section>")[0]
+    assert "draw on the same allowance" in usage

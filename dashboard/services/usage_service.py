@@ -50,6 +50,24 @@ FEATURE_LABELS = {
 }
 
 
+# What an ALLOWANCE is called, which is not what a feature is called.
+#
+# `agent_query` is one allowance covering two features: the research agent and
+# Wick share it, deliberately — splitting the metric would have given every
+# account two separate allowances. So the metered row cannot borrow a feature
+# label. It did, and reported four Wick questions as "Research agent".
+ALLOWANCE_LABELS = {
+    "agent_query": "Agent questions",
+    "rag_query": "Cited answers",
+    "semantic_search": "Searches",
+}
+
+# Allowances that cover more than one feature, and therefore want a breakdown
+# under the bar: the bar answers "how much is left", which is shared, and the
+# line under it answers "on what", which is not.
+SHARED_ALLOWANCES = {"agent_query"}
+
+
 def _feature_of(metric: str, mode: str | None) -> str:
     if metric == "agent_query":
         return "wick" if mode == "wick" else "research"
@@ -90,19 +108,23 @@ def today(user_id: str, tier: str) -> dict:
     metered = quota_service.usage_summary(tier, "user", user_id)
 
     if metered:
+        split = _today_by_feature(user_id)
         rows = []
         for metric, counts in metered.items():
             limit = counts.get("limit") or 0
             used = counts.get("used") or 0
             rows.append({
                 "metric": metric,
-                "label": _label(metric),
+                # The allowance's name, not a feature's. See ALLOWANCE_LABELS.
+                "label": ALLOWANCE_LABELS.get(metric, _label(metric)),
                 "used": used,
                 "limit": limit,
                 "left": max(limit - used, 0),
                 # Clamped: a limit lowered after somebody has already spent more
                 # than it should not render a bar past its own end.
                 "percent": min(round(used / limit * 100), 100) if limit else 0,
+                "breakdown": (_breakdown(metric, split)
+                              if metric in SHARED_ALLOWANCES else []),
             })
         return {"metered": True,
                 "rows": sorted(rows, key=lambda r: r["label"])}
@@ -125,6 +147,48 @@ def today(user_id: str, tier: str) -> dict:
     } for row in counted]
 
     return {"metered": False, "rows": rows}
+
+
+def _today_by_feature(user_id: str) -> list[dict]:
+    """
+    Today's operations per feature, or nothing if they cannot be read.
+
+    Swallowed rather than raised: this feeds the breakdown line under a bar, and
+    the bar itself comes from a different table. Losing the detail is a worse
+    page; losing the allowance is a broken one.
+    """
+    try:
+        return usage_analytics.today(user_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Today's feature split unavailable: %s", exc)
+        return []
+
+
+def _breakdown(metric: str, split: list[dict]) -> list[dict]:
+    """
+    What a shared allowance was spent on, largest first.
+
+    Counts come from `ai_operations` while the bar above comes from
+    `usage_counters`, and the two can disagree: a request refused by the quota
+    increments the counter and never reaches the telemetry. So the page phrases
+    this as what was recorded, not as a decomposition of the bar.
+
+    Returns nothing when there is nothing to tell apart — one feature, and that
+    feature the one a reader would already assume. "4 Research agent" under a
+    bar labelled Agent questions is the same sentence twice. "4 Wick" is not.
+    """
+    parts = sorted(
+        ({"feature": _feature_of(row["metric"], row.get("mode")),
+          "label": _label(row["metric"], row.get("mode")),
+          "used": row["operations"] or 0}
+         for row in split
+         if row["metric"] == metric and (row["operations"] or 0)),
+        key=lambda part: -part["used"],
+    )
+
+    if len(parts) == 1 and parts[0]["feature"] == "research":
+        return []
+    return parts
 
 
 def analytics(user_id: str, days: int = DEFAULT_WINDOW,
