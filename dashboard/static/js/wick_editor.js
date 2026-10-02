@@ -9,7 +9,7 @@
   editor.setAttribute("aria-label", "Ask Wick"); editor.dataset.placeholder = "Type @ to include an asset and # for pages";
   input.after(editor);
   var nativeValue = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value");
-  var savedRange = null, contextItems = [], composing = false;
+  var savedRange = null, contextItems = null, composing = false;
   function serialize(node, plain) {
     if (node.nodeType === 3) { return node.textContent; }
     if (node.dataset && node.dataset.referenceKind) {
@@ -44,7 +44,7 @@
   }
   function remember() {
     var selection = window.getSelection();
-    if (selection.rangeCount && editor.contains(selection.anchorNode) && editor.contains(selection.focusNode)) {
+    if (selection.rangeCount && (document.activeElement === editor || editor.contains(document.activeElement)) && editor.contains(selection.anchorNode) && editor.contains(selection.focusNode)) {
       savedRange = selection.getRangeAt(0).cloneRange();
     }
   }
@@ -54,8 +54,7 @@
     var link = referenceNode(item), space = document.createTextNode(" ");
     range.deleteContents(); range.insertNode(space); range.insertNode(link);
     range.setStartAfter(space); range.collapse(true); savedRange = range.cloneRange();
-    var selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
-    editor.focus(); notify();
+    focusAt(range); notify();
   }
   function sync(items) {
     contextItems = items.slice();
@@ -69,12 +68,6 @@
         node.title = updated.title;
       }
     });
-    items.forEach(function (item) {
-      if (!atoms().some(function (node) { return node.dataset.referenceKind === item.kind && node.dataset.referenceId === item.id; })) {
-        if (editor.textContent) { editor.appendChild(document.createTextNode(" ")); }
-        editor.appendChild(referenceNode(item)); editor.appendChild(document.createTextNode(" "));
-      }
-    });
     writeValue();
   }
   function setText(text) {
@@ -83,7 +76,9 @@
       var item = window.WickMentions.fromHref(node.getAttribute("href"), node.textContent.slice(1).trim());
       if (item) { node.replaceWith(referenceNode(item)); }
     });
-    sync(contextItems);
+    if (contextItems) { sync(contextItems); } else { writeValue(); }
+    savedRange = document.createRange(); savedRange.selectNodeContents(editor); savedRange.collapse(false);
+    document.dispatchEvent(new Event("wick:editor-reset"));
   }
   function shortcut() {
     var selection = window.getSelection();
@@ -100,8 +95,14 @@
     editor.hidden = !enabled(); input.hidden = enabled();
     editor.setAttribute("contenteditable", String(!input.disabled)); editor.setAttribute("aria-disabled", String(input.disabled));
   }
+  function focusAt(range) {
+    editor.focus({ preventScroll: true });
+    if (!range || !editor.contains(range.commonAncestorContainer)) { range = document.createRange(); range.selectNodeContents(editor); range.collapse(false); }
+    var selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
+    savedRange = range.cloneRange();
+  }
   var originalFocus = input.focus.bind(input), originalSelection = input.setSelectionRange.bind(input);
-  input.focus = function () { if (enabled()) { editor.focus(); } else { originalFocus(); } };
+  input.focus = function () { if (enabled()) { focusAt(savedRange); } else { originalFocus(); } };
   input.setSelectionRange = function (start, end) {
     if (!enabled()) { originalSelection(start, end); return; }
     var range = document.createRange(); range.selectNodeContents(editor); range.collapse(false);
@@ -132,5 +133,5 @@
   new MutationObserver(updateMode).observe(input, { attributes: true, attributeFilter: ["disabled"] });
   if (mode) { mode.addEventListener("change", function () { if (enabled()) { setText(nativeValue.get.call(input)); } else { nativeValue.set.call(input, serialize(editor, true)); } updateMode(); }); }
   setText(initialText); updateMode();
-  window.WickEditor = { element: editor, references: references, sync: sync, insert: insert, shortcut: shortcut, composing: function () { return composing; } };
+  window.WickEditor = { element: editor, references: references, sync: sync, insert: insert, remember: remember, shortcut: shortcut, composing: function () { return composing; } };
 })();

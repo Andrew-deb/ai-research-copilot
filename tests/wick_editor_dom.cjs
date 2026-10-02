@@ -7,11 +7,11 @@ const root = path.resolve(__dirname, '..');
 const dom = new JSDOM(`<meta name="csrf-token" content="test"><div class="chat-page" data-conversation=""><form id="chat-composer">
 <textarea id="chat-input"></textarea><button type="button" id="chat-mode" value="wick"></button>
 <div id="wick-context-controls"><button type="button" id="wick-add-context">+</button>
-<div id="wick-context-menu" hidden><button type="button" data-context-category="pages">Pages</button><button type="button" data-context-category="assets">Assets</button></div>
+<div id="wick-context-menu" hidden><button type="button" data-context-category="pages">Pages</button><button type="button" data-context-category="assets">Assets</button><div id="wick-selected-context" hidden></div></div>
 <div id="wick-asset-picker" hidden><button type="button" id="wick-asset-back"></button><button type="button" id="wick-asset-close"></button><strong id="wick-asset-title"></strong>
 <input id="wick-asset-query"><div id="wick-asset-kind"><button type="button" data-kind=""></button><button type="button" data-kind="paper"></button></div>
 <div id="wick-asset-status"></div><div id="wick-asset-results"></div><button type="button" id="wick-asset-more"></button></div>
-<span id="wick-context-status"></span></div><script type="application/json" id="wick-context-data">[]</script></form></div>`, { url: 'https://alfred.example/chat/assistant', runScripts: 'outside-only' });
+<span id="wick-context-status"></span></div><script type="application/json" id="wick-context-data">[{"kind":"page","id":"search","label":"Paper search"}]</script></form></div>`, { url: 'https://alfred.example/chat/assistant', runScripts: 'outside-only' });
 const w = dom.window, d = w.document;
 const id = '00000000-0000-0000-0000-000000000001';
 let requests = [];
@@ -26,6 +26,7 @@ for (const script of ['wick_mentions.js', 'wick_editor.js', 'wick_context.js']) 
 const editor = w.WickEditor.element, input = d.getElementById('chat-input');
 const tick = () => new Promise(resolve => setTimeout(resolve, 240));
 function caret(node, offset) {
+  editor.focus();
   const range = d.createRange(); range.setStart(node, offset); range.collapse(true);
   const selection = w.getSelection(); selection.removeAllRanges(); selection.addRange(range);
   d.dispatchEvent(new w.Event('selectionchange'));
@@ -38,6 +39,10 @@ function type(text) {
   assert.equal(input.hidden, true);
   assert.equal(editor.dataset.placeholder, 'Type @ to include an asset and # for pages');
   assert.equal(editor.dataset.empty, 'true');
+  assert.equal(editor.textContent, ''); assert.equal(input.value, '');
+  type('Hello'); assert.equal(editor.textContent, 'Hello'); assert.equal(w.WickContext.references().length, 1);
+  assert.equal(w.WickContext.formatPrompt('Hello'), 'Hello');
+  d.querySelector('#wick-selected-context button').click();
   type('Review @pap'); await tick();
   assert.equal(editor.dataset.empty, 'false');
   assert.equal(d.getElementById('wick-asset-picker').hidden, false);
@@ -58,8 +63,8 @@ function type(text) {
   d.querySelector('.wick-asset-result').click();
   assert.equal(editor.textContent, 'Open #Notes ');
   assert.equal(editor.querySelector('a').getAttribute('href'), '/notes');
-  // Known references stay inline when the next draft is cleared, matching durable context.
-  input.value = ''; assert.equal(editor.querySelector('a').textContent, '#Notes');
+  // Clearing a draft keeps background context without inserting tokens into the next draft.
+  input.value = ''; assert.equal(editor.querySelector('a'), null); assert.equal(w.WickContext.references().length, 1);
   assert.equal(editor.dataset.empty, 'true');
   const mode = d.getElementById('chat-mode'); mode.value = 'research'; mode.dispatchEvent(new w.Event('change'));
   assert.equal(editor.hidden, true); assert.equal(input.hidden, false); assert.equal(input.value.trim(), '');
@@ -68,11 +73,14 @@ function type(text) {
   input.disabled = true; await tick(); assert.equal(editor.getAttribute('aria-disabled'), 'true');
   input.disabled = false; await tick(); assert.equal(editor.getAttribute('aria-disabled'), 'false');
   // Local pasted HTML stays literal text and cannot create executable DOM.
-  input.value = ''; editor.querySelector('a').remove(); editor.dispatchEvent(new w.Event('input', {bubbles:true})); input.value = '';
+  input.value = ''; d.querySelector('#wick-selected-context button').click(); input.value = '';
   caret(editor, 0);
   const paste = new w.Event('paste', { bubbles:true, cancelable:true });
   Object.defineProperty(paste, 'clipboardData', { value:{ getData:()=>'<img src=x onerror=alert(1)>' } });
   editor.dispatchEvent(paste); assert.equal(editor.querySelector('img'), null); assert(input.value.includes('<img'));
+  // Emulate browser focus moving the selection to offset zero, unlike jsdom's default.
+  const realFocus = editor.focus.bind(editor);
+  editor.focus = () => { realFocus(); const range = d.createRange(); range.selectNodeContents(editor); range.collapse(true); const selection = w.getSelection(); selection.removeAllRanges(); selection.addRange(range); };
   // Insert via the plus picker in the middle of a draft, retaining surrounding text.
   input.value = 'Compare this with that'; caret(editor.firstChild, 13);
   d.getElementById('wick-add-context').click(); d.querySelector('[data-context-category="assets"]').click(); await tick();
@@ -83,6 +91,12 @@ function type(text) {
   assert.equal(editor.querySelectorAll('a').length, 1);
   assert.equal(w.WickMentions.fromHref('/notes#note-' + id, 'Note').id, id);
   assert.equal(w.WickMentions.fromHref('/goals#goal-' + id, 'Goal').id, id);
+  for (const offset of [0, 7, 17]) {
+    input.value = 'Beginning and end'; caret(editor.firstChild, offset);
+    d.getElementById('wick-add-context').click(); d.querySelector('[data-context-category="assets"]').click(); await tick();
+    d.querySelector('.wick-asset-result').click();
+    assert.equal(input.value, 'Beginning and end'.slice(0, offset) + '[@Paper title](/paper/' + id + ') ' + 'Beginning and end'.slice(offset));
+  }
   editor.querySelector('a').remove(); editor.dispatchEvent(new w.Event('input', {bubbles:true}));
   editor.innerHTML = 'first<div>second</div><div><br></div>'; editor.dispatchEvent(new w.Event('input', {bubbles:true}));
   assert.equal(input.value, 'first\nsecond\n');

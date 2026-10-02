@@ -991,10 +991,14 @@
 
 /* Wick embeds links at the caret; Research keeps its native textarea. */
 .composer-input[hidden], .wick-prompt-editor[hidden] { display: none; }
-.wick-prompt-editor { display: block; white-space: pre-wrap; overflow-wrap: anywhere;
+.wick-prompt-editor { display: block; text-align: left; direction: ltr; white-space: pre-wrap; overflow-wrap: anywhere;
   max-height: 200px; overflow-y: auto; outline: none; cursor: text; }
 .wick-prompt-editor[data-empty="true"]::after { content: attr(data-placeholder); color: var(--text-muted); pointer-events: none; }
 .wick-prompt-editor[aria-disabled="true"] { opacity: .6; cursor: default; }
 .wick-inline-reference { color: var(--brand); font-weight: 600; text-decoration: underline;
   text-underline-offset: 3px; cursor: pointer; border-radius: 3px; }
 .wick-inline-reference[data-unavailable="true"] { color: var(--text-muted); }
+
+.wick-selected-context { border-top: 1px solid var(--border); margin-top: 4px; padding-top: 4px; max-height: 140px; overflow-y: auto; }
+.wick-selected-context[hidden] { display: none; }
+.wick-context-menu .wick-context-remove { font-size: 12px; overflow-wrap: anywhere; }
