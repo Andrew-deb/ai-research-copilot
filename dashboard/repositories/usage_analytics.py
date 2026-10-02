@@ -122,6 +122,29 @@ def by_metric(user_id: str, days: int = 7, feature: str | None = None) -> list[d
     )
 
 
+def today(user_id: str) -> list[dict]:
+    """
+    What this account did since midnight, per feature.
+
+    `CURRENT_DATE`, matching `usage_counters` rather than "the last 24 hours":
+    the page says counts reset daily, and a rolling window would disagree with
+    that sentence every evening.
+    """
+    return run_query(
+        f"""
+        SELECT metric,
+               {_mode_expr()} AS mode,
+               count(*)       AS operations
+          FROM ai_operations
+         WHERE user_id = %s
+           AND occurred_at >= CURRENT_DATE
+         GROUP BY metric, {_mode_expr()}
+         ORDER BY operations DESC;
+        """,
+        (user_id,),
+    )
+
+
 def by_day(user_id: str, days: int = 7, feature: str | None = None) -> list[dict]:
     """
     One row per day in the window, including the days with nothing in them.

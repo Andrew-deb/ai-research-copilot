@@ -31,27 +31,41 @@
 
   {# ---- Today ---------------------------------------------------------- #}
   <div class="usage-view" data-usage-view="today">
-    {% if data.usage %}
+    {% if today.rows %}
       <ul class="usage-list">
-        {% for row in data.usage %}
-          <li class="usage-row">
+        {% for row in today.rows %}
+          <li class="usage-row{{ ' usage-row-plain' if not today.metered }}">
             <span class="usage-label">{{ row.label }}</span>
-            <span class="usage-bar" role="img"
-                  aria-label="{{ row.used }} of {{ row.limit }} used">
-              <span class="usage-fill" style="width: {{ row.percent }}%"></span>
-            </span>
-            <span class="usage-count">{{ row.used }} / {{ row.limit }}</span>
+            {% if today.metered %}
+              <span class="usage-bar" role="img"
+                    aria-label="{{ row.used }} of {{ row.limit }} used">
+                <span class="usage-fill" style="width: {{ row.percent }}%"></span>
+              </span>
+              <span class="usage-count">{{ row.used }} / {{ row.limit }}</span>
+            {% else %}
+              {# No bar, because there is nothing to fill. A bar needs an end,
+                 and inventing one would draw a limit that does not exist. #}
+              <span class="usage-count">{{ row.used }}</span>
+            {% endif %}
           </li>
         {% endfor %}
       </ul>
-      {# "Set for the deployment rather than per account" was operator language
-         in a sentence aimed at the person using the product. #}
-      <p class="field-hint">
-        Counts reset daily. These limits apply to everyone here and cannot be
-        changed.
-      </p>
+
+      {% if today.metered %}
+        <p class="field-hint">
+          Counts reset daily. These limits apply to everyone here and cannot be
+          changed.
+        </p>
+      {% else %}
+        <p class="field-hint">
+          Counts reset daily. There are no limits on this deployment, so these
+          are a record of what you have done rather than an allowance.
+        </p>
+      {% endif %}
     {% else %}
-      <p class="empty-state">Usage is not being metered on this deployment.</p>
+      {# "Nothing yet", not "not metered". The tab used to report deployment
+         configuration to somebody who had simply not done anything today. #}
+      <p class="empty-state">Nothing yet today.</p>
     {% endif %}
   </div>
 

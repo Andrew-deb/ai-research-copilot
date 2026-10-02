@@ -28,6 +28,7 @@ from __future__ import annotations
 import logging
 
 from repositories import usage_analytics
+from services import quota_service
 from services.settings_service import USAGE_LABELS
 
 logger = logging.getLogger(__name__)
@@ -64,6 +65,66 @@ def _label(metric: str, mode: str | None = None) -> str:
     return (FEATURE_LABELS.get(feature)
             or USAGE_LABELS.get(metric)
             or metric.replace("_", " ").title())
+
+
+def today(user_id: str, tier: str) -> dict:
+    """
+    What this account has done since midnight.
+
+    Two sources, because the tab answers two different questions depending on
+    how the deployment is configured, and each source is authoritative for one
+    of them:
+
+      metering ON   "how much of my allowance is left" — `usage_counters`, the
+                    same counter that refuses the next request. Anything else
+                    could tell somebody they had room at the moment they were
+                    turned away.
+      metering OFF  "what have I done today" — `ai_operations`, which is written
+                    whether or not limits are enforced.
+
+    The tab used to show nothing at all with metering off, on the reasoning that
+    there was no allowance to report. That was true and unhelpful: the activity
+    had happened, the record of it was sitting in `ai_operations`, and the page
+    answered with a sentence about deployment configuration.
+    """
+    metered = quota_service.usage_summary(tier, "user", user_id)
+
+    if metered:
+        rows = []
+        for metric, counts in metered.items():
+            limit = counts.get("limit") or 0
+            used = counts.get("used") or 0
+            rows.append({
+                "metric": metric,
+                "label": _label(metric),
+                "used": used,
+                "limit": limit,
+                "left": max(limit - used, 0),
+                # Clamped: a limit lowered after somebody has already spent more
+                # than it should not render a bar past its own end.
+                "percent": min(round(used / limit * 100), 100) if limit else 0,
+            })
+        return {"metered": True,
+                "rows": sorted(rows, key=lambda r: r["label"])}
+
+    try:
+        counted = usage_analytics.today(user_id)
+    except Exception as exc:  # noqa: BLE001 - a usage tab is not worth a 500
+        logger.warning("Today's usage unavailable: %s", exc)
+        return {"metered": False, "rows": [], "unavailable": True}
+
+    rows = [{
+        "metric": row["metric"],
+        "feature": _feature_of(row["metric"], row.get("mode")),
+        "label": _label(row["metric"], row.get("mode")),
+        "used": row["operations"] or 0,
+        # No limit, so no bar and no "of N". The number stands on its own.
+        "limit": None,
+        "left": None,
+        "percent": 0,
+    } for row in counted]
+
+    return {"metered": False, "rows": rows}
 
 
 def analytics(user_id: str, days: int = DEFAULT_WINDOW,
