@@ -15,7 +15,7 @@ from shared_resource.middleware.request_context import get_bound_user_id, requir
 from shared_resource.middleware.trace_middleware import trace_tool
 from shared_resource.adapters import collection_service, progress_service, workspace_service
 from shared_resource.repositories import lakebase
-from shared_resource.services import paper_search_service, goal_service, collection_service as shared_collections
+from shared_resource.services import paper_search_service, goal_service, note_service, collection_service as shared_collections
 
 mcp = FastMCP(
     name="wick-workspace",
@@ -122,6 +122,28 @@ def create_learning_goal(title: str, description: str | None = None) -> dict:
 def update_goal_status(goal_id: str, status: str) -> dict:
     """Set an owned learning goal to active, completed or archived when explicitly requested. Resolve the exact goal first; archived is reversible and does not delete it."""
     return goal_service.update_goal_status(lakebase, goal_id, require_current_user_id(), status)
+
+
+@mcp.tool()
+@trace_tool("edit_note")
+def edit_note(note_id: str, note_text: str, title: str | None = None,
+              tags: list[str] | None = None) -> dict:
+    """Replace an owned note's full body/title/tags. Read the exact note first; supply existing metadata to preserve it. Omitted title/tags clear them. Pin state and paper linkage stay unchanged. Never overwrite from a truncated preview."""
+    return note_service.update_note(lakebase, require_current_user_id(), note_id, note_text, title, tags)
+
+
+@mcp.tool()
+@trace_tool("set_note_pinned")
+def set_note_pinned(note_id: str, pinned: bool) -> dict:
+    """Set an owned note's explicit pin state: true to pin, false to unpin. Does not change its contents."""
+    return note_service.set_pinned(lakebase, require_current_user_id(), note_id, pinned)
+
+
+@mcp.tool()
+@trace_tool("delete_note")
+def delete_note(note_id: str) -> dict:
+    """Permanently delete one owned note when explicitly requested. Resolve and verify the exact target first; deletion cannot be undone here. Report only confirmed deletion."""
+    return note_service.delete_note(lakebase, require_current_user_id(), note_id)
 
 
 def create_app():

@@ -13,13 +13,16 @@ from services import assistant_context
 ACTIONS = {
     'create_collection': ('Create a collection', None, None),
     'create_note': ('Create a note', None, None),
+    'edit_note': ('Replace note contents and metadata', 'note', 'note_id'),
+    'set_note_pinned': ('Set note pin state', 'note', 'note_id'),
+    'delete_note': ('Permanently delete a note', 'note', 'note_id'),
     'create_learning_goal': ('Create a learning goal', None, None),
     'add_paper_to_collection': ('Add a paper to a collection', 'collection', 'collection_id'),
     'remove_paper_from_collection': ('Remove a paper from a collection', 'collection', 'collection_id'),
     'mark_paper_status': ('Change reading status', 'paper', 'paper_id'),
     'update_goal_status': ('Change learning-goal status', 'goal', 'goal_id'),
 }
-ASSET_ARGUMENTS = {'paper_id': 'paper', 'collection_id': 'collection', 'goal_id': 'goal'}
+ASSET_ARGUMENTS = {'note_id': 'note', 'paper_id': 'paper', 'collection_id': 'collection', 'goal_id': 'goal'}
 
 
 class ApprovalRequired(ResearchCopilotError):

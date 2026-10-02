@@ -87,7 +87,7 @@
   }
   var completedWrites = [];
   var writeTools = ["create_collection", "add_paper_to_collection",
-    "remove_paper_from_collection", "generate_reading_plan", "mark_paper_status", "save_note", "create_note", "create_learning_goal", "update_goal_status"];
+    "remove_paper_from_collection", "generate_reading_plan", "mark_paper_status", "save_note", "create_note", "edit_note", "set_note_pinned", "delete_note", "create_learning_goal", "update_goal_status"];
   function tellParent(type, value) {
     if (embedded && window.parent !== window) {
       window.parent.postMessage({ source: "alfred-assistant", type: type, value: value }, window.location.origin);
@@ -336,6 +336,9 @@
       get_workspace_paper: "Reading a saved paper",
       get_reading_progress: "Checking reading progress",
       create_note: "Creating a note",
+      edit_note: "Editing a note",
+      set_note_pinned: "Setting note pin state",
+      delete_note: "Deleting a note",
       create_collection: "Creating a collection",
       add_paper_to_collection: "Adding a paper",
       remove_paper_from_collection: "Removing a paper",
