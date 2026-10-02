@@ -79,11 +79,11 @@ def test_every_mcp_tool_has_a_decision_recorded():
     this is the test that notices.
     """
     import io, re, pathlib
-    src = pathlib.Path(__file__).resolve().parents[1] / "mcp_server" / "research_mcp_server.py"
+    src = pathlib.Path(__file__).resolve().parents[1] / "mcp_server" / "research" / "server.py"
     text = io.open(src, encoding="utf-8").read()
     exposed = set(re.findall(r"@mcp\.tool\(\)\s*(?:\n[^\n]*)*?\ndef (\w+)", text))
     assert exposed, "found no MCP tools — the parse is wrong, not the server"
-    wick = src.parent / "assistant" / "server.py"
+    wick = src.parent.parent / "assistant" / "server.py"
     wick_exposed = set(re.findall(r"@mcp\.tool\(\)\s*(?:\n[^\n]*)*?\ndef (\w+)", wick.read_text()))
     assert exposed == agent_service.RESEARCH_TOOLS
     assert wick_exposed == agent_service.WICK_TOOLS

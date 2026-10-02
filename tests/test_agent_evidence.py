@@ -136,7 +136,7 @@ def test_the_uuid_lookup_is_guarded_before_the_doi_fallback():
     "try one thing and crash".
     """
     source = (pathlib.Path(__file__).resolve().parents[1] / "mcp_server"
-              / "services" / "discovery_service.py").read_text(encoding="utf-8")
+              / "research" / "services" / "discovery_service.py").read_text(encoding="utf-8")
     body = source.split("def get_paper_details(")[1].split("\ndef ")[0]
 
     guard = body.index("uuid.UUID(identifier)")

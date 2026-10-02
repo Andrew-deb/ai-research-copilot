@@ -1,7 +1,7 @@
 """
 dashboard/config.py — Single source of truth for dashboard configuration.
 
-Same secret-scope-then-env-var pattern as mcp_server/config.py.
+Same secret-scope-then-env-var pattern as mcp_server/shared_resource/config.py.
 Each Databricks App is its own process with its own config module.
 """
 
@@ -190,7 +190,7 @@ GOOGLE_DISCOVERY_URL: str = "https://accounts.google.com/.well-known/openid-conf
 # things key on it and they have to agree:
 #
 #     setup_db.py                              seeds this row
-#     mcp_server/middleware/request_context.py the agent writes as this user
+#     mcp_server/shared_resource/middleware/request_context.py the agent writes as this user
 #     this bypass                              the dashboard reads as this user
 #
 # Renaming it once already split the identity in two: the agent wrote to one

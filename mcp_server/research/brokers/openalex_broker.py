@@ -1,5 +1,5 @@
 """
-mcp_server/brokers/openalex_broker.py — OpenAlex API client.
+mcp_server/research/brokers/openalex_broker.py — OpenAlex API client.
 
 SRP: HTTP calls to OpenAlex only. No DB access, no Flask, no other brokers.
 
@@ -14,7 +14,7 @@ from typing import Any
 
 import requests
 
-from config import (
+from ..config import (
     OPENALEX_BASE_URL,
     OPENALEX_EMAIL,
     OPENALEX_RATE_LIMIT_DELAY,

@@ -1,10 +1,10 @@
-"""Research compatibility adapters; domain operations take an explicit repository."""
+"""Shared MCP runtime bindings; domain operations take an explicit repository."""
 
 from typing import List, Optional
 
-from shared_resource.services import planning_service as domain
-from shared_resource.services import goal_service as goals
-from repositories import lakebase
+from ..services import planning_service as domain
+from ..services import goal_service as goals
+from ..repositories import lakebase
 
 
 def generate_reading_plan(collection_id: str, user_id: Optional[str] = None) -> dict:

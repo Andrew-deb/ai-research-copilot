@@ -1,5 +1,5 @@
 """
-mcp_server/middleware/identity_middleware.py — who a tool call is acting for.
+mcp_server/shared_resource/middleware/identity_middleware.py — who a tool call is acting for.
 
 The dashboard authenticates to this server as a **service principal**. Those
 credentials say which *application* is calling; they say nothing about which
@@ -24,7 +24,7 @@ import logging
 
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from middleware.request_context import clear_current_user, set_current_user_id
+from .request_context import clear_current_user, set_current_user_id
 
 logger = logging.getLogger("mcp_identity")
 

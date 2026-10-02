@@ -31,14 +31,14 @@ import pytest
 from services.agent_service import WRITE_TOOLS
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-SERVER = ROOT / "mcp_server" / "research_mcp_server.py"
+SERVER = ROOT / "mcp_server" / "research" / "server.py"
 
 
 def _accessor_by_tool() -> dict[str, set[str]]:
     """Which identity accessor each tool function calls."""
     found: dict[str, set[str]] = {}
     current = None
-    for server in (SERVER, SERVER.parent / "assistant" / "server.py"):
+    for server in (SERVER, SERVER.parent.parent / "assistant" / "server.py"):
         current = None
         for line in server.read_text(encoding="utf-8").splitlines():
             match = re.match(r"\s*def (\w+)\(", line)

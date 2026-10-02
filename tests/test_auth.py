@@ -281,7 +281,7 @@ def test_the_dev_identity_matches_the_seeded_user_and_the_agent():
         f"the dev user an empty workspace."
     )
 
-    context = (root / "mcp_server" / "middleware" / "request_context.py").read_text(encoding="utf-8")
+    context = (root / "mcp_server" / "shared_resource" / "middleware" / "request_context.py").read_text(encoding="utf-8")
     match = re.search(r'DEFAULT_USER_EMAIL\s*=\s*["\']([^"\']+)["\']', context)
     assert match, "mcp_server no longer declares DEFAULT_USER_EMAIL — update this test"
     assert match.group(1) == DEV_USER_EMAIL, (

@@ -31,10 +31,13 @@ def release(tmp_path_factory):
 def test_mcp_packages_have_separate_entrypoints_and_catalogs(release):
     research, wick = release["research"], release["assistant"]
     assert (research / "research/server.py").is_file()
-    assert (research / "research_mcp_server.py").is_file()
+    assert not (research / "research_mcp_server.py").exists()
+    assert (research / "research/services/discovery_service.py").is_file()
+    assert (research / "research/brokers/openalex_broker.py").is_file()
     assert not (research / "assistant").exists()
     assert (wick / "assistant/server.py").is_file()
     assert not (wick / "research_mcp_server.py").exists()
+    assert not (wick / "research").exists()
     assert not (wick / "brokers").exists()
     assert not (wick / "services/discovery_service.py").exists()
     assert not (wick / "services/planning_service.py").exists()
@@ -64,8 +67,9 @@ def test_outputs_omit_secrets_unregistered_services_and_local_state(tmp_path, mo
     shutil.copytree(ROOT / "dashboard", source / "dashboard",
                     ignore=shutil.ignore_patterns("__pycache__", ".env"))
     shutil.copytree(ROOT / "agent", source / "agent")
-    for relative in ("mcp_server/.env", "mcp_server/services/new_tool.py", "dashboard/.env",
+    for relative in ("mcp_server/.env", "mcp_server/legacy_debug/new_tool.py", "dashboard/.env",
                      "dashboard/static/private.json", "dashboard/static/debug.log"):
+        (source / relative).parent.mkdir(parents=True, exist_ok=True)
         (source / relative).write_text("SECRET_SENTINEL")
     monkeypatch.setattr(builder, "REPO_ROOT", source)
     monkeypatch.setattr(builder, "MCP_ROOT", source / "mcp_server")
@@ -127,3 +131,42 @@ def test_render_blueprint_runs_from_built_dashboard():
     assert "deploy/build.py --target render" in service["buildCommand"]
     assert "dist/deploy/render/requirements.txt" in service["buildCommand"]
     assert service["startCommand"].startswith("cd dist/deploy/render && gunicorn app:app")
+
+
+def test_shared_runtime_and_domain_only_render_artifacts(release):
+    """Moving shared infra must not make Render import MCP configuration or pools."""
+    for target in ("research", "assistant"):
+        root = release[target]
+        assert (root / "shared_resource/middleware/identity_middleware.py").is_file()
+        assert (root / "shared_resource/repositories/lakebase.py").is_file()
+        assert (root / "shared_resource/adapters/workspace_service.py").is_file()
+        for legacy in ("config.py", "exceptions.py", "services", "repositories", "middleware", "brokers"):
+            assert not (root / legacy).exists()
+    render = release["render"]
+    assert not (render / "shared_resource/config.py").exists()
+    assert not (render / "shared_resource/repositories/lakebase.py").exists()
+    assert not (render / "shared_resource/adapters").exists()
+    assert not (render / "shared_resource/middleware").exists()
+    assert (render / "shared_resource/repositories/workspace_repository.py").is_file()
+
+
+def test_dashboard_and_mcp_imports_do_not_shadow_each_other():
+    script = """
+from repositories import lakebase as dashboard_db
+from shared_resource.repositories import lakebase as mcp_db
+from middleware import auth
+from shared_resource.middleware import request_context
+import research.server
+import assistant.server
+assert dashboard_db is not mcp_db
+assert dashboard_db.__name__ == 'repositories.lakebase'
+assert mcp_db.__name__ == 'shared_resource.repositories.lakebase'
+assert research.server.mcp.name == 'ai-research-copilot'
+assert assistant.server.mcp.name == 'wick-workspace'
+"""
+    env = {**os.environ, "DATABASE_URL": "", "EMBEDDING_PRELOAD": "false",
+           "DATABRICKS_HOST": "", "DATABRICKS_CLIENT_ID": "", "DATABRICKS_CLIENT_SECRET": "",
+           "PYTHONPATH": os.pathsep.join((str(ROOT / "dashboard"), str(ROOT / "mcp_server")))}
+    result = subprocess.run([sys.executable, "-c", script], cwd=ROOT, env=env,
+                            capture_output=True, text=True, timeout=30)
+    assert result.returncode == 0, result.stderr

@@ -1,9 +1,9 @@
-"""Research compatibility adapters; domain operations take an explicit repository."""
+"""Shared MCP runtime bindings; domain operations take an explicit repository."""
 
 from typing import List, Optional
 
-from shared_resource.services import collection_service as domain
-from repositories import lakebase
+from ..services import collection_service as domain
+from ..repositories import lakebase
 
 
 def create_collection(user_id: str, name: str, description: Optional[str] = None) -> dict:

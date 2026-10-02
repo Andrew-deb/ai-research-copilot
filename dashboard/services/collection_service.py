@@ -3,7 +3,7 @@ dashboard/services/collection_service.py — Collections & reading plans.
 
 Collection CRUD, paper membership, manual drag-reorder, and a reading-plan
 generator. The plan heuristic is deliberately kept identical to
-mcp_server/services/planning_service.generate_reading_plan so the dashboard
+mcp_server/shared_resource/services/planning_service.generate_reading_plan so the dashboard
 button and the agent tool produce the same ordering — each Databricks App
 owns its own copy of the logic (no runtime dependency between the two apps).
 """

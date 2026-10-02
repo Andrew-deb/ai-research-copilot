@@ -1,10 +1,10 @@
-"""Research compatibility adapters; domain operations take an explicit repository."""
+"""Shared MCP runtime bindings; domain operations take an explicit repository."""
 
 from typing import List, Optional
 
-from shared_resource.services import progress_service as domain
-from shared_resource.services import note_service as notes
-from repositories import lakebase
+from ..services import progress_service as domain
+from ..services import note_service as notes
+from ..repositories import lakebase
 
 VALID_STATUSES = domain.VALID_STATUSES
 
