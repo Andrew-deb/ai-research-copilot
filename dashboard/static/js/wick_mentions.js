@@ -10,18 +10,25 @@
     return item.kind === "paper" ? "/paper/" + item.id : item.kind === "collection" ? "/collection/" + item.id :
       item.kind === "note" ? "/notes#note-" + item.id : item.kind === "goal" ? "/goals#goal-" + item.id : null;
   }
+  function fromHref(destination, label) {
+    var item;
+    if (/^\/(paper|collection)\//.test(destination)) { var parts = destination.split("/"); item = {kind: parts[1], id: parts[2], label: label}; }
+    else if (/^\/(notes#note-|goals#goal-)/.test(destination)) { item = {kind: destination.indexOf("/notes") === 0 ? "note" : "goal", id: destination.split("-").slice(1).join("-"), label: label}; }
+    else { item = {kind: "page", id: destination.slice(1), label: label}; }
+    return href(item) === destination ? item : null;
+  }
   function token(item) {
     var destination = href(item);
     if (!destination) { return ""; }
     var label = String(item.label || item.kind).replace(/[\[\]\\\r\n]/g, " ").trim().slice(0, 100);
-    return "[" + (item.kind === "page" ? "▤ " : "@") + label + "](" + destination + ")";
+    return "[" + (item.kind === "page" ? "#" : "@") + label + "](" + destination + ")";
   }
   function format(text, items) {
     var tokens = items.map(token).filter(function (value) { return value && text.indexOf(value) < 0; });
     return text + (tokens.length ? "\n\n" + tokens.join(" ") : "");
   }
   function render(container, text) {
-    var pattern = /\[([@▤][^\]\n]{1,102})\]\((\/[^\s)]+)\)/g;
+    var pattern = /\[([@#▤][^\]\n]{1,102})\]\((\/[^\s)]+)\)/g;
     var match, cursor = 0;
     var safe = new RegExp("^/(?:paper/" + uuid + "|collection/" + uuid + "|notes#note-" + uuid + "|goals#goal-" + uuid + "|" + pages.join("|") + ")$");
     while ((match = pattern.exec(text))) {
@@ -33,5 +40,5 @@
     }
     container.appendChild(document.createTextNode(text.slice(cursor)));
   }
-  window.WickMentions = { href: href, token: token, format: format, render: render };
+  window.WickMentions = { href: href, fromHref: fromHref, token: token, format: format, render: render };
 })();

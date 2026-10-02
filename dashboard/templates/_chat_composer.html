@@ -24,7 +24,6 @@
               placeholder="{{ composer_placeholder | default('Ask Wick about your workspace…' if chat_mode == 'wick' else 'Ask a research question…') }}"
               aria-label="{{ 'Ask Wick' if chat_mode == 'wick' else 'Ask a research question' }}">{{ initial_prompt | default('') }}</textarea>
     {% if chat_mode or wick_panel %}
-    <div id="wick-context-chips" class="wick-context-references" aria-label="Prompt context" {% if chat_mode != 'wick' and not wick_panel %}hidden{% endif %}></div>
     <div class="composer-footer">
       {% include "_wick_context.html" %}
     {% endif %}

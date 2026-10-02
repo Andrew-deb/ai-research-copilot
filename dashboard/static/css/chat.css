@@ -961,7 +961,7 @@
 /* Compact contextual controls share the composer's bottom action row. */
 .composer-with-mode { position: relative; }
 .wick-context-controls { position: relative; flex: none; margin-right: auto; }
-.wick-context-controls[hidden], .wick-context-references[hidden], .wick-context-menu[hidden], .wick-asset-picker[hidden], .wick-asset-types[hidden] { display: none; }
+.wick-context-controls[hidden], .wick-context-menu[hidden], .wick-asset-picker[hidden], .wick-asset-types[hidden] { display: none; }
 .wick-context-plus { width: 32px; height: 32px; padding: 0; border: 0; border-radius: 8px; background: transparent; color: var(--text-muted); font: inherit; font-size: 24px; cursor: pointer; }
 .wick-context-plus:hover, .wick-context-plus[aria-expanded="true"] { color: var(--text); background: var(--surface-2); }
 .wick-context-plus:focus-visible { outline: 2px solid var(--brand); }
@@ -986,10 +986,15 @@
 .wick-asset-result strong { font-size: 13px; overflow-wrap: anywhere; }
 .wick-asset-result span { font-size: 11px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 .wick-asset-result:disabled { opacity: .45; cursor: default; }
-.wick-context-references { display: flex; flex-wrap: wrap; gap: 6px; }
-.wick-context-references:empty { display: none; }
-.wick-reference { display: inline-flex; align-items: center; min-width: 0; max-width: 100%; gap: 4px; font-size: 12px; }
-.wick-reference a, .wick-reference > span { color: var(--brand); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.wick-reference button { border: 0; padding: 2px 4px; background: transparent; color: var(--text-muted); cursor: pointer; }
 .wick-prompt-reference { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
 .note-item:target, .goal-item:target { outline: 2px solid var(--brand); outline-offset: 3px; scroll-margin-top: 90px; }
+
+/* Wick embeds links at the caret; Research keeps its native textarea. */
+.composer-input[hidden], .wick-prompt-editor[hidden] { display: none; }
+.wick-prompt-editor { display: block; white-space: pre-wrap; overflow-wrap: anywhere;
+  max-height: 200px; overflow-y: auto; outline: none; cursor: text; }
+.wick-prompt-editor[data-empty="true"]::after { content: attr(data-placeholder); color: var(--text-muted); pointer-events: none; }
+.wick-prompt-editor[aria-disabled="true"] { opacity: .6; cursor: default; }
+.wick-inline-reference { color: var(--brand); font-weight: 600; text-decoration: underline;
+  text-underline-offset: 3px; cursor: pointer; border-radius: 3px; }
+.wick-inline-reference[data-unavailable="true"] { color: var(--text-muted); }
