@@ -134,6 +134,8 @@
   color: var(--text);
   font: inherit;
 }
+.chat-prompt-edit textarea:focus { border: 0; outline: none; box-shadow: none; }
+.chat-prompt-edit:focus-within { box-shadow: 0 0 0 2px var(--focus-ring); }
 .chat-prompt-edit-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .chat-prompt-edit-actions button { padding: 7px 14px; border-radius: 999px; color: var(--text); }
 /* var(--brand-fg): white on the dark theme's bright brand is 2.0:1. */

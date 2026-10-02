@@ -770,6 +770,8 @@ input:focus, textarea:focus, select:focus {
   padding: 8px 0;
   max-height: 200px;
 }
+/* The wrapper owns focus; generic textarea focus must not add an inner box. */
+.composer-input:focus { border: 0; outline: none; box-shadow: none; }
 .composer-input::placeholder { color: var(--text-muted); }
 
 /* A round icon button rather than a labelled rectangle: the composer is already
@@ -1238,7 +1240,7 @@ h1, h2, h3,
 }
 .nav-chat-edit svg { width: 18px; height: 18px; flex: none; color: var(--text-muted); }
 
-.nav-chat-rename {
+input.nav-chat-rename {
   flex: 1;
   min-width: 0;
   padding: 0;
@@ -1250,13 +1252,15 @@ h1, h2, h3,
   font-weight: 500;
   line-height: inherit;
 }
-.nav-chat-rename:focus { outline: none; }
+.nav-chat-rename:focus { outline: none; box-shadow: none; }
 .nav-chat-rename::selection { background: var(--brand-tint); color: var(--brand-tint-fg); }
 
 /* The row carries the state, so the text can stay plain. */
 .nav-chat-row.is-editing {
   background: var(--surface-2);
 }
+
+.nav-chat-row.is-editing:focus-within { box-shadow: inset 0 -2px var(--brand); }
 
 /* ---------- The shared conversation menu ----------
    Fixed to the viewport rather than the sidebar, which scrolls: anchored inside
@@ -1618,7 +1622,7 @@ body.notes-docked .main-col { margin-right: var(--notes-w); }
 }
 .notes-pad-attach-name { color: var(--text); }
 
-.notes-pad-title {
+input.notes-pad-title {
   flex-shrink: 0;
   box-sizing: border-box;
   width: 100%;
@@ -1630,7 +1634,7 @@ body.notes-docked .main-col { margin-right: var(--notes-w); }
   font-size: 15.5px;
   font-weight: 600;
 }
-.notes-pad-title:focus { outline: none; }
+.notes-pad-title:focus { outline: none; box-shadow: inset 0 -2px var(--brand); }
 
 /* Grows into the panel rather than being a fixed box with the rest blank:
    the notepad IS the view, so the writing surface takes what is left. */
@@ -1648,7 +1652,7 @@ body.notes-docked .main-col { margin-right: var(--notes-w); }
   line-height: 1.7;
   resize: none;
 }
-.notes-pad-body:focus { outline: none; }
+.notes-pad-body:focus { outline: none; box-shadow: inset 2px 0 var(--brand); }
 
 .notes-pad-foot {
   flex-shrink: 0;
@@ -1848,7 +1852,7 @@ body.notes-writing .notes-page-pad .notes-pad-body {
 /* The title is its own row, separated by a rule rather than sharing an edge
    with the body — they are different fields and one long title running
    straight into the first line reads as one paragraph. */
-.notes-pad-title {
+input.notes-pad-title {
   border-bottom: 1px solid var(--border);
   padding: 14px 18px;
   font-size: 16px;
@@ -2009,7 +2013,7 @@ body.notes-writing .notes-page-pad .notes-pad-body {
   font: inherit;
   font-size: 12.5px;
 }
-.notes-pad-tags input:focus { outline: none; color: var(--text); }
+.notes-pad-tags input:focus { outline: none; color: var(--text); box-shadow: inset 0 -2px var(--brand); }
 
 /* Markdown inside a note: tightened, because a note is a paragraph or two and
    document-scale margins would space three bullets across half a screen. */
@@ -2136,7 +2140,8 @@ body.notes-writing .notes-page-pad .notes-pad-body {
   font: inherit;
   font-size: 15px;
 }
-.palette-field input:focus { outline: none; }
+.palette-field input:focus { outline: none; box-shadow: none; }
+.palette-field:focus-within { border-bottom-color: var(--brand); }
 
 .palette-results { overflow-y: auto; padding: 6px; }
 
