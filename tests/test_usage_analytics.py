@@ -628,7 +628,7 @@ def test_with_metering_off_it_still_says_what_you_did(db, me, monkeypatch):
 
 def test_an_unmetered_row_carries_no_limit(db, me, monkeypatch):
     """
-    A bar needs an end. Inventing one would draw a limit that does not exist.
+    There is no ceiling, so nothing says "of N".
     """
     from services import quota_service
     monkeypatch.setattr(quota_service, "usage_summary", lambda *a, **k: {})
@@ -636,7 +636,25 @@ def test_an_unmetered_row_carries_no_limit(db, me, monkeypatch):
 
     row = usage_service.today(me, "authenticated")["rows"][0]
     assert row["limit"] is None
-    assert row["percent"] == 0
+    assert row["left"] is None
+
+
+def test_an_unmetered_bar_is_relative_to_the_busiest_feature(db, me, monkeypatch):
+    """
+    A bar against an invented ceiling would measure against nothing. Against the
+    busiest feature of the day it compares, which is the only honest thing a bar
+    can do without a limit.
+    """
+    from services import quota_service
+    monkeypatch.setattr(quota_service, "usage_summary", lambda *a, **k: {})
+
+    for _ in range(4):
+        _op(db, me, metric="agent_query", mode="wick")
+    _op(db, me, metric="semantic_search")
+
+    rows = {r["feature"]: r for r in usage_service.today(me, "authenticated")["rows"]}
+    assert rows["wick"]["percent"] == 100
+    assert rows["search"]["percent"] == 25
 
 
 def test_a_quiet_day_says_so_rather_than_naming_the_configuration(client, db, me, monkeypatch):
@@ -785,3 +803,116 @@ def test_the_page_says_the_allowance_is_shared(client, db, me):
     body = client.get("/settings").get_data(as_text=True)
     usage = body.split('data-settings-panel="usage"')[1].split("</section>")[0]
     assert "draw on the same allowance" in usage
+
+
+# ---------------------------------------------------------------------------
+# One bar, divided
+#
+# Wick asked for a graph of its own. It cannot have a BAR of its own, because a
+# bar is an allowance and there is only one — a second would draw a quota that
+# does not exist. So the one bar is divided by what used it.
+# ---------------------------------------------------------------------------
+
+def test_the_shared_bar_is_split_into_segments(db, me):
+    from services import quota_service
+
+    for _ in range(6):
+        quota_service.check_and_consume("agent_query", "authenticated", "user", me)
+    for _ in range(4):
+        _op(db, me, metric="agent_query", mode="wick")
+    for _ in range(2):
+        _op(db, me, metric="agent_query", mode="research")
+
+    row = next(r for r in usage_service.today(me, "authenticated")["rows"]
+               if r["metric"] == "agent_query")
+
+    assert [p["feature"] for p in row["breakdown"]] == ["wick", "research"]
+    assert all("percent" in p for p in row["breakdown"])
+
+
+def test_the_segments_fill_exactly_the_bar(db, me):
+    """
+    The geometry has to agree with the number printed beside it. Segments drawn
+    from raw counts would overflow or fall short whenever the two tables
+    disagree — which they can, and today they did: 9 recorded against 8 counted.
+    """
+    from services import quota_service
+
+    for _ in range(8):
+        quota_service.check_and_consume("agent_query", "authenticated", "user", me)
+    for _ in range(9):                      # more recorded than counted
+        _op(db, me, metric="agent_query", mode="wick")
+
+    row = next(r for r in usage_service.today(me, "authenticated")["rows"]
+               if r["metric"] == "agent_query")
+
+    assert row["used"] == 8
+    assert row["percent"] == 80
+    assert round(sum(p["percent"] for p in row["breakdown"]), 2) == 80
+
+
+def test_a_mixed_bar_divides_in_proportion(db, me):
+    from services import quota_service
+
+    for _ in range(5):
+        quota_service.check_and_consume("agent_query", "authenticated", "user", me)
+    for _ in range(3):
+        _op(db, me, metric="agent_query", mode="wick")
+    for _ in range(1):
+        _op(db, me, metric="agent_query", mode="research")
+
+    row = next(r for r in usage_service.today(me, "authenticated")["rows"]
+               if r["metric"] == "agent_query")
+    segments = {p["feature"]: p["percent"] for p in row["breakdown"]}
+
+    # 50% of the limit, split three to one.
+    assert round(segments["wick"], 2) == 37.5
+    assert round(segments["research"], 2) == 12.5
+
+
+def test_the_legend_counts_stay_as_recorded(db, me):
+    """
+    Only the geometry is scaled. The counts are a fact, and rewriting them to
+    make the arithmetic tidy would be inventing numbers.
+    """
+    from services import quota_service
+
+    for _ in range(8):
+        quota_service.check_and_consume("agent_query", "authenticated", "user", me)
+    for _ in range(9):
+        _op(db, me, metric="agent_query", mode="wick")
+
+    row = next(r for r in usage_service.today(me, "authenticated")["rows"]
+               if r["metric"] == "agent_query")
+    assert row["breakdown"][0]["used"] == 9
+
+
+def test_each_feature_has_its_own_colour():
+    """
+    The segment and the number naming it have to be visibly the same thing, or
+    a divided bar is just a bar with a seam in it.
+    """
+    css = (ROOT / "dashboard" / "static" / "css"
+           / "base.css").read_text(encoding="utf-8")
+    for feature in ("research", "wick", "ask", "search"):
+        assert f".usage-fill-{feature}" in css
+
+
+def test_the_bar_can_hold_segments_side_by_side():
+    css = (ROOT / "dashboard" / "static" / "css"
+           / "base.css").read_text(encoding="utf-8")
+    rule = css[css.index(".usage-bar {"):]
+    rule = rule[:rule.index("}")]
+    assert "display: flex" in rule
+
+
+def test_the_split_is_announced_to_a_screen_reader(client, db, me):
+    """
+    Colour is the only thing separating the segments, so the label has to carry
+    what the colour says.
+    """
+    template = (ROOT / "dashboard" / "templates" / "settings"
+                / "_usage.html").read_text(encoding="utf-8")
+    bar = template.split('class="usage-bar"')[1].split("</span>")[0]
+    assert "aria-label" in bar
+    assert "part.label" in bar

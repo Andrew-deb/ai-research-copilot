@@ -34,17 +34,33 @@
     {% if today.rows %}
       <ul class="usage-list">
         {% for row in today.rows %}
-          <li class="usage-row{{ ' usage-row-plain' if not today.metered }}">
+          <li class="usage-row">
             <span class="usage-label">{{ row.label }}</span>
             {% if today.metered %}
               <span class="usage-bar" role="img"
-                    aria-label="{{ row.used }} of {{ row.limit }} used">
-                <span class="usage-fill" style="width: {{ row.percent }}%"></span>
+                    aria-label="{{ row.used }} of {{ row.limit }} used{% if row.breakdown %} — {% for part in row.breakdown %}{{ part.used }} {{ part.label }}{{ ', ' if not loop.last }}{% endfor %}{% endif %}">
+                {% if row.breakdown %}
+                  {# One allowance, one bar, divided by what used it. A second
+                     bar would draw a second quota that does not exist. #}
+                  {% for part in row.breakdown %}
+                    <span class="usage-fill usage-fill-{{ part.feature }}"
+                          style="width: {{ part.percent }}%"></span>
+                  {% endfor %}
+                {% else %}
+                  <span class="usage-fill" style="width: {{ row.percent }}%"></span>
+                {% endif %}
               </span>
               <span class="usage-count">{{ row.used }} / {{ row.limit }}</span>
             {% else %}
               {# No bar, because there is nothing to fill. A bar needs an end,
                  and inventing one would draw a limit that does not exist. #}
+              {# No limit to fill, so the bar is relative: each feature against
+                 the busiest one today. It compares rather than measures. #}
+              <span class="usage-bar" role="img"
+                    aria-label="{{ row.used }} {{ row.label }} today">
+                <span class="usage-fill usage-fill-{{ row.feature }}"
+                      style="width: {{ row.percent }}%"></span>
+              </span>
               <span class="usage-count">{{ row.used }}</span>
             {% endif %}
 
@@ -54,7 +70,10 @@
             {% if row.breakdown %}
               <span class="usage-split">
                 {% for part in row.breakdown %}
-                  {{ part.used }} {{ part.label }}{{ " · " if not loop.last }}
+                  <span class="usage-key">
+                    <span class="usage-swatch usage-fill-{{ part.feature }}" aria-hidden="true"></span>
+                    {{ part.used }} {{ part.label }}
+                  </span>
                 {% endfor %}
               </span>
             {% endif %}

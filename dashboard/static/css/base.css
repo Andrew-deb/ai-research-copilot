@@ -2621,12 +2621,22 @@ body.palette-open { overflow: hidden; }
 .usage-label { font-size: 13px; }
 
 .usage-bar {
+  display: flex;
   height: 6px;
   border-radius: 999px;
   background: var(--surface-3);
   overflow: hidden;
 }
-.usage-fill { display: block; height: 100%; background: var(--brand); }
+/* Several fills sit side by side when one allowance is shared, so the bar is a
+   flex row and each fill is sized by width alone. */
+.usage-fill { display: block; height: 100%; background: var(--brand); flex: none; }
+
+/* One colour per feature, reused by the legend swatch below, so the segment and
+   the number that names it are visibly the same thing. */
+.usage-fill-research { background: var(--brand); }
+.usage-fill-wick     { background: #8b7bf0; }
+.usage-fill-ask      { background: #e0a458; }
+.usage-fill-search   { background: #5aa9e6; }
 
 .usage-count {
   font-family: var(--mono);
@@ -3143,15 +3153,22 @@ kbd {
   font-size: 11.5px;
 }
 
-/* Unmetered: a label and a count, no bar. The bar's whole job is to show how
-   much of something is left, and there is no something. */
-.usage-row-plain { grid-template-columns: 1fr auto; }
 
 /* The breakdown under a shared allowance. Its own grid row, spanning the full
    width, so it reads as a footnote to the bar rather than a fourth column. */
 .usage-split {
   grid-column: 1 / -1;
-  margin-top: 2px;
-  color: var(--text-subtle);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-top: 5px;
+  color: var(--text-muted);
   font-size: 11.5px;
+}
+.usage-key { display: inline-flex; align-items: center; gap: 5px; }
+.usage-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex: none;
 }
