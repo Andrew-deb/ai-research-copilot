@@ -11,6 +11,13 @@ import logging
 from exceptions import PaperNotFoundError, ValidationError
 from repositories import lakebase
 
+try:
+    from shared_resource.services import note_service as shared_notes
+    from shared_resource import exceptions as domain_errors
+except ModuleNotFoundError:
+    from mcp_server.shared_resource.services import note_service as shared_notes
+    from mcp_server.shared_resource import exceptions as domain_errors
+
 logger = logging.getLogger(__name__)
 
 VALID_STATUSES = ["not_started", "reading", "completed", "skipped"]
@@ -342,42 +349,28 @@ def notes_summary(groups: list[dict]) -> dict:
     }
 
 
+def _note_mutation(operation, *args):
+    """Keep dashboard presentation/errors while delegating business operations."""
+    try:
+        return operation(lakebase, *args)
+    except domain_errors.ValidationError as exc:
+        raise ValidationError(str(exc)) from exc
+    except domain_errors.NoteNotFoundError as exc:
+        # Preserve the dashboard's established 404 exception contract.
+        raise PaperNotFoundError(str(exc)) from exc
+
+
 def update_note(user_id: str, note_id: str, note_text: str,
                 title: str | None = None, tags=None) -> dict:
-    """
-    Revise a note.
-
-    Validated exactly as saving is, because an edit that empties a note is the
-    same mistake as saving an empty one and should fail the same way rather
-    than quietly leaving a blank behind.
-    """
-    text = (note_text or "").strip()
-    if not text:
-        raise ValidationError("A note cannot be empty.")
-    if len(text) > NOTE_MAX_CHARS:
-        raise ValidationError(f"That note is too long (max {NOTE_MAX_CHARS:,} characters).")
-
-    note = lakebase.update_note(user_id, note_id, text,
-                                _clean_title(title), clean_tags(tags))
-    if not note:
-        # Not theirs, or not there. Both are 404 to the caller: distinguishing
-        # them would confirm the note exists to someone who cannot read it.
-        raise PaperNotFoundError("That note could not be found.")
-    return _present(note)
+    return _present(_note_mutation(shared_notes.update_note, user_id, note_id, note_text, title, tags))
 
 
 def set_pinned(user_id: str, note_id: str, pinned: bool) -> dict:
-    """Pin or unpin a note. 404 when it is not theirs, as everywhere else."""
-    note = lakebase.set_note_pinned(user_id, note_id, bool(pinned))
-    if not note:
-        raise PaperNotFoundError("That note could not be found.")
-    return _present(note)
+    return _present(_note_mutation(shared_notes.set_pinned, user_id, note_id, bool(pinned)))
 
 
 def delete_note(user_id: str, note_id: str) -> None:
-    """Remove a note. Missing and not-yours are the same answer, as above."""
-    if not lakebase.delete_note(user_id, note_id):
-        raise PaperNotFoundError("That note could not be found.")
+    _note_mutation(shared_notes.delete_note, user_id, note_id)
 
 
 def list_notes(user_id: str, paper_id: str) -> list[dict]:
