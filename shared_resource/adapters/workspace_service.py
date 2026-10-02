@@ -1,7 +1,7 @@
 """Runtime adapter for workspace contracts; no tools are registered here."""
 
-from shared_resource.services import note_service, workspace_service as domain
-from repositories import lakebase
+from ..services import note_service, workspace_service as domain
+from ..repositories import lakebase
 
 
 def create_note(user_id: str, note_text: str, paper_id: str | None = None,
