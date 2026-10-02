@@ -105,3 +105,20 @@ def append_paper_to_collection(repository, collection_id, paper_id, user_id):
     position = repository.append_paper_to_collection(collection_id, paper_id)
     return {"status": "success", "collection_id": collection_id, "paper_id": paper_id,
             "sequence_order": position, "message": f"Paper '{paper['title']}' is in the collection."}
+
+
+def reorder_collection(repository, user_id, collection_id, ordered_paper_ids):
+    """A complete, bounded permutation; never reorder a partial page of results."""
+    from uuid import UUID
+    from ..repositories.collection_order_repository import reorder
+    require_owned_collection(repository, collection_id, user_id)
+    if not isinstance(ordered_paper_ids, list) or not 1 <= len(ordered_paper_ids) <= 1000:
+        raise ValidationError('Supply a complete paper order containing 1–1000 papers.')
+    try:
+        ids = [str(UUID(item)) for item in ordered_paper_ids]
+    except (ValueError, TypeError, AttributeError):
+        raise ValidationError('Every paper reference must be a valid UUID.') from None
+    if len(set(ids)) != len(ids):
+        raise ValidationError('Each paper must appear exactly once.')
+    count = reorder(repository, user_id, collection_id, ids)
+    return {'status': 'ok', 'collection_id': collection_id, 'count': count, 'ordered_paper_ids': ids}
