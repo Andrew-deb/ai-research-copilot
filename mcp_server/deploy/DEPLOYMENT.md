@@ -283,3 +283,31 @@ Local checks: `PYTHONPATH=dashboard:. python -m pytest -q`. Optional browser che
 requires Node, Playwright Chromium and `CODEX_PRIMARY_RUNTIME_NODE_MODULES` pointing
 to the parent node_modules folder: `RUN_PICKER_BROWSER=1` enables its test.
 The standard suite does not require browser dependencies or a live database.
+
+### Durable Wick context and existing-asset picker
+
+Apply `sql/26_wick_context.sql` to Lakebase **before deploying Render**. This
+additive, repeatable migration stores only selected `{kind, id}` references on
+conversations. Older conversations start with no selected context; new panel
+conversations default to the current page. Explicit selections persist across
+panel/full-chat navigation and devices. Up to five papers, notes, collections,
+goals or supported pages may be selected. Context is shared by the conversation,
+not by a particular message version; changing branches retains the conversation's
+current selection.
+
+Render calls the same shared workspace read services as Wick to produce fresh,
+owner-checked previews. Previews are capped at 2,500 characters per asset and
+marked when incomplete. Deleted/inaccessible selections are shown as unavailable;
+new inaccessible references are refused. The browser supplies references, never
+trusted content or an actor. Selection grants no mutation permission.
+
+Deploy Render after the migration. No MCP catalog, Databricks App, environment
+variable, dependency, provider or embedding change is required for this slice.
+Uploaded-file attachment remains deferred. Rollback to the prior Render build
+leaves the additive column in place harmlessly.
+
+Acceptance: select and remove multiple assets in both surfaces, reopen a thread
+from another browser/device, change pages without replacing saved context, check
+foreign/deleted assets, inspect preview truncation, and verify Research-mode
+requests do not use Wick context. Browser and live PostgreSQL checks remain
+necessary in addition to repository tests.

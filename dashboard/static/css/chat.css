@@ -957,3 +957,16 @@
   background: var(--surface-2); color: var(--text-muted); font: inherit; font-size: 11px;
   cursor: pointer; }
 .composer-footer .composer-send, .composer-footer .composer-stop { margin-left: 0; }
+
+.wick-context-controls { margin: 6px 0; }
+#wick-context-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+#wick-context-status { font-size: 12px; color: var(--text-muted); margin: 4px 0; }
+.wick-asset-picker { width: min(640px, calc(100vw - 32px)); max-height: 80vh; padding: 20px; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); color: var(--text); }
+.wick-asset-picker::backdrop { background: rgb(0 0 0 / 45%); }
+.wick-asset-heading, .wick-asset-search { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.wick-asset-heading { justify-content: space-between; }
+.wick-asset-search input { flex: 1; min-width: 160px; }
+#wick-asset-results { max-height: 40vh; overflow-y: auto; }
+.wick-asset-result { display: flex; flex-direction: column; text-align: left; width: 100%; padding: 12px; gap: 5px; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: inherit; cursor: pointer; }
+.wick-asset-result span { font-size: 12px; color: var(--text-muted); }
+.wick-asset-result:disabled { opacity: .5; cursor: default; }

@@ -50,6 +50,41 @@ def carried_prompt() -> str:
     return (request.args.get("q") or "").strip()[:MAX_CARRIED_PROMPT]
 
 
+def _context_for_view(owner, conversation_id=None):
+    # Deliberate panel expansion can carry unsaved selections. A GET only
+    # previews them; persistence still requires the CSRF-protected POST/turn.
+    if request.args.get('context_references') is not None:
+        raw = request.args['context_references']
+        if len(raw) > 1000:
+            abort(400)
+        try:
+            refs = assistant_context.normalize(json.loads(raw))
+        except (ValueError, TypeError):
+            abort(400)
+    elif conversation_id:
+        refs = assistant_context.load(owner, conversation_id)
+    else:
+        kind = request.args.get("context_kind", "")
+        hint = assistant_context.resolve(owner, kind, request.args.get("context_id", ""))
+        refs = [assistant_context.legacy_reference(hint['kind'], hint['id'])] if hint else []
+    return assistant_context.bundle(owner, refs)
+
+
+@bp.get("/chat/assistant/assets")
+@require_capability(AGENT_QUERY)
+def assistant_assets():
+    return jsonify(assistant_context.search(current_user_id(), request.args.get('q', ''),
+                   request.args.get('kind') or None, request.args.get('cursor')))
+
+
+@bp.post("/chat/<conversation_id>/context")
+@require_capability(AGENT_QUERY)
+def set_context(conversation_id):
+    payload = request.get_json(silent=True) or {}
+    assistant_context.save(require_user_id(), conversation_id, payload.get('references'))
+    return jsonify({'items': assistant_context.resolve_references(current_user_id(), payload['references'])})
+
+
 @bp.get("/chat")
 def new_chat():
     """
@@ -60,8 +95,7 @@ def new_chat():
     even once it is, arriving to find your question already running takes the
     decision away from whoever typed it.
     """
-    context = assistant_context.resolve(current_user_id(),
-        request.args.get("context_kind", ""), request.args.get("context_id", ""))
+    context = _context_for_view(current_user_id())
     return render_template(
         "chat.html",
         conversation=None,
@@ -76,11 +110,12 @@ def new_chat():
 @bp.get("/chat/assistant")
 def assistant_panel():
     """The compact surface uses the full chat's renderer and turn endpoint."""
-    context = assistant_context.resolve(current_user_id(),
-        request.args.get("context_kind", ""), request.args.get("context_id", ""))
     conversation_id = (request.args.get("conversation_id") or "").strip()
     stored = (conversation_service.load(current_user_id(), conversation_id)
               if conversation_id else None)
+    if conversation_id and not stored:
+        abort(404)
+    context = _context_for_view(current_user_id(), conversation_id or None)
     return render_template("assistant_panel.html", context=context,
         conversation={"conversation_id": conversation_id} if stored else None,
         messages=stored["messages"] if stored else [], initial_prompt="", starters=[])
@@ -116,8 +151,7 @@ def conversation(conversation_id: str):
     stored = conversation_service.load(current_user_id(), conversation_id)
     if not stored:
         abort(404)
-    context = assistant_context.resolve(current_user_id(),
-        request.args.get("context_kind", ""), request.args.get("context_id", ""))
+    context = _context_for_view(current_user_id(), conversation_id)
 
     return render_template(
         "chat.html",
@@ -227,7 +261,7 @@ def ask():
     # is already spent, and a 400 delivered as a stream event is a bad request
     # the browser was told to treat as success.
     payload = form_or_json("question", "conversation_id", "action", "source_message_id",
-                           "surface", "context_kind", "context_id", "chat_mode")
+                           "surface", "context_kind", "context_id", "chat_mode", "context_references")
     question = agent_service.validate_question(payload.get("question") or "")
     conversation_id = (payload.get("conversation_id") or "").strip() or None
     tier = current_tier()
@@ -241,9 +275,20 @@ def ask():
         ("wick" if surface == "assistant" else "research"))
     if surface == "assistant" and chat_mode != "wick":
         abort(400)
-    context = (assistant_context.resolve(user_id, payload.get("context_kind") or "",
-                                         payload.get("context_id") or "")
-               if chat_mode == "wick" else None)
+    references = []
+    if chat_mode == "wick":
+        if payload.get('context_references') is not None:
+            references = assistant_context.normalize(payload['context_references'])
+        elif payload.get('context_kind'):
+            references = [assistant_context.legacy_reference(payload['context_kind'], payload.get('context_id') or '')]
+        else:
+            references = assistant_context.load(user_id, conversation_id)
+    context = assistant_context.bundle(user_id, references)
+    if context:
+        previous = assistant_context.load(user_id, conversation_id)
+        if any(not item['available'] and {'kind': item['kind'], 'id': item['id']} not in previous
+               for item in context['items']):
+            abort(400, description="A selected context item is unavailable or not accessible.")
     if not isinstance(mode, str) or not isinstance(source_id, str):
         abort(400)
     mode = mode.strip()
@@ -271,10 +316,13 @@ def ask():
     # Give a signed-in panel turn its durable identity before the worker starts.
     # A page navigation can sever SSE while the run continues; the browser must
     # already know which conversation to reopen when the worker stores its answer.
-    if surface == "assistant" and user_id and not conversation_id and mode == "new":
+    if chat_mode == "wick" and user_id and not conversation_id and mode == "new":
         conversation_id = str(conversation_service.start(
             user_id, question, origin="assistant",
             origin_context=context["label"] if context else None)["conversation_id"])
+
+    if chat_mode == "wick" and user_id and conversation_id:
+        assistant_context.save(user_id, conversation_id, references)
 
     if _wants_stream():
         run_id = str(uuid.uuid4())

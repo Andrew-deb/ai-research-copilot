@@ -37,15 +37,12 @@
   }
   var currentPage = context();
   var chosenContext = "page";
-  function contextKey() { return "wick-context:" + owner + ":" + (conversation || "new"); }
+  var currentReferences = null;
   function restoreContext() {
     // An older thread has no explicit selection. Never attach whichever page
     // happens to be open now as its context.
     var fallback = conversation ? "none" : "page";
-    try {
-      var saved = localStorage.getItem(contextKey());
-      chosenContext = saved === null ? fallback : JSON.parse(saved);
-    } catch (e) { chosenContext = fallback; }
+    chosenContext = fallback;
     var pinned = chosenContext && typeof chosenContext === "object" ? chosenContext : null;
     contextPicker.querySelectorAll('[value="pinned"]').forEach(function (option) { option.remove(); });
     if (pinned) {
@@ -69,13 +66,13 @@
       });
     }).catch(function () { /* The page and None remain usable. */ });
   contextPicker.addEventListener("change", function () {
+    if (contextPicker.value === "pinned") { return; }
     var choice = contextPicker.selectedOptions[0];
     chosenContext = contextPicker.value === "pin-current" ? currentPage :
       contextPicker.value.indexOf("item:") === 0
         ? { kind: contextPicker.value.split(":")[1], id: contextPicker.value.split(":")[2],
             label: choice.dataset.label } : contextPicker.value;
-    try { localStorage.setItem(contextKey(), JSON.stringify(chosenContext)); } catch (e) { /* private mode */ }
-    restoreContext();
+
     if (frame.contentWindow && frame.getAttribute("src") !== "about:blank") {
       frame.contentWindow.postMessage({ source: "alfred-shell", type: "context", value: selectedContext() }, location.origin);
     }
@@ -135,10 +132,12 @@
       destination.searchParams.set("context_kind", selected.kind);
       if (selected.id) { destination.searchParams.set("context_id", selected.id); }
     }
+    if (currentReferences !== null) { destination.searchParams.set("context_references", JSON.stringify(currentReferences)); }
     location.href = destination.pathname + destination.search;
   });
   newButton.addEventListener("click", function () {
     conversation = null;
+    currentReferences = null;
     restoreContext();
     try {
       sessionStorage.removeItem(threadKey);
@@ -170,6 +169,7 @@
           button.appendChild(age);
           button.addEventListener("click", function () {
             conversation = entry.conversation_id;
+            currentReferences = null;
             restoreContext();
             try { sessionStorage.setItem(threadKey, conversation); } catch (e) { /* private mode */ }
             frame.src = url();
@@ -211,14 +211,19 @@
     if (event.origin !== location.origin || event.source !== frame.contentWindow ||
         !event.data || event.data.source !== "alfred-assistant") { return; }
     if (event.data.type === "conversation" && typeof event.data.value === "string") {
-      var oldKey = contextKey();
       conversation = event.data.value;
       try { sessionStorage.setItem(threadKey, conversation); } catch (e) { /* private mode */ }
-      try {
-        if (!localStorage.getItem(contextKey())) {
-          localStorage.setItem(contextKey(), localStorage.getItem(oldKey) || '"page"');
-        }
-      } catch (e) { /* private mode */ }
+    }
+    if (event.data.type === "context-state" && Array.isArray(event.data.value)) {
+      currentReferences = event.data.value.map(function (item) { return { kind: item.kind, id: item.id }; });
+      var first = event.data.value[0];
+      chosenContext = first ? { kind: first.kind === "page" ? first.id : first.kind,
+        id: first.kind === "page" ? "" : first.id, label: first.label } : "none";
+      contextPicker.querySelectorAll('[value="pinned"]').forEach(function (option) { option.remove(); });
+      if (first) {
+        contextPicker.add(new Option("Selected: " + first.label + (event.data.value.length > 1 ? " + " + (event.data.value.length - 1) : ""), "pinned"));
+        contextPicker.value = "pinned";
+      } else { contextPicker.value = "none"; }
     }
     if (event.data.type === "close") { close(true); }
     if (event.data.type === "writes" && Array.isArray(event.data.value) && event.data.value.length) {

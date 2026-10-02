@@ -38,6 +38,7 @@
       </div>
     {% endif %}
     {% set composer_placeholder = 'Ask Wick about your workspace…' %}
+    {% set wick_panel = true %}
     {% include "_chat_composer.html" %}
     </div>
   </div>
@@ -48,5 +49,6 @@
           integrity="sha512-BdRNuI8/lsyxkKQVxK1lVtfZshggfXPAwEP+JAOJEKx6Y8SLfcBSRdaWyXQmMxo+wG180uFqXYGjGRL0mh4/Jw=="
           crossorigin="anonymous" referrerpolicy="no-referrer"></script>
   <script src="{{ url_for('static', filename='js/chat.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/wick_context.js') }}"></script>
 </body>
 </html>
