@@ -39,3 +39,14 @@ Reconcile the shared note mutation contracts first, then integrate structured pe
 Editing, explicit pin state and deletion now exist in `shared_resource/services/note_service.py`. Both database runtimes reuse owner-scoped SQL in `shared_resource/repositories/note_mutation_repository.py` via their own write executors. Dashboard adapters preserve note presentation, error mapping and delete return behavior. Note editing is full replacement: omitted title/tags clear that metadata, while paper linkage and pin state remain unchanged. Creation/editing reuse one bounded text/title/tag normalizer. Invalid non-text content/tags are rejected rather than coerced.
 
 No MCP mutation tools are added. Wick remains at 12 tools and Research at 13; structured approval and operation-specific exposure remain the next increment. Existing UI routes keep their capability and CSRF checks. No migration or environment change is required. Deploying Render makes the dashboard consume the shared implementation; new MCP artifacts include it but no server redeployment is needed solely for new behavior because there is no new registered tool.
+
+## Structured approvals (next increment)
+
+Existing Wick writes now pass a dashboard action policy before MCP I/O. Exact-call
+one-time approvals and revocable operation/target/endpoint grants are durable and
+owner scoped. Read access, context selection and model text never create grants.
+Run checkpoints preserve remaining tool calls across a pause without repeating
+completed calls. New note edit/pin/delete registrations remain a later increment;
+shared note mutation services from PR #29 are available but not exposed as tools.
+Research's existing write operations retain their current compatibility policy.
+See `deploy/DEPLOYMENT.md` for migration and live verification requirements.

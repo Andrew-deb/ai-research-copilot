@@ -329,3 +329,35 @@ After merge, wait for the assistant deployment branch publication, manually rede
 Shared note services now implement full edit, explicit pin/unpin and deletion. Dashboard routes keep their existing capability/CSRF enforcement and presentation; both runtimes use the same owner-filtered SQL with their own write executor. No MCP tools are registered for these mutations yet: Wick stays at 12 tools and Research at 13. Structured approval/tool exposure comes next.
 
 Merge and let Render’s existing Blueprint rebuild. No migration, new setting or Databricks redeploy is required for this foundation alone. Generated MCP artifacts contain the shared operations for later use; existing tool contracts do not change. Verify note editing/title/tag clearing, pin/unpin and deletion through the current UI, including foreign-owner refusal. Existing metadata limits remain, and malformed non-text inputs are rejected.
+
+### Wick structured approvals
+
+Apply `sql/27_agent_action_approvals.sql` **before merging/deploying** the dashboard
+approval change. Render's Blueprint then rebuilds the dashboard normally. No new
+environment variables or MCP registrations are introduced; Wick stays at 12 tools
+and Research at 13. Neither Databricks App requires redeployment for this dashboard
+increment. Future prompt bundles include the updated Wick guidance.
+
+The dashboard pauses before each unapproved Wick write and persists a private
+continuation. Allow once releases the exact tool/arguments once. Always allow is
+scoped to the current actor, Wick endpoint, operation and target (creation uses
+that user's workspace). Grants can be revoked at `/chat/permissions`, linked from
+Settings → Security. Current capabilities and resource ownership still apply.
+Read calls do not require approval. Research's existing write policy is unchanged.
+
+Approvals expire after 15 minutes and can be stopped. Closing the panel or a Render
+restart does not lose the checkpoint; reopening in the same browser session
+recovers the run. A decision is claimed transactionally before resumption, so a
+second click cannot repeat the approved call. Already completed writes are not
+rolled back. Interrupted/uncertain writes are not automatically retried; inspect
+workspace state before starting another run. Expired checkpoints are purged
+opportunistically when a later approval is saved, after a one-day retention buffer.
+
+Approval enforcement is at the platform's authenticated dashboard orchestration
+boundary. MCP servers still enforce their actor/resource policies; this does not
+add an approval protocol for independent trusted clients calling MCP directly.
+Live acceptance: approve once, approve a scoped grant, repeat the same operation,
+revoke and retry, decline, stop while paused, reopen the panel, and double-click a
+decision. Verify another user's proposal/grant is inaccessible and edits to the
+conversation while paused reject continuation. SQL transaction behavior and live
+OAuth/MCP writes need deployment verification; local transport tests are mocked.

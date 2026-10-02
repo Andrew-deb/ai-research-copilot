@@ -1004,3 +1004,8 @@
 .wick-selected-context { border-top: 1px solid var(--border); margin-top: 4px; padding-top: 4px; max-height: 140px; overflow-y: auto; }
 .wick-selected-context[hidden] { display: none; }
 .wick-context-menu .wick-context-remove { font-size: 12px; overflow-wrap: anywhere; }
+
+.chat-action-approval { padding: 18px; margin: 16px 0; border: 1px solid var(--border-strong); border-radius: 16px; background: var(--surface); text-align: left; }
+.chat-action-approval h3 { margin: 0 0 8px; }
+.chat-action-approval pre { max-height: 240px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
+.approval-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }

@@ -87,7 +87,7 @@
   }
   var completedWrites = [];
   var writeTools = ["create_collection", "add_paper_to_collection",
-    "remove_paper_from_collection", "generate_reading_plan", "mark_paper_status", "save_note", "create_note"];
+    "remove_paper_from_collection", "generate_reading_plan", "mark_paper_status", "save_note", "create_note", "create_learning_goal", "update_goal_status"];
   function tellParent(type, value) {
     if (embedded && window.parent !== window) {
       window.parent.postMessage({ source: "alfred-assistant", type: type, value: value }, window.location.origin);
@@ -96,6 +96,8 @@
   var stage = form.closest(".chat-stage") || form;
   var thread = document.getElementById("chat-thread");
   var pending = false;
+  var approvalRunId = null;
+  var approvalCard = null;
   var activeRunId = null;
   var stopRequested = false;
   var stopButton = form.querySelector(".composer-stop");
@@ -846,10 +848,12 @@
       if (!res.ok) { throw new Error("Could not request a stop."); }
       var result = await res.json();
       if (result.state === "completed") { stopButton.textContent = "Finishing…"; }
+      return true;
     } catch (err) {
       addNotice(err.message || "Could not request a stop.");
       stopRequested = false;
       setPending(true);
+      return false;
     }
   }
 
@@ -996,8 +1000,67 @@
     section.prepend(link);
   }
 
+  function showApproval(proposal) {
+    if (approvalCard) { approvalCard.remove(); }
+    approvalRunId = proposal.run_id;
+    rememberRun(approvalRunId);
+    var card = document.createElement("section");
+    card.className = "chat-action-approval"; card.setAttribute("role", "region");
+    card.setAttribute("aria-label", "Approve workspace action");
+    var title = document.createElement("h3"); title.textContent = proposal.label;
+    var target = document.createElement("p"); target.textContent = "Target: " + proposal.target_label;
+    var hint = document.createElement("p"); hint.textContent = "Review this change. Approval expires in 15 minutes. Always allow applies only to this operation and target.";
+    card.append(title, target, hint);
+    (proposal.display || []).forEach(function (item) {
+      var label = document.createElement("strong"); label.textContent = item.label;
+      var value = document.createElement("pre"); value.textContent = item.value;
+      card.append(label, value);
+    });
+    var buttons = document.createElement("div"); buttons.className = "approval-actions";
+    [["once", "Allow once"], ["always", "Always allow"], ["deny", "Decline"]].forEach(function (item) {
+      var button = document.createElement("button"); button.type = "button"; button.className = "btn btn-ghost";
+      button.textContent = item[1];
+      button.addEventListener("click", async function () {
+        if (pending) { return; }
+        buttons.querySelectorAll("button").forEach(function (b) { b.disabled = true; });
+        activeRunId = proposal.run_id; stopRequested = false; setPending(true);
+        var trace = createTrace();
+        try {
+          var res = await fetch("/chat/approvals/" + encodeURIComponent(proposal.approval_id), {
+            method: "POST", headers: {"Content-Type":"application/json", "X-CSRFToken":
+              (document.querySelector('meta[name="csrf-token"]') || {}).content || ""},
+            body: JSON.stringify({decision:item[0]})});
+          if (!res.ok) { throw new Error("This approval could not resume. It may have expired or already been decided. Check the run before retrying."); }
+          var result = await res.json();
+          card.remove(); approvalCard = null; approvalRunId = null; activeRunId = null; rememberRun(null);
+          finishTurn(result, trace, "");
+          var writes = (result.tool_calls || []).filter(function (call) {
+            return call.ok && writeTools.indexOf(call.name) >= 0;
+          }).map(function (call) { return call.name; });
+          if (embedded && writes.length) { tellParent("writes", writes); }
+        } catch (error) { trace.finish(); addNotice(error.message); await recoverRun(proposal.run_id); }
+        finally { if (!activeRunId || approvalRunId) { setPending(false); } buttons.querySelectorAll("button").forEach(function (b) { b.disabled = false; }); }
+      });
+      buttons.appendChild(button);
+    });
+    var cancel = document.createElement("button"); cancel.type = "button"; cancel.className = "btn btn-ghost";
+    cancel.textContent = "Stop this run";
+    cancel.addEventListener("click", async function () {
+      activeRunId = proposal.run_id;
+      if (!await requestStop(proposal.run_id)) { setPending(false); return; }
+      card.remove(); approvalCard=null; approvalRunId=null; rememberRun(null);setPending(false);
+    });
+    buttons.appendChild(cancel); card.appendChild(buttons);
+    var manage = document.createElement("a");manage.href="/chat/permissions";manage.target="_top";
+    manage.textContent="Manage Wick permissions";card.appendChild(manage);
+    form.parentNode.insertBefore(card, form);approvalCard=card;
+  }
+
   function finishTurn(result, trace, question) {
     trace.finish();
+    if (result.status === "awaiting_approval" && result.approval) {
+      rememberConversation(result, question); showApproval(result.approval); return;
+    }
     rememberConversation(result, question);
     if (result.answer) {
       var answer = addAnswer(result.answer);
@@ -1015,6 +1078,7 @@
   async function send(question, options) {
     options = options || {};
     if (pending) { return; }
+    if (approvalRunId) { addNotice("Decide or stop the pending action before sending another prompt."); return; }
     if (!options.action && window.WickContext && (embedded || page.dataset.chatMode === "wick")) {
       question = window.WickContext.formatPrompt(question);
       if (question.length > 2000) { addNotice("Shorten your prompt or remove a reference (2,000 characters including references)."); return; }
@@ -1044,7 +1108,7 @@
         try {
           var status = await fetch("/chat/runs/" + encodeURIComponent(activeRunId));
           var state = status.ok ? (await status.json()).state : null;
-          if (state && state !== "running" && state !== "stop_requested") {
+          if (state && state !== "running" && state !== "stop_requested" && state !== "awaiting_approval") {
             rememberRun(null);
           } else if (state === "running" || state === "stop_requested") {
             detached = true;
@@ -1302,6 +1366,11 @@
         return;
       }
       var state = (await res.json()).state;
+      if (state === "awaiting_approval") {
+        var proposalRes = await fetch("/chat/runs/" + encodeURIComponent(id) + "/approval");
+        if (proposalRes.ok) { showApproval((await proposalRes.json()).approval); }
+        setPending(false); return;
+      }
       if (state === "running" || state === "stop_requested") {
         stopRequested = state === "stop_requested";
         setPending(true);
@@ -1314,6 +1383,8 @@
         return;
       }
       rememberRun(null);
+      if (approvalCard) { approvalCard.remove(); approvalCard = null; }
+      approvalRunId = null;
       activeRunId = null;
       stopRequested = false;
       setPending(false);
