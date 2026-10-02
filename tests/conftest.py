@@ -631,6 +631,22 @@ def db(monkeypatch):
     """In-memory repository + stubbed embedding/LLM. Returns the FakeDB instance."""
     fake = FakeDB()
     from repositories import agent_runs, conversation_versions
+    from repositories import conversation_context
+    from services.assistant_context import shared_workspace
+    def context_read(owner, cid):
+        row = fake.get_conversation(owner, cid)
+        return row.get('wick_context') if row else None
+    def context_save(owner, cid, refs):
+        if fake.get_conversation(owner, cid):
+            fake.conversations[str(cid)]['wick_context'] = refs
+    monkeypatch.setattr(conversation_context, 'read', context_read)
+    monkeypatch.setattr(conversation_context, 'save', context_save)
+    monkeypatch.setattr(shared_workspace.queries, 'get_note', lambda db, owner, nid: fake.get_note(owner, nid))
+    monkeypatch.setattr(shared_workspace.queries, 'get_collection', lambda db, owner, cid:
+                        fake.get_collection(cid, owner) or fake.get_curated_collection(cid))
+    monkeypatch.setattr(shared_workspace.queries, 'collection_papers', lambda db, cid, limit, offset:
+                        fake.get_collection_papers(cid)[offset:offset + limit])
+    monkeypatch.setattr(shared_workspace.queries, 'paper_authors', lambda db, pid: [])
     runs = {}
 
     def run_create(run_id, owner):
