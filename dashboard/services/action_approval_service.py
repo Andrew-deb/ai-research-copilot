@@ -11,6 +11,7 @@ from services import assistant_context
 
 # Explicit policies for Wick's registered writes; no catch-all mutation tool.
 ACTIONS = {
+    'reorder_collection_papers': ('Reorder collection papers', 'collection', 'collection_id'),
     'create_collection': ('Create a collection', None, None),
     'create_note': ('Create a note', None, None),
     'edit_note': ('Replace note contents and metadata', 'note', 'note_id'),
@@ -87,7 +88,9 @@ def proposal(user_id, name, arguments):
     }
 
 
-def guard(user_id, name, arguments, checkpoint, permit=None):
+def guard(user_id, name, arguments, checkpoint, permit=None, mode="ask"):
+    if mode not in ("ask", "autonomous"):
+        raise ValidationError("Invalid approval mode.")
     """Re-resolve the target even for previously approved operations."""
     proposed = proposal(user_id, name, arguments)
     if permit and permit['fingerprint'] == proposed['fingerprint']:
@@ -101,6 +104,8 @@ def guard(user_id, name, arguments, checkpoint, permit=None):
             raise CapabilityDeniedError(
                 'The user declined this action. Do not retry it or substitute another mutation.',
                 requires_auth=False)
+        return
+    if mode == "autonomous":
         return
     if action_approvals.has_grant(user_id, proposed['scope_key']):
         return

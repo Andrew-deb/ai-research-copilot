@@ -1009,3 +1009,10 @@
 .chat-action-approval h3 { margin: 0 0 8px; }
 .chat-action-approval pre { max-height: 240px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
 .approval-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
+
+/* Permission control sits beside context; chat mode/send remain right-aligned. */
+.composer-footer:has(#wick-permission-picker:not([hidden])) .wick-context-controls { margin-right: 0; }
+#wick-permission-picker { margin-left: 0; margin-right: auto; }
+#wick-permission-picker[hidden] { display: none; }
+#wick-permission-picker .mode-pick { max-width: none; white-space: nowrap; }
+#wick-permission-picker .mode-pick-menu { left: 0; right: auto; max-width: calc(100vw - 48px); }

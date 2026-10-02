@@ -27,6 +27,15 @@
     <div class="composer-footer">
       {% include "_wick_context.html" %}
     {% endif %}
+    {% if is_authenticated and (chat_mode or wick_panel) %}
+    <div class="chat-mode-choice" id="wick-permission-picker" {{ 'hidden' if chat_mode != 'wick' and not wick_panel }}>
+      <button type="button" class="mode-pick" id="wick-permission" value="ask" aria-haspopup="listbox" aria-expanded="false" aria-label="Wick action permissions">Ask for approval ▾</button>
+      <div class="mode-pick-menu" role="listbox" aria-labelledby="wick-permission" hidden>
+        <button type="button" role="option" data-permission="ask" aria-selected="true"><span class="mode-pick-name">Ask for approval</span><span class="mode-pick-hint">Pause for unapproved writes; saved scoped permissions apply</span></button>
+        <button type="button" role="option" data-permission="autonomous" aria-selected="false"><span class="mode-pick-name">Autonomous</span><span class="mode-pick-hint">Allow supported workspace writes for subsequent runs here, including deletion. Ownership checks still apply.</span></button>
+      </div>
+    </div>
+    {% endif %}
     {% if chat_mode %}
       {# A button and a menu rather than a <select>.
 
