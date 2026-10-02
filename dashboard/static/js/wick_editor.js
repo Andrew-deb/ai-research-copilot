@@ -30,7 +30,7 @@
   }
   function atoms() { return Array.from(editor.querySelectorAll("[data-reference-kind]")); }
   function references() { return atoms().map(itemFromNode); }
-  function writeValue() { nativeValue.set.call(input, serialize(editor)); editor.dataset.empty = String(!serialize(editor, true).trim()); }
+  function writeValue() { nativeValue.set.call(input, serialize(editor)); editor.dataset.empty = String(!serialize(editor, true).trim() && !atoms().length); }
   function notify() { writeValue(); input.dispatchEvent(new Event("input", { bubbles: true })); }
   function referenceNode(item) {
     var link = document.createElement("a"), destination = window.WickMentions.href(item);
