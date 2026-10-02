@@ -20,7 +20,9 @@
   var activeQuery = "", activeKind = "", category = "assets", saveChain = Promise.resolve();
   var menu = document.getElementById("wick-context-menu");
   var plus = document.getElementById("wick-add-context");
-  var timer = null;
+  var timer = null, inlineBefore = [];
+  var selectedMenu = document.getElementById("wick-selected-context");
+  function key(item) { return item.kind + ":" + item.id; }
   function references() { return selected.map(function (item) { return { kind: item.kind, id: item.id }; }); }
   function tellShell() {
     if (window.parent !== window) {
@@ -29,6 +31,16 @@
   }
   function render() {
     editor.sync(selected);
+    inlineBefore = editor.references().map(key);
+    selectedMenu.replaceChildren(); selectedMenu.hidden = !selected.length;
+    selected.forEach(function (item) {
+      var row = document.createElement("button"); row.type = "button"; row.setAttribute("role", "menuitem");
+      row.className = "wick-context-remove"; row.textContent = "× " + item.label;
+      row.setAttribute("aria-label", "Remove context: " + item.label);
+      row.addEventListener("click", function () { selected = selected.filter(function (value) { return key(value) !== key(item); }); render(); persist(); });
+      selectedMenu.appendChild(row);
+    });
+    plus.title = selected.length ? "Add context (" + selected.length + " selected; manage in menu)" : "Add context";
     tellShell();
   }
   function persist() {
@@ -83,7 +95,7 @@
   }
   function categories() {
     closePicker(); menu.hidden = false; plus.setAttribute("aria-expanded", "true");
-    menu.dataset.up = window.innerHeight - plus.getBoundingClientRect().bottom < 130 ? "true" : "false";
+    menu.dataset.up = window.innerHeight - plus.getBoundingClientRect().bottom < menu.offsetHeight + 12 ? "true" : "false";
   }
   function chooseCategory(value, shortcut) {
     category = value; menu.hidden = true; dialog.hidden = false;
@@ -98,6 +110,7 @@
     search(false); if (!shortcut) { query.focus(); }
   }
   function formTop() { return document.getElementById("chat-composer").getBoundingClientRect().top; }
+  controls.addEventListener("pointerdown", function () { editor.remember(); }, true);
   plus.addEventListener("click", function () { menu.hidden && dialog.hidden ? categories() : closePicker(); });
   menu.querySelectorAll("[data-context-category]").forEach(function (button) {
     button.addEventListener("click", function () { chooseCategory(button.dataset.contextCategory); });
@@ -131,7 +144,10 @@
   input.addEventListener("input", function () {
     if (controls.hidden || editor.composing()) { return; }
     var remaining = editor.references();
-    var nextSelected = selected.filter(function (item) { return remaining.some(function (value) { return value.kind === item.kind && value.id === item.id; }); });
+    var remainingKeys = remaining.map(key);
+    var removed = inlineBefore.filter(function (value) { return remainingKeys.indexOf(value) < 0; });
+    var nextSelected = selected.filter(function (item) { return removed.indexOf(key(item)) < 0; });
+    inlineBefore = remainingKeys;
     if (nextSelected.length !== selected.length) { selected = nextSelected; render(); persist(); }
     var trigger = editor.shortcut();
     if (trigger) {
@@ -140,6 +156,7 @@
       query.value = trigger.query; clearTimeout(timer); timer = setTimeout(function () { search(false); }, 200);
     } else if (shortcutOpen) { closePicker(); }
   });
+  document.addEventListener("wick:editor-reset", function () { inlineBefore = editor.references().map(key); });
   var mode = document.getElementById("chat-mode");
   if (mode) { mode.addEventListener("change", function () { controls.hidden = mode.value !== "wick"; closePicker(); }); }
   document.addEventListener("wick:conversation", persist);
@@ -149,7 +166,7 @@
     selected = item ? [{ kind: item.id ? item.kind : "page", id: item.id || item.kind, label: item.label }] : [];
     render(); persist();
   });
-  window.WickContext = { references: references, formatPrompt: function (text) { return window.WickMentions.format(text, selected); }, ready: function () { return saveChain; } };
+  window.WickContext = { references: references, formatPrompt: function (text) { return text; }, ready: function () { return saveChain; } };
   editor.references().forEach(function (item) {
     if (selected.length < 5 && !selected.some(function (value) { return value.kind === item.kind && value.id === item.id; })) { selected.push(item); }
   });
