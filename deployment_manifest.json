@@ -29,7 +29,7 @@
     "shared_resource/services/progress_service.py": "bd374dcdd9b7b5d63663ce635a6e88bfc5c1dc7f052374156da63c9961da273d",
     "shared_resource/services/workspace_service.py": "13aa4b8127c3c53b2a53364bf6407e04aabc5e72d98b4f64e978840e4b01d172"
   },
-  "source_revision": "ec32c95c1b9bbbea22220db6de805611828d6e90",
+  "source_revision": "f63c53c5a2b22f91331e9cc71039ac999a8463a4",
   "target": "assistant",
   "tools": [
     "add_paper_to_collection",
