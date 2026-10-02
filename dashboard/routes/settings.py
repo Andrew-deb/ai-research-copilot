@@ -40,6 +40,10 @@ def page():
         section=section if section in _SECTIONS else "preferences",
         data=settings_service.overview(
             user_id, current_tier(), session.get(SESSION_TOKEN_KEY)),
+        # Composed here rather than inside settings_service: usage_service
+        # already imports settings_service for its labels, and having them
+        # import each other is a cycle waiting for an unlucky import order.
+        today=usage_service.today(user_id, current_tier()),
         fields_shown=onboarding_service.FIELDS_SHOWN,
         fields_more=onboarding_service.FIELDS_MORE,
         primary_goals=onboarding_service.PRIMARY_GOALS,
