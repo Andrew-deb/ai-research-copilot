@@ -48,6 +48,8 @@ os.environ["DATABRICKS_HOST"] = ""
 os.environ["DATABRICKS_CLIENT_ID"] = ""
 os.environ["DATABRICKS_CLIENT_SECRET"] = ""
 os.environ["MCP_SERVER_URL"] = ""
+os.environ["RESEARCH_MCP_SERVER_URL"] = ""
+os.environ["WICK_MCP_SERVER_URL"] = ""
 
 import pytest
 

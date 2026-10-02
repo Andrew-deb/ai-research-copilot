@@ -87,8 +87,8 @@ def _get_json(url: str, timeout: float = 5.0) -> dict:
         return json.loads(resp.read())
 
 
-def _rpc(url: str, method: str, timeout: float = 10.0) -> dict:
-    payload = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": {}}).encode()
+def _rpc(url: str, method: str, timeout: float = 10.0, params=None) -> dict:
+    payload = json.dumps({"jsonrpc": "2.0", "id": 1, "method": method, "params": params or {}}).encode()
     req = urllib.request.Request(
         url, data=payload,
         headers={"Content-Type": "application/json", "Accept": "application/json, text/event-stream"},
@@ -97,26 +97,33 @@ def _rpc(url: str, method: str, timeout: float = 10.0) -> dict:
         return json.loads(resp.read())
 
 
-@pytest.fixture(scope="module")
-def flattened_server(tmp_path_factory):
+@pytest.fixture(scope="module", params=["research_mcp_server", "assistant.server", "built-research", "built-assistant"])
+def flattened_server(tmp_path_factory, request):
     """Copy mcp_server/'s *contents* to a temp root (what Databricks does) and run it."""
     pytest.importorskip("mcp.server.fastmcp", reason="needs mcp<2 (FastMCP 1.x API)")
 
     root = tmp_path_factory.mktemp("source_code")
-    shutil.copytree(MCP_DIR, root, dirs_exist_ok=True,
-                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+    if request.param.startswith("built-"):
+        from tests.test_deployment_packaging import load_builder
+        target = request.param.removeprefix("built-")
+        root = load_builder().build(target, root)
+        entrypoint = "research.server" if target == "research" else "assistant.server"
+    else:
+        shutil.copytree(MCP_DIR, root, dirs_exist_ok=True,
+                        ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".env"))
+        entrypoint = request.param
 
     port = _free_port()
     env = {
         "PATH": "", "SYSTEMROOT": "", "PYTHONUNBUFFERED": "1",
-        "MCP_TRANSPORT": "streamable-http", "DATABRICKS_APP_PORT": str(port),
+        "DATABASE_URL": "", "MCP_TRANSPORT": "streamable-http", "DATABRICKS_APP_PORT": str(port),
     }
     import os
     env = {**os.environ, **env, "PATH": os.environ.get("PATH", ""),
            "SYSTEMROOT": os.environ.get("SYSTEMROOT", "")}
 
     proc = subprocess.Popen(
-        [sys.executable, "-m", "research_mcp_server"],
+        [sys.executable, "-m", entrypoint],
         cwd=str(root), env=env,
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
     )
@@ -148,17 +155,77 @@ def test_health_routes_answer(flattened_server):
     assert _get_json(f"{flattened_server}/healthz")["status"] == "ok"
     root = _get_json(f"{flattened_server}/")
     assert root["status"] == "ok"
-    assert root["server"] == "ai-research-copilot"
+    assert root["server"] in ("ai-research-copilot", "wick-workspace")
 
 
 def test_serves_thirteen_tools_from_flattened_layout(flattened_server):
     result = _rpc(f"{flattened_server}/mcp", "tools/list")
     names = {t["name"] for t in result["result"]["tools"]}
-    assert names == EXPECTED_TOOLS
-    assert len(names) == 13
+    expected = EXPECTED_TOOLS if _get_json(flattened_server + "/")["server"] == "ai-research-copilot" else {
+        "find_workspace_resources", "get_workspace_resource", "get_workspace_paper",
+        "get_reading_progress", "create_collection", "add_paper_to_collection",
+        "remove_paper_from_collection", "mark_paper_status", "create_note",
+    }
+    assert names == expected
 
 
 def test_no_stray_health_tool(flattened_server):
     # A `health` *tool* would mean the Databricks sample server is deployed, not ours.
     names = {t["name"] for t in _rpc(f"{flattened_server}/mcp", "tools/list")["result"]["tools"]}
     assert names.isdisjoint({"health", "healthz", "ping", "status"})
+
+
+def test_research_adapters_and_bulk_ordering_remain_deployable():
+    """Exercise legacy service names in their own interpreter, with no database."""
+    script = '''
+from unittest.mock import Mock
+from shared_resource.exceptions import ValidationError as SharedValidationError
+from exceptions import ValidationError
+from services import collection_service, progress_service, planning_service
+from repositories import lakebase
+
+assert ValidationError is SharedValidationError
+lakebase.get_collection = Mock(return_value={"user_id": "owner"})
+lakebase.get_paper = Mock(return_value={"paper_id": "paper", "title": "Paper"})
+lakebase.get_collection_papers = Mock(return_value=[
+    {"paper_id": "paper", "title": "Paper", "publication_year": 2020}])
+lakebase.add_paper_to_collection = Mock()
+lakebase.save_note = Mock(return_value={"note_id": "note", "note_text": "Body", "created_at": "now"})
+lakebase.run_write = Mock()
+
+membership = collection_service.add_paper_to_collection("collection", "paper", 4, "owner")
+assert membership["sequence_order"] == 4
+lakebase.add_paper_to_collection.assert_called_once_with("collection", "paper", 4)
+assert progress_service.save_note("owner", "paper", " Body ")["note_text"] == "Body"
+lakebase.save_note.assert_called_once_with(user_id="owner", paper_id="paper", note_text="Body")
+
+plan = planning_service.generate_reading_plan("collection", "owner")
+assert plan["reading_plan"][0]["paper_id"] == "paper"
+assert lakebase.run_write.call_count == 1
+sql, parameters = lakebase.run_write.call_args.args
+assert "unnest" in sql
+assert parameters == (["paper"], [1], "collection")
+lakebase.run_write.reset_mock()
+lakebase.update_paper_orders("collection", [])
+lakebase.run_write.assert_not_called()
+
+lakebase.create_learning_goal = Mock(return_value={"goal_id": "goal"})
+assert planning_service.create_learning_goal("owner", " Goal ")["goal_id"] == "goal"
+lakebase.create_learning_goal.assert_called_once_with(user_id="owner", title="Goal", description=None)
+lakebase.get_notes_for_paper = Mock(return_value=[{"note_id": "note"}])
+assert progress_service.get_notes_for_paper("owner", "paper") == [{"note_id": "note"}]
+lakebase.get_notes_for_paper.assert_called_once_with(user_id="owner", paper_id="paper")
+'''
+    subprocess.run([sys.executable, "-c", script], cwd=MCP_DIR, check=True,
+                   capture_output=True, text=True)
+
+
+def test_wick_protocol_refuses_research_and_anonymous_personal_actions(flattened_server):
+    if _get_json(flattened_server + "/")["server"] != "wick-workspace":
+        return
+    for name, arguments in (("search_papers", {"query": "transformers"}),
+                            ("create_note", {"note_text": "Body"}),
+                            ("get_reading_progress", {})):
+        result = _rpc(flattened_server + "/mcp", "tools/call",
+                      params={"name": name, "arguments": arguments})
+        assert result["result"]["isError"]

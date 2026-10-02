@@ -31,3 +31,7 @@ This layer encapsulates all business logic, validation rules, multi-broker orche
 ### 4. Typed Domain Exception Contracts
 * When validation or entity lookups fail, services raise typed exceptions from `exceptions.py` (e.g., `PaperNotFoundError`, `ValidationError`, `CollectionNotFoundError`).
 * These bubble up to the MCP error handler without requiring repetitive `try/except` blocks across every function.
+Collection, planning, and progress modules are now compatibility adapters over
+[`shared_resource`](../shared_resource/README.md). They supply the repository explicitly;
+the domain package does not import this runtime's configuration or identity.
+Research's registered tools and existing deployment root remain unchanged.

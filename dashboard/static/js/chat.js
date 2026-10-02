@@ -87,7 +87,7 @@
   }
   var completedWrites = [];
   var writeTools = ["create_collection", "add_paper_to_collection",
-    "remove_paper_from_collection", "generate_reading_plan", "mark_paper_status", "save_note"];
+    "remove_paper_from_collection", "generate_reading_plan", "mark_paper_status", "save_note", "create_note"];
   function tellParent(type, value) {
     if (embedded && window.parent !== window) {
       window.parent.postMessage({ source: "alfred-assistant", type: type, value: value }, window.location.origin);
@@ -328,6 +328,15 @@
 
   function prettyTool(name) {
     return {
+      find_workspace_resources: "Finding workspace assets",
+      get_workspace_resource: "Reading workspace context",
+      get_workspace_paper: "Reading a saved paper",
+      get_reading_progress: "Checking reading progress",
+      create_note: "Creating a note",
+      create_collection: "Creating a collection",
+      add_paper_to_collection: "Adding a paper",
+      remove_paper_from_collection: "Removing a paper",
+      mark_paper_status: "Updating reading status",
       search_papers: "Searching papers",
       get_paper_details: "Reading a paper",
       get_similar_papers: "Finding related work",
