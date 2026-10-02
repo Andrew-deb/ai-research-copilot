@@ -123,9 +123,12 @@ def today(user_id: str, tier: str) -> dict:
                 # Clamped: a limit lowered after somebody has already spent more
                 # than it should not render a bar past its own end.
                 "percent": min(round(used / limit * 100), 100) if limit else 0,
-                "breakdown": (_breakdown(metric, split)
-                              if metric in SHARED_ALLOWANCES else []),
             })
+
+        for row in rows:
+            row["breakdown"] = (_breakdown(row, split)
+                                if row["metric"] in SHARED_ALLOWANCES else [])
+
         return {"metered": True,
                 "rows": sorted(rows, key=lambda r: r["label"])}
 
@@ -135,15 +138,21 @@ def today(user_id: str, tier: str) -> dict:
         logger.warning("Today's usage unavailable: %s", exc)
         return {"metered": False, "rows": [], "unavailable": True}
 
+    busiest = max((row["operations"] or 0) for row in counted) if counted else 0
+
     rows = [{
         "metric": row["metric"],
         "feature": _feature_of(row["metric"], row.get("mode")),
         "label": _label(row["metric"], row.get("mode")),
         "used": row["operations"] or 0,
-        # No limit, so no bar and no "of N". The number stands on its own.
+        # No limit, so no "of N". The bar is RELATIVE — each feature against the
+        # busiest one today — which compares rather than measures. A bar against
+        # an invented ceiling would measure against nothing.
         "limit": None,
         "left": None,
-        "percent": 0,
+        "percent": (round((row["operations"] or 0) / busiest * 100)
+                    if busiest else 0),
+        "breakdown": [],
     } for row in counted]
 
     return {"metered": False, "rows": rows}
@@ -164,30 +173,45 @@ def _today_by_feature(user_id: str) -> list[dict]:
         return []
 
 
-def _breakdown(metric: str, split: list[dict]) -> list[dict]:
+def _breakdown(row: dict, split: list[dict]) -> list[dict]:
     """
-    What a shared allowance was spent on, largest first.
+    What a shared allowance was spent on — as segments of its own bar.
 
-    Counts come from `ai_operations` while the bar above comes from
-    `usage_counters`, and the two can disagree: a request refused by the quota
-    increments the counter and never reaches the telemetry. So the page phrases
-    this as what was recorded, not as a decomposition of the bar.
+    One allowance, so one bar. Giving Wick a bar of its own would draw a second
+    quota that does not exist; dividing the one bar shows the same information
+    without inventing an allowance.
+
+    Each segment's width is its SHARE of the recorded activity, applied to the
+    bar's fill — not its raw count. The two numbers come from different tables
+    and can legitimately differ: a request refused by the quota increments
+    `usage_counters` and never reaches `ai_operations`, and toggling metering
+    off does the reverse. Scaling by share keeps the segments summing to the
+    bar whatever the totals do, so the picture never contradicts the number
+    printed beside it.
+
+    The counts in the legend stay as recorded, because those are a fact. Only
+    the geometry is scaled.
 
     Returns nothing when there is nothing to tell apart — one feature, and that
-    feature the one a reader would already assume. "4 Research agent" under a
-    bar labelled Agent questions is the same sentence twice. "4 Wick" is not.
+    feature the one a reader would already assume. "8 Research agent" under a
+    bar labelled Agent questions is the same sentence twice. "8 Wick" is not.
     """
     parts = sorted(
-        ({"feature": _feature_of(row["metric"], row.get("mode")),
-          "label": _label(row["metric"], row.get("mode")),
-          "used": row["operations"] or 0}
-         for row in split
-         if row["metric"] == metric and (row["operations"] or 0)),
+        ({"feature": _feature_of(item["metric"], item.get("mode")),
+          "label": _label(item["metric"], item.get("mode")),
+          "used": item["operations"] or 0}
+         for item in split
+         if item["metric"] == row["metric"] and (item["operations"] or 0)),
         key=lambda part: -part["used"],
     )
 
     if len(parts) == 1 and parts[0]["feature"] == "research":
         return []
+
+    recorded = sum(part["used"] for part in parts)
+    for part in parts:
+        part["percent"] = (round(part["used"] / recorded * row["percent"], 2)
+                           if recorded else 0)
     return parts
 
 
