@@ -6,9 +6,9 @@ Audited against the note, goal and collection dashboard workflows on 2 October 2
 | --- | --- | --- | --- |
 | Create standalone/paper-linked note with title/tags | `note_service.create_note` | Existing `create_note` | Preserve bounded content and returned saved metadata |
 | Read/find notes | Workspace discovery/read services | Existing workspace tools | No new read tool needed |
-| Edit note body/title/tags | Rich dashboard operation; absent from shared note service | Not exposed | Extract validated owner-scoped operation, reconcile result/error contracts, and define overwrite approval |
-| Pin/unpin note | Dashboard operation; absent from shared note service | Not exposed | Extract owner-scoped operation before adding a focused tool |
-| Delete note | Dashboard operation; absent from shared note service | Not exposed | Extract persistence/service contract; structured destructive-action approval first |
+| Edit note body/title/tags | Shared owner-scoped note operation; dashboard delegates to it | Not exposed | Shared operation extracted; define overwrite approval before tool exposure |
+| Pin/unpin note | Shared owner-scoped note operation; dashboard delegates to it | Not exposed | Shared operation extracted; decide focused tool exposure with permissions |
+| Delete note | Shared owner-scoped note operation; dashboard delegates to it | Not exposed | Shared persistence/service contract extracted; structured destructive-action approval before tool exposure |
 | Create learning goal | `goal_service.create_learning_goal` | New tool of the same name | Shared title/description validation also used by dashboard |
 | Change goal status | `goal_service.update_goal_status` | New tool of the same name | Require explicit instruction; resolve exact owned target; active/completed/archived only |
 | Find/read goals | Workspace discovery/read services | Existing workspace tools | No duplicate goal-list/detail tool needed; no automatic semantic matching |
@@ -33,3 +33,9 @@ Publish the updated assistant artifact and deploy Wick, and rebuild/restart Rend
 ## Next increment
 
 Reconcile the shared note mutation contracts first, then integrate structured permissions before destructive/overwrite tool exposure. Collection reorder should preserve a validated complete order, use a single atomic write, and reject unknown/duplicate paper IDs. Do not import Flask services into MCP or duplicate business logic in tool registration.
+
+## Shared note-mutation foundation
+
+Editing, explicit pin state and deletion now exist in `shared_resource/services/note_service.py`. Both database runtimes reuse owner-scoped SQL in `shared_resource/repositories/note_mutation_repository.py` via their own write executors. Dashboard adapters preserve note presentation, error mapping and delete return behavior. Note editing is full replacement: omitted title/tags clear that metadata, while paper linkage and pin state remain unchanged. Creation/editing reuse one bounded text/title/tag normalizer. Invalid non-text content/tags are rejected rather than coerced.
+
+No MCP mutation tools are added. Wick remains at 12 tools and Research at 13; structured approval and operation-specific exposure remain the next increment. Existing UI routes keep their capability and CSRF checks. No migration or environment change is required. Deploying Render makes the dashboard consume the shared implementation; new MCP artifacts include it but no server redeployment is needed solely for new behavior because there is no new registered tool.

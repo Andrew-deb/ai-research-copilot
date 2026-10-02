@@ -11,6 +11,12 @@ paginated listing queries optimised for UI rendering.
 
 import json
 import logging
+
+try:
+    from shared_resource.repositories import note_mutation_repository as note_mutations
+except ModuleNotFoundError:
+    from mcp_server.shared_resource.repositories import note_mutation_repository as note_mutations
+
 import os
 import time
 import threading
@@ -913,25 +919,6 @@ def search_notes(user_id: str, query: str | None = None,
     )
 
 
-def set_note_pinned(user_id: str, note_id: str, pinned: bool) -> dict | None:
-    """
-    Pin or unpin. Returns None when the note is not this person's.
-
-    The wanted state is passed in rather than toggled here: a toggle computed
-    from what the page last saw goes wrong the moment two tabs disagree, and
-    the caller always knows which way it meant.
-    """
-    return run_write(
-        """
-        UPDATE notes SET pinned = %s
-         WHERE note_id = %s AND user_id = %s
-        RETURNING *;
-        """,
-        (pinned, note_id, user_id),
-        returning=True,
-    )
-
-
 def get_note_tags(user_id: str) -> list[dict]:
     """
     Every tag this person uses, with how many notes carry it.
@@ -954,37 +941,18 @@ def get_note_tags(user_id: str) -> list[dict]:
 
 def update_note(user_id: str, note_id: str, note_text: str,
                 title: str | None = None, tags: list[str] | None = None) -> dict | None:
-    """
-    Revise a note. Returns None when it is not this person's to revise.
+    """Owner-scoped full note replacement through the shared persistence contract."""
+    return note_mutations.update_note(run_write, user_id, note_id, note_text, title, tags)
 
-    The owner is in the WHERE clause rather than checked beforehand: a read,
-    then a decision, then a write is three steps with room between them, and
-    only the database can make the check and the change the same act. A note
-    belonging to somebody else simply matches nothing.
-    """
-    return run_write(
-        """
-        UPDATE notes SET note_text = %s, title = %s, tags = %s, updated_at = now()
-         WHERE note_id = %s AND user_id = %s
-        RETURNING *;
-        """,
-        (note_text, title, tags or [], note_id, user_id),
-        returning=True,
-    )
+
+def set_note_pinned(user_id: str, note_id: str, pinned: bool) -> dict | None:
+    """Set explicit owner-scoped pin state through shared persistence."""
+    return note_mutations.set_note_pinned(run_write, user_id, note_id, pinned)
 
 
 def delete_note(user_id: str, note_id: str) -> bool:
-    """
-    Remove a note. True when one was removed, False when there was none to
-    remove — which covers both "already gone" and "never yours", deliberately:
-    telling a stranger which of those it was reveals that the note exists.
-    """
-    row = run_write(
-        "DELETE FROM notes WHERE note_id = %s AND user_id = %s RETURNING note_id;",
-        (note_id, user_id),
-        returning=True,
-    )
-    return row is not None
+    """Missing and foreign notes both return false."""
+    return note_mutations.delete_note(run_write, user_id, note_id)
 
 
 def get_note(user_id: str, note_id: str) -> dict | None:
