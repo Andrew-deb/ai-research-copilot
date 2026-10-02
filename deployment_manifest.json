@@ -2,7 +2,7 @@
   "files": {
     "app.yaml": "743e1ba52b7560fff858d339bc6d7ecb3e6bf2fde3b42b039ffd7be11d51a279",
     "assistant/__init__.py": "ce3467102aaeeb67a0c9e4a52a1326ba71532d32a99f5b597c6252edba1f2965",
-    "assistant/server.py": "3368dedadfb2ec49ff0481a755b777d5489209a49876c8ce3ab8b60d8837056b",
+    "assistant/server.py": "81f4894c04e710a450e82c6bd5debb49391b38e4d85b19c9cf8d4a1f3e1d8907",
     "requirements.txt": "302bd2fbcefc67cb5dfab6f7b9215573f6e556169edbab32a4ca32c316eb0ab7",
     "shared_resource/__init__.py": "26d778e931ab33ca88232c36a319d7dd709d9090fe25a8d47b8b1927eb62af5b",
     "shared_resource/adapters/__init__.py": "923dc59ee7aa518c3b67c7811b8b8bbf0390ac2973f8b691f63cafb3efe22caf",
@@ -32,13 +32,15 @@
     "shared_resource/services/progress_service.py": "bd374dcdd9b7b5d63663ce635a6e88bfc5c1dc7f052374156da63c9961da273d",
     "shared_resource/services/workspace_service.py": "13aa4b8127c3c53b2a53364bf6407e04aabc5e72d98b4f64e978840e4b01d172"
   },
-  "source_revision": "c4e88a68859a6d40d70c2580df473f6d829e9ebf",
+  "source_revision": "d43ebd48a827041bede8cb0ed81d72c8b5a7849f",
   "target": "assistant",
   "tools": [
     "add_paper_to_collection",
     "create_collection",
     "create_learning_goal",
     "create_note",
+    "delete_note",
+    "edit_note",
     "find_workspace_resources",
     "get_reading_progress",
     "get_workspace_paper",
@@ -46,6 +48,7 @@
     "mark_paper_status",
     "remove_paper_from_collection",
     "search_workspace_papers",
+    "set_note_pinned",
     "update_goal_status"
   ]
 }
