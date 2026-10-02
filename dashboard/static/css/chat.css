@@ -958,15 +958,38 @@
   cursor: pointer; }
 .composer-footer .composer-send, .composer-footer .composer-stop { margin-left: 0; }
 
-.wick-context-controls { margin: 6px 0; }
-#wick-context-chips { display: flex; gap: 6px; flex-wrap: wrap; }
-#wick-context-status { font-size: 12px; color: var(--text-muted); margin: 4px 0; }
-.wick-asset-picker { width: min(640px, calc(100vw - 32px)); max-height: 80vh; padding: 20px; border: 1px solid var(--border); border-radius: 16px; background: var(--surface); color: var(--text); }
-.wick-asset-picker::backdrop { background: rgb(0 0 0 / 45%); }
-.wick-asset-heading, .wick-asset-search { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.wick-asset-heading { justify-content: space-between; }
-.wick-asset-search input { flex: 1; min-width: 160px; }
-#wick-asset-results { max-height: 40vh; overflow-y: auto; }
-.wick-asset-result { display: flex; flex-direction: column; text-align: left; width: 100%; padding: 12px; gap: 5px; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: inherit; cursor: pointer; }
-.wick-asset-result span { font-size: 12px; color: var(--text-muted); }
-.wick-asset-result:disabled { opacity: .5; cursor: default; }
+/* Compact contextual controls share the composer's bottom action row. */
+.composer-with-mode { position: relative; }
+.wick-context-controls { position: relative; flex: none; margin-right: auto; }
+.wick-context-controls[hidden], .wick-context-references[hidden], .wick-context-menu[hidden], .wick-asset-picker[hidden], .wick-asset-types[hidden] { display: none; }
+.wick-context-plus { width: 32px; height: 32px; padding: 0; border: 0; border-radius: 8px; background: transparent; color: var(--text-muted); font: inherit; font-size: 24px; cursor: pointer; }
+.wick-context-plus:hover, .wick-context-plus[aria-expanded="true"] { color: var(--text); background: var(--surface-2); }
+.wick-context-plus:focus-visible { outline: 2px solid var(--brand); }
+.wick-context-menu, .wick-asset-picker { position: absolute; left: 0; z-index: 60; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+.wick-context-menu { top: calc(100% + 6px); width: 190px; padding: 6px; }
+.wick-context-menu[data-up="true"] { top: auto; bottom: calc(100% + 6px); }
+.wick-context-menu button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; border-radius: 6px; cursor: pointer; }
+.wick-context-menu button:hover, .wick-context-menu button:focus-visible { background: var(--surface-2); }
+.wick-context-menu button span { width: 20px; text-align: center; }
+.wick-asset-picker { width: min(380px, calc(100vw - 52px)); bottom: calc(100% + 8px); padding: 8px; overflow-y: auto; }
+.wick-asset-heading { display: flex; align-items: center; gap: 8px; padding: 3px 0 8px; }
+.wick-asset-heading strong { flex: 1; font-size: 13px; }
+.wick-asset-heading button { border: 0; background: transparent; color: var(--text-muted); font: inherit; font-size: 20px; cursor: pointer; }
+.wick-asset-search input { width: 100%; min-width: 0; padding: 8px 10px; font-size: 13px; }
+.wick-asset-types { display: flex; gap: 3px; flex-wrap: wrap; margin-top: 6px; }
+.wick-asset-types button { border: 0; padding: 4px 6px; font: inherit; font-size: 11px; color: var(--text-muted); background: transparent; border-radius: 6px; cursor: pointer; }
+.wick-asset-types button[aria-pressed="true"] { color: var(--text); background: var(--surface-2); }
+#wick-asset-status { font-size: 12px; color: var(--text-muted); margin: 7px 5px; }
+#wick-asset-results { max-height: 240px; overflow-y: auto; }
+.wick-asset-result { display: flex; flex-direction: column; text-align: left; width: 100%; padding: 9px; gap: 3px; border: 0; border-radius: 6px; background: transparent; color: inherit; cursor: pointer; }
+.wick-asset-result:hover, .wick-asset-result:focus-visible { background: var(--surface-2); }
+.wick-asset-result strong { font-size: 13px; overflow-wrap: anywhere; }
+.wick-asset-result span { font-size: 11px; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.wick-asset-result:disabled { opacity: .45; cursor: default; }
+.wick-context-references { display: flex; flex-wrap: wrap; gap: 6px; }
+.wick-context-references:empty { display: none; }
+.wick-reference { display: inline-flex; align-items: center; min-width: 0; max-width: 100%; gap: 4px; font-size: 12px; }
+.wick-reference a, .wick-reference > span { color: var(--brand); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wick-reference button { border: 0; padding: 2px 4px; background: transparent; color: var(--text-muted); cursor: pointer; }
+.wick-prompt-reference { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
+.note-item:target, .goal-item:target { outline: 2px solid var(--brand); outline-offset: 3px; scroll-margin-top: 90px; }

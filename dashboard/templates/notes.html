@@ -159,7 +159,7 @@
                the RENDERING, and editing from that would save the rendered
                text back over the source that produced it. #}
             <li class="note-item"
-                data-note-id="{{ note.note_id }}"
+                id="note-{{ note.note_id }}" data-note-id="{{ note.note_id }}"
                 data-note-title="{{ note.title or '' }}"
                 data-note-body="{{ note.note_text }}"
                 data-note-tags="{{ note.tags | join(', ') }}"

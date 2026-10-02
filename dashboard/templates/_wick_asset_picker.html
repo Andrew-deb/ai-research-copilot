@@ -1,12 +1,12 @@
-<dialog id="wick-asset-picker" class="wick-asset-picker" aria-labelledby="wick-asset-title">
-  <div class="wick-asset-heading"><h2 id="wick-asset-title">Add workspace context</h2><button type="button" id="wick-asset-close" aria-label="Close context picker">×</button></div>
-  <p>Choose up to five items. Wick reads bounded previews; selecting context does not authorize changes.</p>
+<div id="wick-asset-picker" class="wick-asset-picker" role="dialog" aria-modal="false" aria-labelledby="wick-asset-title" hidden>
+  <div class="wick-asset-heading"><button type="button" id="wick-asset-back" aria-label="Back to categories">‹</button><strong id="wick-asset-title">Assets</strong><button type="button" id="wick-asset-close" aria-label="Close context picker">×</button></div>
   <div class="wick-asset-search">
-    <input id="wick-asset-query" type="search" maxlength="300" placeholder="Search workspace assets" aria-label="Search workspace assets">
-    <select id="wick-asset-kind" aria-label="Asset type"><option value="">All types</option><option value="paper">Papers</option><option value="note">Notes</option><option value="collection">Collections</option><option value="goal">Goals</option><option value="page">Pages</option></select>
-    <button type="button" id="wick-asset-search" class="btn btn-sm">Search</button>
+    <input id="wick-asset-query" type="search" maxlength="300" placeholder="Search assets" aria-label="Search context">
+    <div id="wick-asset-kind" class="wick-asset-types" aria-label="Asset type">
+      <button type="button" data-kind="" aria-pressed="true">All</button><button type="button" data-kind="paper" aria-pressed="false">Papers</button><button type="button" data-kind="note" aria-pressed="false">Notes</button><button type="button" data-kind="collection" aria-pressed="false">Collections</button><button type="button" data-kind="goal" aria-pressed="false">Goals</button>
+    </div>
   </div>
   <p id="wick-asset-status" role="status" aria-live="polite"></p>
-  <div id="wick-asset-results"></div>
+  <div id="wick-asset-results" aria-label="Matching context"></div>
   <button type="button" id="wick-asset-more" class="btn btn-ghost btn-sm" hidden>Load more</button>
-</dialog>
+</div>

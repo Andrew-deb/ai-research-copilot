@@ -159,3 +159,36 @@ def test_expanding_unsent_panel_preserves_all_references_without_get_mutation(cl
     assert response.status_code == 200
     assert b'Expansion paper' in response.data
     assert assistant_context.load(owner, cid) == []
+
+
+@pytest.mark.parametrize('category,kind,expected', [
+    ('pages', None, ['page']),
+    ('assets', None, ['paper', 'note', 'collection', 'goal']),
+    ('assets', 'note', ['note']),
+])
+def test_context_categories_are_disjoint(db, monkeypatch, category, kind, expected):
+    owner, _ = owned_chat(db)
+    seen = []
+    monkeypatch.setattr(assistant_context.shared_workspace, 'find_workspace_resources',
+        lambda db, actor, query, kinds, **kwargs: seen.append(kinds) or {'items': [], 'next_cursor': None})
+    assistant_context.search(owner, category=category, kind=kind)
+    assert seen == [expected]
+
+
+@pytest.mark.parametrize('category,kind', [('unknown', None), ('assets', 'page'), ('pages', 'paper')])
+def test_invalid_category_combinations_are_rejected(category, kind):
+    with pytest.raises(ValidationError):
+        assistant_context.search(None, category=category, kind=kind)
+
+
+def test_compact_plus_and_nonmodal_picker_in_both_composers(client):
+    for url in ['/chat?mode=wick', '/chat/assistant']:
+        html = client.get(url).get_data(as_text=True)
+        composer = html.split('id="chat-composer"', 1)[1].split('</form>', 1)[0]
+        assert 'aria-label="Add context"' in composer
+        assert 'aria-haspopup="menu"' in composer
+        assert 'data-context-category="pages"' in composer
+        assert 'data-context-category="assets"' in composer
+        assert 'role="dialog" aria-modal="false"' in composer
+        assert '<dialog' not in composer
+        assert composer.index('id="wick-add-context"') < composer.index('class="composer-send"')

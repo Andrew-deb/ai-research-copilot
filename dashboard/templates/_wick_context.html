@@ -1,6 +1,10 @@
 <div class="wick-context-controls" id="wick-context-controls" {% if chat_mode != 'wick' and not wick_panel %}hidden{% endif %}>
-  <button type="button" id="wick-add-context" class="btn btn-ghost btn-sm" aria-haspopup="dialog">＋ Add context</button>
-  <div id="wick-context-chips" aria-label="Selected context"></div>
-  <p id="wick-context-status" role="status" aria-live="polite"></p>
+  <button type="button" id="wick-add-context" class="wick-context-plus" aria-label="Add context" title="Add context" aria-haspopup="menu" aria-expanded="false">＋</button>
+  <div id="wick-context-menu" class="wick-context-menu" role="menu" aria-label="Context categories" hidden>
+    <button type="button" role="menuitem" data-context-category="pages"><span aria-hidden="true">▤</span> Pages</button>
+    <button type="button" role="menuitem" data-context-category="assets"><span aria-hidden="true">@</span> Assets</button>
+  </div>
+  {% include "_wick_asset_picker.html" %}
+  <span id="wick-context-status" class="sr-only" role="status" aria-live="polite"></span>
 </div>
 <script type="application/json" id="wick-context-data">{{ (context["items"] if context and context["items"] else []) | tojson }}</script>
