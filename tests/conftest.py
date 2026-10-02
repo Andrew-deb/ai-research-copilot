@@ -878,7 +878,27 @@ def db(monkeypatch):
                  "operations": counts.get(today - datetime.timedelta(days=offset), 0)}
                 for offset in range(days - 1, -1, -1)]
 
-    for name, method in (("by_metric", ua_by_metric), ("by_day", ua_by_day)):
+    def ua_today(user_id):
+        # CURRENT_DATE, matching the real query and usage_counters, rather than
+        # a rolling 24 hours.
+        today_date = _now().date()
+        rows = {}
+        for op in fake.ai_operations:
+            if str(op.get("user_id")) != str(user_id):
+                continue
+            if (op.get("occurred_at") or _now()).date() != today_date:
+                continue
+            key = (op["metric"], _feature_of(op))
+            row = rows.setdefault(key, {
+                "metric": op["metric"],
+                "mode": (op.get("mode") or "research")
+                        if op["metric"] == "agent_query" else None,
+                "operations": 0})
+            row["operations"] += 1
+        return sorted(rows.values(), key=lambda r: -r["operations"])
+
+    for name, method in (("by_metric", ua_by_metric), ("by_day", ua_by_day),
+                         ("today", ua_today)):
         assert hasattr(usage_repo, name), f"usage_analytics has no {name}"
         monkeypatch.setattr(usage_repo, name, method)
 

@@ -572,3 +572,107 @@ def test_the_day_query_qualifies_its_columns_properly():
     """
     assert '.replace("metric"' not in REPO
     assert 'prefix="o."' in REPO
+
+
+# ---------------------------------------------------------------------------
+# Today
+#
+# The tab showed "Usage is not being metered on this deployment" to somebody who
+# had used the product that morning. The sentence was true and useless: it
+# reported deployment configuration to a person asking what they had done, and
+# the answer was sitting in `ai_operations` the whole time.
+# ---------------------------------------------------------------------------
+
+def test_with_metering_on_it_counts_against_the_allowance(db, me):
+    data = usage_service.today(me, "authenticated")
+
+    assert data["metered"] is True
+    assert data["rows"]
+    assert all(row["limit"] for row in data["rows"])
+
+
+def test_the_allowance_comes_from_the_counter_that_enforces_it(db, me, monkeypatch):
+    """
+    Not from `ai_operations`. Anything else could tell somebody they had room
+    left at the moment they were turned away.
+    """
+    from services import quota_service
+
+    quota_service.check_and_consume("agent_query", "authenticated", "user", me)
+    _op(db, me, metric="agent_query")      # telemetry, not the counter
+    _op(db, me, metric="agent_query")
+
+    rows = {r["metric"]: r for r in usage_service.today(me, "authenticated")["rows"]}
+    assert rows["agent_query"]["used"] == 1
+
+
+def test_with_metering_off_it_still_says_what_you_did(db, me, monkeypatch):
+    """
+    The fix. `ai_operations` is written whether or not limits are enforced, so
+    there is always an answer to "what have I done today".
+    """
+    from services import quota_service
+    monkeypatch.setattr(quota_service, "usage_summary", lambda *a, **k: {})
+
+    _op(db, me, metric="agent_query", mode="research")
+    _op(db, me, metric="agent_query", mode="research")
+    _op(db, me, metric="semantic_search")
+
+    data = usage_service.today(me, "authenticated")
+    counts = {row["label"]: row["used"] for row in data["rows"]}
+
+    assert data["metered"] is False
+    assert counts["Research agent"] == 2
+    assert counts["Searches"] == 1
+
+
+def test_an_unmetered_row_carries_no_limit(db, me, monkeypatch):
+    """
+    A bar needs an end. Inventing one would draw a limit that does not exist.
+    """
+    from services import quota_service
+    monkeypatch.setattr(quota_service, "usage_summary", lambda *a, **k: {})
+    _op(db, me, metric="agent_query")
+
+    row = usage_service.today(me, "authenticated")["rows"][0]
+    assert row["limit"] is None
+    assert row["percent"] == 0
+
+
+def test_a_quiet_day_says_so_rather_than_naming_the_configuration(client, db, me, monkeypatch):
+    """
+    "Nothing yet today" is the answer to the question somebody asked. "Usage is
+    not being metered on this deployment" is an answer to a question only an
+    operator would ask.
+    """
+    from services import quota_service
+    monkeypatch.setattr(quota_service, "usage_summary", lambda *a, **k: {})
+
+    assert usage_service.today(me, "authenticated")["rows"] == []
+
+    body = client.get("/settings").get_data(as_text=True)
+    usage = body.split('data-settings-panel="usage"')[1].split("</section>")[0]
+    assert "Nothing yet today" in usage
+    assert "not being metered on this deployment" not in usage
+
+
+def test_today_means_today_not_the_last_day(db, me):
+    """
+    CURRENT_DATE, matching `usage_counters`. The page says counts reset daily,
+    and a rolling 24-hour window would disagree with that sentence every evening.
+    """
+    assert "CURRENT_DATE" in sql()
+    assert "interval '1 day'" not in sql().split("occurred_at >= CURRENT_DATE")[0][-200:]
+
+
+def test_a_failure_costs_the_tab_and_not_the_page(db, me, monkeypatch):
+    from repositories import usage_analytics
+    from services import quota_service
+
+    monkeypatch.setattr(quota_service, "usage_summary", lambda *a, **k: {})
+    monkeypatch.setattr(usage_analytics, "today",
+                        lambda *a, **k: (_ for _ in ()).throw(RuntimeError("reset")))
+
+    data = usage_service.today(me, "authenticated")
+    assert data["rows"] == []
+    assert data.get("unavailable") is True
