@@ -164,7 +164,7 @@ def test_serves_thirteen_tools_from_flattened_layout(flattened_server):
     expected = EXPECTED_TOOLS if _get_json(flattened_server + "/")["server"] == "ai-research-copilot" else {
         "find_workspace_resources", "get_workspace_resource", "get_workspace_paper", "search_workspace_papers",
         "get_reading_progress", "create_collection", "add_paper_to_collection",
-        "remove_paper_from_collection", "mark_paper_status", "create_note", "create_learning_goal", "update_goal_status",
+        "remove_paper_from_collection", "mark_paper_status", "create_note", "edit_note", "set_note_pinned", "delete_note", "create_learning_goal", "update_goal_status",
     }
     assert names == expected
 
@@ -227,7 +227,10 @@ def test_wick_protocol_refuses_research_and_anonymous_personal_actions(flattened
                             ("create_note", {"note_text": "Body"}),
                             ("get_reading_progress", {}),
                             ("create_learning_goal", {"title": "Goal"}),
-                            ("update_goal_status", {"goal_id": "goal", "status": "completed"})):
+                            ("update_goal_status", {"goal_id": "goal", "status": "completed"}),
+                            ("edit_note", {"note_id": "note", "note_text": "Body"}),
+                            ("set_note_pinned", {"note_id": "note", "pinned": True}),
+                            ("delete_note", {"note_id": "note"})):
         result = _rpc(flattened_server + "/mcp", "tools/call",
                       params={"name": name, "arguments": arguments})
         assert result["result"]["isError"]

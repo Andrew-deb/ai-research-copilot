@@ -1,6 +1,6 @@
 # Research and Wick MCP servers
 
-Two independently deployed FastMCP servers share infrastructure and business operations. Research exposes its existing 13 tools; Wick exposes 12 workspace tools. Each server has its own registration and startup module.
+Two independently deployed FastMCP servers share infrastructure and business operations. Research exposes its existing 13 tools; Wick exposes 15 workspace tools. Each server has its own registration and startup module.
 
 | Source | Responsibility |
 | --- | --- |

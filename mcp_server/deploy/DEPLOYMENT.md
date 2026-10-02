@@ -361,3 +361,19 @@ revoke and retry, decline, stop while paused, reopen the panel, and double-click
 decision. Verify another user's proposal/grant is inaccessible and edits to the
 conversation while paused reject continuation. SQL transaction behavior and live
 OAuth/MCP writes need deployment verification; local transport tests are mocked.
+
+### Wick note tools (after approvals)
+
+The note tool increment requires the approval schema from PR #30 already applied
+(`sql/27_agent_action_approvals.sql`); it introduces no additional migration or
+environment variables. Publish the new assistant artifact and redeploy the Wick
+Databricks App from the latest `deploy/assistant` commit. Rebuild Render with the
+matching 15-tool catalog. Strict validation rejects a mixed 12/15 catalog during
+the rollout; test once both versions are live. Research does not need redeployment.
+
+Live acceptance: edit note text while preserving title/tags; explicitly clear
+metadata; pin and unpin; approve/decline deletion; reject a foreign note. Verify
+Allow once, scoped Always allow and revocation for the new operations. Confirm
+note linkage/pin state survive editing, missing targets never report success,
+and completed writes refresh the embedded panel's workspace. Inspect permanent
+deletion targets carefully; there is no undo in this increment.

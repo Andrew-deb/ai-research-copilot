@@ -41,7 +41,7 @@ def test_mcp_packages_have_separate_entrypoints_and_catalogs(release):
     assert not (wick / "brokers").exists()
     assert not (wick / "services/discovery_service.py").exists()
     assert not (wick / "services/planning_service.py").exists()
-    for target, count in (("research", 13), ("assistant", 12)):
+    for target, count in (("research", 13), ("assistant", 15)):
         assert len(json.loads((release[target] / "deployment_manifest.json").read_text())["tools"]) == count
         assert (release[target] / "shared_resource/services/note_service.py").read_bytes() == (
             ROOT / "mcp_server/shared_resource/services/note_service.py").read_bytes()

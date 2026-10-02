@@ -50,3 +50,20 @@ completed calls. New note edit/pin/delete registrations remain a later increment
 shared note mutation services from PR #29 are available but not exposed as tools.
 Research's existing write operations retain their current compatibility policy.
 See `deploy/DEPLOYMENT.md` for migration and live verification requirements.
+
+## Note tool exposure
+
+Wick now exposes `edit_note`, `set_note_pinned` and `delete_note` as separate thin
+adapters over the shared note services and existing owner-filtered SQL. All three
+require a bound actor and Notes Write capability; Research gains no registrations.
+Each has an explicit note-target approval policy, including scoped revocation.
+
+`edit_note` fully replaces body/title/tags; omitted metadata clears it. Pin state
+and paper association remain untouched. Read the exact note and preserve metadata
+unless asked to change it; never overwrite from a truncated preview. Pin/unpin
+uses an explicit boolean and deletion returns a receipt only after persistence
+confirms removal. Permanent deletion is labelled clearly in the approval UI.
+
+Wick grows from 12 to 15 tools. These distinct operations justify exceeding the
+approximate dozen-tool budget without ambiguous dispatching. Research stays at
+13. Complete collection reorder remains the next shared workflow reconciliation.
