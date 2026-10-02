@@ -137,12 +137,16 @@ def remove_paper(user_id: str, collection_id: str, paper_id: str) -> dict:
 def reorder(user_id: str, collection_id: str, ordered_paper_ids: list[str]) -> dict:
     """Persist a manual drag-reorder: position in the list becomes sequence_order."""
     _require_writable_collection(collection_id, user_id)
-    if not ordered_paper_ids:
-        raise ValidationError("No paper order supplied.")
-    # One statement for the whole collection. Per-paper UPDATEs meant N round trips
-    # to a remote database, and a failure part-way left the order half-applied.
-    lakebase.update_paper_sequences(collection_id, ordered_paper_ids)
-    return {"status": "ok", "count": len(ordered_paper_ids)}
+    from mcp_server.shared_resource.services.collection_service import reorder_collection
+    from mcp_server.shared_resource.exceptions import ValidationError as SharedValidationError
+    from mcp_server.shared_resource.exceptions import CollectionNotFoundError as SharedNotFound
+    try:
+        return reorder_collection(lakebase, user_id, collection_id, ordered_paper_ids)
+    except SharedValidationError as exc:
+        raise ValidationError(str(exc)) from exc
+    except SharedNotFound as exc:
+        raise CollectionNotFoundError(str(exc)) from exc
+
 
 
 # =============================================================================

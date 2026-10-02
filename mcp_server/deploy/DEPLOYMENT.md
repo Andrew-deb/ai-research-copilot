@@ -377,3 +377,32 @@ Allow once, scoped Always allow and revocation for the new operations. Confirm
 note linkage/pin state survive editing, missing targets never report success,
 and completed writes refresh the embedded panel's workspace. Inspect permanent
 deletion targets carefully; there is no undo in this increment.
+
+### Complete collection order and composer permissions
+
+Wick adds `reorder_collection_papers`, bringing its catalog to 16 tools. Deploy
+the latest assistant artifact on Databricks and rebuild Render together; a mixed
+15/16 catalog is refused. Research remains at 13 and does not need redeployment.
+No new migration/dependency/environment variable; the approval schema is required.
+This increment builds on PR #31's note tools.
+
+The composer offers Ask for approval and Autonomous beside the context plus
+button. Ask is the default and respects existing scoped grants. Autonomous is an
+explicit choice for new runs in the current view, including supported destructive
+writes; it does not create persistent grants, bypass capabilities/ownership or
+apply to Research. Reloading resets to Ask. The selection cannot change while a
+run or approval is pending; a run keeps the policy selected at submission. The
+server validates the authenticated selection before execution. Agent messages or
+resource text cannot change it. Clarifying ambiguous intent remains necessary.
+
+Reordering requires a complete bounded permutation, every current paper once.
+The shared persistence adapter locks the owned non-curated collection, validates
+membership, and updates the full order in one transaction. Missing/extra/duplicate
+papers are rejected. Existing dashboard manual reordering uses the same service;
+Research's legacy planning contract remains unchanged.
+
+Live checks: read all collection pages, reorder and confirm exact saved order;
+reject a partial/stale list and foreign/curated collection. Select Autonomous,
+perform a supported write, switch back to Ask, revoke any saved grant and confirm
+approval pauses. Verify anonymous/Research autonomy is refused and both surfaces
+show the left permission control in both themes.

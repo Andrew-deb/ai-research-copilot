@@ -67,3 +67,16 @@ confirms removal. Permanent deletion is labelled clearly in the approval UI.
 Wick grows from 12 to 15 tools. These distinct operations justify exceeding the
 approximate dozen-tool budget without ambiguous dispatching. Research stays at
 13. Complete collection reorder remains the next shared workflow reconciliation.
+
+## Complete collection ordering and run permission selection
+
+Shared `reorder_collection` and `collection_order_repository` now reconcile the
+manual dashboard workflow and Wick's complete-order tool. The transaction checks
+current membership and owner/curated state before bulk persistence. Research's
+legacy explicit-position reading-plan API retains compatibility.
+
+The composer exposes explicit per-run Ask/Autonomous selection. Ask respects
+existing scoped grants; Autonomous does not save grants and retains resource and
+capability checks. It is unavailable to anonymous users and Research. Defaults
+reset on reload. Wick now has 16 focused tools; further expansion should revisit
+frequency and overlap before adding more tools.

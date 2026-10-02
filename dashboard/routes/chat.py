@@ -262,7 +262,7 @@ def ask():
     # is already spent, and a 400 delivered as a stream event is a bad request
     # the browser was told to treat as success.
     payload = form_or_json("question", "conversation_id", "action", "source_message_id",
-                           "surface", "context_kind", "context_id", "chat_mode", "context_references")
+                           "surface", "context_kind", "context_id", "chat_mode", "context_references", "approval_mode")
     question = agent_service.validate_question(payload.get("question") or "")
     conversation_id = (payload.get("conversation_id") or "").strip() or None
     tier = current_tier()
@@ -276,6 +276,11 @@ def ask():
         ("wick" if surface == "assistant" else "research"))
     if surface == "assistant" and chat_mode != "wick":
         abort(400)
+    approval_mode = payload.get('approval_mode') or 'ask'
+    if approval_mode not in ('ask', 'autonomous'):
+        abort(400)
+    if approval_mode == 'autonomous' and (chat_mode != 'wick' or not user_id):
+        abort(403, description='Autonomous mode requires a signed-in Wick session.')
     references = []
     if chat_mode == "wick":
         if payload.get('context_references') is not None:
@@ -334,7 +339,7 @@ def ask():
                                              run_id=run_id, owner=owner,
                                              prepared=prepared, mode=mode, source_id=source_id,
                                              context=context, surface=surface,
-                                             chat_mode=chat_mode)),
+                                             chat_mode=chat_mode, approval_mode=approval_mode)),
             mimetype="text/event-stream",
             headers={
                 "Cache-Control": "no-cache",
@@ -350,6 +355,7 @@ def ask():
     try:
         result = _run_turn(question, tier, user_id, conversation_id,
                            prepared=prepared, context=context, chat_mode=chat_mode,
+                           approval_mode=approval_mode,
                            **({'should_stop': lambda: agent_runs.status(
                                run_id, current_quota_scope()) == 'stop_requested'} if run_id else {}))
         if run_id and agent_runs.finish(run_id, current_quota_scope()) == 'stopped':
@@ -401,7 +407,7 @@ def _wants_stream() -> bool:
 def _run_turn(question: str, tier: str, user_id: str | None,
               conversation_id: str | None = None, on_event=None,
               should_stop=None, prepared=None, context=None, chat_mode="research",
-              resume=None, permit=None) -> dict:
+              resume=None, permit=None, approval_mode="ask") -> dict:
     """
     One measured turn. Shared by the JSON and streaming paths.
 
@@ -428,7 +434,7 @@ def _run_turn(question: str, tier: str, user_id: str | None,
                        "usage": tally}
             if chat_mode != "research":
                 options["mode"] = chat_mode
-                options['before_tool'] = lambda name,args,checkpoint: approvals.guard(user_id,name,args,checkpoint,permit)
+                options['before_tool'] = lambda name,args,checkpoint: approvals.guard(user_id,name,args,checkpoint,permit,mode=approval_mode)
                 if resume: options['resume'] = resume
             if context:
                 options["page_context"] = context
@@ -489,7 +495,7 @@ def _sse(payload: dict) -> str:
 def _stream_turn(question: str, tier: str, user_id: str | None,
                  conversation_id: str | None = None, *, run_id=None, owner=None,
                  prepared=None, mode="new", source_id=None, context=None, surface="agent",
-                 chat_mode="research"):
+                 chat_mode="research", approval_mode="ask"):
     """
     Run the turn on a worker thread and relay its progress as it happens.
 
@@ -512,7 +518,7 @@ def _stream_turn(question: str, tier: str, user_id: str | None,
                 question, tier, user_id, conversation_id, on_event=events.put,
                 should_stop=(lambda: agent_runs.status(run_id, owner) == "stop_requested")
                 if run_id else None, prepared=prepared, context=context,
-                chat_mode=chat_mode)
+                chat_mode=chat_mode, approval_mode=approval_mode)
             terminal = agent_runs.finish(run_id, owner) if run_id else "completed"
             if terminal == "stopped" or result.get("status") == agent_service.STATUS_STOPPED:
                 result = dict(result, status=agent_service.STATUS_STOPPED,

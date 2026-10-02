@@ -85,8 +85,35 @@
       history.replaceState(null, "", url.pathname + url.search);
     });
   }
+  var permissionWrap = document.getElementById("wick-permission-picker");
+  var permissionButton = document.getElementById("wick-permission");
+  if (permissionButton) {
+    var permissionMenu = permissionWrap.querySelector(".mode-pick-menu");
+    permissionButton.addEventListener("click", function () {
+      permissionMenu.hidden = !permissionMenu.hidden;
+      permissionButton.setAttribute("aria-expanded", String(!permissionMenu.hidden));
+    });
+    permissionMenu.addEventListener("click", function (event) {
+      var option = event.target.closest("[data-permission]");
+      if (!option) { return; }
+      permissionButton.value = option.dataset.permission;
+      permissionButton.textContent = (permissionButton.value === "autonomous" ? "Autonomous" : "Ask for approval") + " ▾";
+      permissionMenu.querySelectorAll("[role=option]").forEach(function (item) { item.setAttribute("aria-selected", String(item === option)); });
+      permissionMenu.hidden = true; permissionButton.setAttribute("aria-expanded", "false"); permissionButton.focus();
+    });
+    document.addEventListener("click", function (event) {
+      if (!permissionWrap.contains(event.target)) { permissionMenu.hidden = true; permissionButton.setAttribute("aria-expanded", "false"); }
+    });
+    document.addEventListener("keydown", function (event) {
+      if (event.key === "Escape") { permissionMenu.hidden = true; permissionButton.setAttribute("aria-expanded", "false"); }
+    });
+    if (modePicker) { modePicker.addEventListener("change", function () {
+      permissionWrap.hidden = modePicker.value !== "wick";
+      if (permissionWrap.hidden) { permissionButton.value = "ask"; permissionButton.textContent = "Ask for approval ▾"; }
+    }); }
+  }
   var completedWrites = [];
-  var writeTools = ["create_collection", "add_paper_to_collection",
+  var writeTools = ["create_collection", "reorder_collection_papers", "add_paper_to_collection",
     "remove_paper_from_collection", "generate_reading_plan", "mark_paper_status", "save_note", "create_note", "edit_note", "set_note_pinned", "delete_note", "create_learning_goal", "update_goal_status"];
   function tellParent(type, value) {
     if (embedded && window.parent !== window) {
@@ -820,6 +847,7 @@
 
   function setPending(on) {
     pending = on;
+    if (permissionButton) { permissionButton.disabled = on || !!approvalRunId; }
     input.disabled = on;
     var send = form.querySelector(".composer-send");
     if (send) { send.hidden = on; send.disabled = on; }
@@ -905,6 +933,7 @@
         action: options.action || "new", source_message_id: options.source_message_id || null,
         surface: embedded ? "assistant" : "agent",
         chat_mode: embedded ? "wick" : (modePicker ? modePicker.value : "research"),
+        approval_mode: (embedded || (modePicker && modePicker.value === "wick")) && permissionButton ? permissionButton.value : "ask",
         context_references: window.WickContext ? window.WickContext.references() : undefined,
         context_kind: (embedded || (page && page.dataset.chatMode === "wick")) ? page.dataset.contextKind : "",
         context_id: (embedded || (page && page.dataset.chatMode === "wick")) ? page.dataset.contextId : "" }),
