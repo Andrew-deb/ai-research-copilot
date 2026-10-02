@@ -106,6 +106,7 @@ TOOL_CAPABILITIES: dict[str, str | None] = {
     "get_collection_details": None,
     # Wick workspace reads; personal progress requires a signed-in tier.
     "find_workspace_resources": None,
+    "search_workspace_papers": None,
     "get_workspace_resource": None,
     "get_workspace_paper": None,
     "get_reading_progress": "workspace:read",
@@ -155,7 +156,7 @@ RESEARCH_TOOLS = frozenset({
     "generate_reading_plan", "mark_paper_status", "save_note",
 })
 WICK_TOOLS = frozenset({
-    "find_workspace_resources", "get_workspace_resource", "get_workspace_paper",
+    "find_workspace_resources", "get_workspace_resource", "get_workspace_paper", "search_workspace_papers",
     "get_reading_progress", "create_collection", "add_paper_to_collection",
     "remove_paper_from_collection", "mark_paper_status", "create_note",
 })

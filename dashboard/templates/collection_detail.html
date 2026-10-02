@@ -15,6 +15,7 @@
   <div class="collection-toolbar">
     <span class="collection-count">{{ collection.paper_count }} paper{{ '' if collection.paper_count == 1 else 's' }}</span>
     {% if collection.is_curated %}<span class="tag">Shared example</span>{% endif %}
+    {% if editable %}<button type="button" class="btn btn-primary js-add-papers">Add papers</button>{% endif %}
     {% if collection.papers and editable %}
       <form method="post" action="{{ url_for('collections.generate_plan', collection_id=collection.collection_id) }}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -62,8 +63,31 @@
       <p class="hint">Drag rows to reorder, or generate a reading plan to sequence by publication year and citation impact.</p>
     {% endif %}
   {% else %}
-    <p class="empty">This collection is empty. Add papers from <a href="{{ url_for('search.search_page') }}">Search</a> or a paper's detail page.</p>
+    <div class="empty"><p>This collection is empty.</p>
+      {% if editable %}<button type="button" class="btn btn-primary js-add-papers">Add papers</button>
+      <p>Search the corpus or choose from your saved papers.</p>{% endif %}
+    </div>
   {% endif %}
+{% if editable %}
+<dialog id="paper-picker" class="paper-picker"
+        data-search-url="{{ url_for('collections.paper_options', collection_id=collection.collection_id) }}"
+        data-add-url="{{ url_for('collections.add_paper', collection_id=collection.collection_id) }}"
+        aria-labelledby="paper-picker-title">
+  <div class="picker-heading"><h2 id="paper-picker-title">Add papers</h2>
+    <button type="button" class="btn btn-ghost" id="picker-close" aria-label="Close paper picker">✕</button></div>
+  <p>Find papers already available in Alfred.</p>
+  <form id="picker-search" class="picker-controls">
+    <label>Search<input name="q" type="search" maxlength="300" placeholder="Topic, title, or author"></label>
+    <label>Look in<select name="scope"><option value="corpus">All papers</option><option value="saved">My saved papers</option></select></label>
+    <button class="btn btn-primary" type="submit">Search</button>
+  </form>
+  <p id="picker-status" role="status" aria-live="polite"></p>
+  <div id="picker-results" class="picker-results"></div>
+  <button type="button" id="picker-more" class="btn btn-ghost" hidden>Load more</button>
+  <div class="picker-footer"><span id="picker-selected">0 selected</span>
+    <button type="button" id="picker-add" class="btn btn-primary" disabled>Add selected</button></div>
+</dialog>
+{% endif %}
 </article>
 {% endblock %}
 

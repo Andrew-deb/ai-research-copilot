@@ -53,7 +53,7 @@ The output contains:
 | Directory | Platform | Entry point | Catalog |
 | --- | --- | --- | --- |
 | `dist/release-candidate/research` | Existing Databricks Research App | `python -m research.server` | Existing 13 Research tools |
-| `dist/release-candidate/assistant` | Separate Databricks Wick App | `python -m assistant.server` | Nine workspace tools |
+| `dist/release-candidate/assistant` | Separate Databricks Wick App | `python -m assistant.server` | Ten workspace tools |
 | `dist/release-candidate/render` | Render dashboard | `gunicorn app:app` from this directory | Orchestration, both bundled system prompts |
 
 Each MCP artifact has its own `app.yaml`, requirements, runtime adapters and
@@ -216,7 +216,7 @@ Record the source revision, built-file hashes, App names, deployed folders, URLs
 and release date without secrets. Verify the following with real accounts:
 
 1. Both Apps start and answer `/healthz`; OAuth-authenticated MCP initialization and
-   `tools/list` show exactly Research's 13 tools and Wick's nine.
+   `tools/list` show exactly Research's 13 tools and Wick's ten.
 2. Render logs show no missing prompt fallback warning; Research/Wick modes use
    their own catalog. Send a public read first to verify service connectivity.
 3. Use two signed-in application accounts. Each can read its own workspace; the
@@ -251,3 +251,35 @@ Reviewed 1 October 2026; verify workspace-specific availability before release:
 - [App resource grants](https://docs.databricks.com/aws/en/dev-tools/databricks-apps/resources)
 - [Calling API Apps with token authentication](https://docs.databricks.com/aws/en/dev-tools/databricks-apps/connect-local)
 - [Render monorepo root-directory behavior](https://render.com/docs/monorepo-support)
+
+## Collection paper picker and Wick corpus search
+
+The collection page now offers Add papers for owned writable collections, with
+corpus/saved scopes, bounded ranked keyword search, authors/year/abstract preview,
+20-paper selection batches, pagination and already-present indicators. Additions
+use the existing CSRF-protected endpoint sequentially; on a partial failure,
+successful additions remain saved and remaining selections can be retried. Closing
+the picker refreshes the page if membership changed. Curated/foreign/anonymous
+mutation paths remain denied.
+
+`search_workspace_papers` is Wick's tenth tool. It searches existing database
+papers with PostgreSQL full-text stemming and partial term matches plus author
+lookup; it is not semantic vector retrieval and does not call external providers.
+Both interfaces use shared retrieval and owned membership services; append
+transactions lock the collection row and keep duplicate positions unchanged.
+No database migration, embedding credential or new environment variable is required.
+For broad requests Wick proposes candidates before adding; explicit identified
+paper additions are authorized directly. External discovery/import for both
+interfaces remains a later increment.
+
+After merge, wait for GitHub publication, manually deploy `deploy/assistant` to
+Wick, and deploy the updated Render dashboard. Both must agree on the ten-tool
+catalog; during staggered deployment Wick may report unavailable rather than use
+an incompatible catalog. Research remains at 13 tools and needs no tool change.
+Verify a topic search, saved scope, duplicate handling and add/retry/refresh in
+the UI, then approve a Wick shortlist and verify the resulting collection.
+
+Local checks: `PYTHONPATH=dashboard:. python -m pytest -q`. Optional browser check
+requires Node, Playwright Chromium and `CODEX_PRIMARY_RUNTIME_NODE_MODULES` pointing
+to the parent node_modules folder: `RUN_PICKER_BROWSER=1` enables its test.
+The standard suite does not require browser dependencies or a live database.
