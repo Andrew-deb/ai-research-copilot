@@ -14,6 +14,9 @@ so the Spark pipeline and API syncs are safe to re-run without duplicates.
 import base64
 import json
 import logging
+
+from . import note_mutation_repository as note_mutations
+
 import os
 import threading
 from contextlib import contextmanager
@@ -526,6 +529,22 @@ def save_note(user_id: str, paper_id: str | None, note_text: str,
         (user_id, paper_id, note_text),
         returning=True,
     )
+
+
+def update_note(user_id: str, note_id: str, note_text: str,
+                title: str | None = None, tags: list[str] | None = None) -> dict | None:
+    """Owner-scoped full note replacement through the shared persistence contract."""
+    return note_mutations.update_note(run_write, user_id, note_id, note_text, title, tags)
+
+
+def set_note_pinned(user_id: str, note_id: str, pinned: bool) -> dict | None:
+    """Set explicit owner-scoped pin state through shared persistence."""
+    return note_mutations.set_note_pinned(run_write, user_id, note_id, pinned)
+
+
+def delete_note(user_id: str, note_id: str) -> bool:
+    """Missing and foreign notes both return false."""
+    return note_mutations.delete_note(run_write, user_id, note_id)
 
 
 def get_notes_for_paper(user_id: str, paper_id: str) -> list[dict]:
