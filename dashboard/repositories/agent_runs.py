@@ -4,11 +4,13 @@ from repositories.lakebase import get_connection
 
 
 def _expire(cur) -> None:
+    cur.execute("""UPDATE agent_runs SET state='failed',updated_at=now()
+        WHERE state='awaiting_approval' AND updated_at<now()-interval '15 minutes'""")
     # A process may die mid-turn. The provider deadline is far shorter than ten
     # minutes; do not leave a permanently active Stop button after a crash.
     cur.execute("""UPDATE agent_runs SET state = 'failed', updated_at = now()
                    WHERE state IN ('running', 'stop_requested')
-                     AND created_at < now() - interval '10 minutes'""")
+                     AND updated_at < now() - interval '10 minutes'""")
 
 
 def create(run_id: str, owner: tuple[str, str]) -> None:
@@ -30,6 +32,9 @@ def status(run_id: str, owner: tuple[str, str]) -> str | None:
 def request_stop(run_id: str, owner: tuple[str, str]) -> str | None:
     with get_connection() as conn, conn.cursor() as cur:
         _expire(cur)
+        cur.execute("""UPDATE agent_runs SET state='stopped',updated_at=now()
+            WHERE run_id=%s AND owner_kind=%s AND owner_id=%s AND state='awaiting_approval' RETURNING state""",(run_id,*owner))
+        if cur.fetchone():return 'stopped'
         cur.execute("""UPDATE agent_runs SET state = 'stop_requested', updated_at = now()
                        WHERE run_id = %s AND owner_kind = %s AND owner_id = %s
                          AND state = 'running' RETURNING state""", (run_id, *owner))

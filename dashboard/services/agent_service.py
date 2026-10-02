@@ -804,7 +804,8 @@ def _emit(on_event, **payload) -> None:
 
 def ask(question: str, *, tier: str, user_id: str | None = None,
         conversation_history: list[dict] | None = None, mode: str = "research",
-        on_event=None, usage=None, should_stop=None, page_context=None) -> dict:
+        on_event=None, usage=None, should_stop=None, page_context=None,
+        before_tool=None, resume=None) -> dict:
     """
     Answer one research question, running tools as needed.
 
@@ -881,9 +882,20 @@ def ask(question: str, *, tier: str, user_id: str | None = None,
     seen_papers: set[str] = set()
     tool_calls: list[dict] = []
     state = {"llm_turns": 0, "answer": None, "stopped": None}
+    replay = []
+    if resume:
+        messages = resume['messages']
+        # Stored resource bodies remain data; use current policy, never a stored system policy.
+        messages[0] = {'role':'system','content':build_system_prompt(tier,mode)}
+        found = resume['found']
+        seen_papers = set(resume['seen_papers'])
+        tool_calls = resume['tool_calls']
+        state = resume['state']
+        replay = resume['pending']
     deadline = time.monotonic() + config.AGENT_DEADLINE_SECONDS
 
     def plan(call_tool) -> None:
+        nonlocal replay
         def synthesize(reason: str) -> None:
             """
             Stop researching and write from evidence already in the conversation.
@@ -947,23 +959,28 @@ def ask(question: str, *, tier: str, user_id: str | None = None,
                 "Agent planner start turn=%d timeout=%.1fs tools_seen=%d sources=%d",
                 state["llm_turns"] + 1, planner_timeout, len(schemas), len(found),
             )
-            try:
-                message = llm_client.chat_with_tools(
-                    messages, schemas, timeout=planner_timeout,
-                    max_tokens=config.AGENT_MAX_TOKENS, usage=usage)
-                state["llm_turns"] += 1
-                check_stop()
-            except LLMTimeoutError as exc:
-                check_stop()
-                if not found:
-                    raise
-                logger.warning(
-                    "Agent planner timed out after evidence; falling back to "
-                    "synthesis sources=%d error=%s",
-                    len(found), exc,
-                )
-                synthesize("planner_timeout")
-                return
+            replaying = bool(replay)
+            if replaying:
+                message = {'tool_calls':replay}
+                replay = []
+            else:
+                try:
+                    message = llm_client.chat_with_tools(
+                        messages, schemas, timeout=planner_timeout,
+                        max_tokens=config.AGENT_MAX_TOKENS, usage=usage)
+                    state["llm_turns"] += 1
+                    check_stop()
+                except LLMTimeoutError as exc:
+                    check_stop()
+                    if not found:
+                        raise
+                    logger.warning(
+                        "Agent planner timed out after evidence; falling back to "
+                        "synthesis sources=%d error=%s",
+                        len(found), exc,
+                    )
+                    synthesize("planner_timeout")
+                    return
 
             requested = message.get("tool_calls") or []
             logger.info(
@@ -976,13 +993,14 @@ def ask(question: str, *, tier: str, user_id: str | None = None,
                 state["answer"] = _clean(llm_client.message_text(message))
                 return
 
-            messages.append({
-                "role": "assistant",
-                "content": message.get("content") or "",
-                "tool_calls": requested,
-            })
+            if not replaying:
+                messages.append({
+                    "role": "assistant",
+                    "content": message.get("content") or "",
+                    "tool_calls": requested,
+                })
 
-            for call in requested:
+            for call_index, call in enumerate(requested):
                 check_stop()
                 function = call.get("function") or {}
                 name = function.get("name") or ""
@@ -998,6 +1016,13 @@ def ask(question: str, *, tier: str, user_id: str | None = None,
                 logger.info("Agent tool start name=%s", name)
                 try:
                     ensure_callable(tier, name, mode)
+                    if mode == 'wick' and name in WRITE_TOOLS:
+                        if before_tool is None:
+                            raise CapabilityDeniedError('Workspace action approval is unavailable.',requires_auth=False)
+                        before_tool(name, arguments, {
+                            'messages':messages,'found':found,'seen_papers':list(seen_papers),
+                            'tool_calls':tool_calls,'state':state,'pending':requested[call_index:]})
+                        check_stop()
                     result = call_tool(name, arguments)
                     # Citations are collected from the FULL result, which still
                     # has venue and citation_count; the model is handed the

@@ -72,3 +72,8 @@ psql "$DATABASE_URL" -f sql/26_wick_context.sql              # apply before dura
 **A relevance score is stored with its context** — `relevance_score` alone is uninterpretable. `relevance_topic` says what it was compared against and `relevance_threshold` says what bar was in force, because both change: topics get edited and the threshold is still being tuned. The embedding model is *not* stored, because `embedding_contract.json` is validated before any encoding (Phase 2.7), so every score provably comes from the same model.
 
 **Trace table** — `mcp_traces` is written by `TraceMiddleware` automatically on every tool call. Individual MCP tools never write to it directly (cross-cutting concern).
+
+**Wick action approvals:** apply `27_agent_action_approvals.sql` after
+`15_agent_runs.sql` before deploying the dashboard approval feature. This adds
+private run checkpoints and owner-scoped grants, plus the `awaiting_approval`
+run state. It does not add MCP tools.

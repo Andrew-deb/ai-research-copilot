@@ -184,6 +184,10 @@ class Turn:
             # Our own domain errors are meaningful already and travel unchanged.
             raise
         except BaseException as exc:      # noqa: BLE001 - ExceptionGroup is a BaseException
+            # Transport task groups may wrap a deliberate orchestration pause.
+            cause = _root_cause(exc)
+            if isinstance(cause, ResearchCopilotError):
+                raise cause from exc
             raise _as_external(exc) from exc
 
     async def _run(self, plan):

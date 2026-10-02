@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Wick permissions — Alfred{% endblock %}
+{% block topbar_title %}Wick permissions{% endblock %}
+{% block content %}
+<h1>Wick permissions</h1>
+<p>Wick asks before workspace changes unless you allow that operation here. Ownership and account permissions still apply. Revoking a permission makes future actions ask again.</p>
+{% for grant in grants %}
+<div class="settings-row"><p>{{ grant.label }}</p>
+<form method="post" action="{{ url_for('chat.revoke_permission', grant_id=grant.grant_id) }}">
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+<button class="btn btn-ghost" type="submit">Revoke</button></form></div>
+{% else %}<p>No persistent permissions. Wick will ask before each change.</p>{% endfor %}
+<a href="/settings?section=security">Back to settings</a>
+{% endblock %}
