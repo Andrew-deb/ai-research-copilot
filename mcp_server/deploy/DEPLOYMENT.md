@@ -323,3 +323,9 @@ After merging, wait for the main GitHub workflow to publish both deployment bran
 Wick now exposes `create_learning_goal` and `update_goal_status` through shared goal services, increasing its catalog from 10 to 12. Research remains at 13 tools. Render permits these only in authenticated Wick mode with `goals:write`; the MCP methods require bound identity and goal updates filter by owner. Existing notes and collections are unchanged.
 
 After merge, wait for the assistant deployment branch publication, manually redeploy Wick, and ensure Render has rebuilt/restarted with the matching 12-tool registry. The exact catalog validator deliberately rejects a 10/12 version mismatch; deploy both versions before acceptance and retry after both are current. Research redeployment is optional for this increment (the earlier shared-infrastructure cleanup still required both servers). No new migration or environment setting is required. Test explicit goal creation and active/completed/archived transitions, plus anonymous and foreign-owner refusal. Structured permission prompts are still a separate feature.
+
+## Shared note-mutation foundation
+
+Shared note services now implement full edit, explicit pin/unpin and deletion. Dashboard routes keep their existing capability/CSRF enforcement and presentation; both runtimes use the same owner-filtered SQL with their own write executor. No MCP tools are registered for these mutations yet: Wick stays at 12 tools and Research at 13. Structured approval/tool exposure comes next.
+
+Merge and let Render’s existing Blueprint rebuild. No migration, new setting or Databricks redeploy is required for this foundation alone. Generated MCP artifacts contain the shared operations for later use; existing tool contracts do not change. Verify note editing/title/tag clearing, pin/unpin and deletion through the current UI, including foreign-owner refusal. Existing metadata limits remain, and malformed non-text inputs are rejected.
