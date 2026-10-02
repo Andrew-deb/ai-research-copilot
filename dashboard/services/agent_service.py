@@ -119,6 +119,7 @@ TOOL_CAPABILITIES: dict[str, str | None] = {
     "update_goal_status": GOALS_WRITE,
     # write
     "create_collection": LIBRARY_WRITE,
+    "reorder_collection_papers": LIBRARY_WRITE,
     "add_paper_to_collection": LIBRARY_WRITE,
     "remove_paper_from_collection": LIBRARY_WRITE,
     "generate_reading_plan": LIBRARY_WRITE,
@@ -163,7 +164,7 @@ RESEARCH_TOOLS = frozenset({
 })
 WICK_TOOLS = frozenset({
     "find_workspace_resources", "get_workspace_resource", "get_workspace_paper", "search_workspace_papers",
-    "get_reading_progress", "create_collection", "add_paper_to_collection",
+    "get_reading_progress", "create_collection", "reorder_collection_papers", "add_paper_to_collection",
     "remove_paper_from_collection", "mark_paper_status", "create_note", "edit_note", "set_note_pinned", "delete_note", "create_learning_goal", "update_goal_status",
 })
 

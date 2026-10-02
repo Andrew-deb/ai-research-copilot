@@ -630,6 +630,16 @@ class FakeDB:
 def db(monkeypatch):
     """In-memory repository + stubbed embedding/LLM. Returns the FakeDB instance."""
     fake = FakeDB()
+    from mcp_server.shared_resource.repositories import collection_order_repository
+    from mcp_server.shared_resource.exceptions import ValidationError as SharedValidationError
+    def fake_reorder(repository, owner, cid, ids):
+        collection = fake.get_collection(cid, owner)
+        current = {str(row['paper_id']) for row in fake.get_collection_papers(cid)}
+        if not collection or collection.get('is_curated') or set(ids) != current:
+            raise SharedValidationError('Invalid complete collection order.')
+        # Keep the real adapter seam observable by existing dashboard tests.
+        return repository.update_paper_sequences(cid, ids)
+    monkeypatch.setattr(collection_order_repository, 'reorder', fake_reorder)
     from repositories import agent_runs, conversation_versions
     from repositories import conversation_context
     from services.assistant_context import shared_workspace

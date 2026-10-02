@@ -146,6 +146,13 @@ def delete_note(note_id: str) -> dict:
     return note_service.delete_note(lakebase, require_current_user_id(), note_id)
 
 
+@mcp.tool()
+@trace_tool("reorder_collection_papers")
+def reorder_collection_papers(collection_id: str, ordered_paper_ids: list[str]) -> dict:
+    """Replace the complete order of an owned collection, listing every current paper UUID once. Read all collection pages first; never submit a partial list. Does not add/remove papers."""
+    return shared_collections.reorder_collection(lakebase, require_current_user_id(), collection_id, ordered_paper_ids)
+
+
 def create_app():
     """Identity binding is mandatory; startup fails if middleware cannot install."""
     app = mcp.streamable_http_app()

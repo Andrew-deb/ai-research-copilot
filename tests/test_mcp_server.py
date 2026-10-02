@@ -163,7 +163,7 @@ def test_serves_thirteen_tools_from_flattened_layout(flattened_server):
     names = {t["name"] for t in result["result"]["tools"]}
     expected = EXPECTED_TOOLS if _get_json(flattened_server + "/")["server"] == "ai-research-copilot" else {
         "find_workspace_resources", "get_workspace_resource", "get_workspace_paper", "search_workspace_papers",
-        "get_reading_progress", "create_collection", "add_paper_to_collection",
+        "get_reading_progress", "create_collection", "reorder_collection_papers", "add_paper_to_collection",
         "remove_paper_from_collection", "mark_paper_status", "create_note", "edit_note", "set_note_pinned", "delete_note", "create_learning_goal", "update_goal_status",
     }
     assert names == expected
