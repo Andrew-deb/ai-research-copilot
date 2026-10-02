@@ -859,6 +859,8 @@
       if (stopRequested) { requestStop(activeRunId); }
     } else if (event.type === "conversation" && embedded && event.conversation_id) {
       conversationId = event.conversation_id;
+      page.dataset.conversation = conversationId;
+      document.dispatchEvent(new CustomEvent("wick:conversation", { detail: conversationId }));
       tellParent("conversation", conversationId);
     } else if (event.type === "status") {
       if (stopRequested) { return; }
@@ -879,6 +881,7 @@
   }
 
   async function streamTurn(question, trace, options) {
+    if (window.WickContext) { await window.WickContext.ready(); }
     var res = await fetch("/chat/ask", {
       method: "POST",
       headers: {
@@ -894,6 +897,7 @@
         action: options.action || "new", source_message_id: options.source_message_id || null,
         surface: embedded ? "assistant" : "agent",
         chat_mode: embedded ? "wick" : (modePicker ? modePicker.value : "research"),
+        context_references: window.WickContext ? window.WickContext.references() : undefined,
         context_kind: (embedded || (page && page.dataset.chatMode === "wick")) ? page.dataset.contextKind : "",
         context_id: (embedded || (page && page.dataset.chatMode === "wick")) ? page.dataset.contextId : "" }),
     });
@@ -952,6 +956,8 @@
     if (!result || !result.conversation_id) { return; }
     var isNew = !conversationId;
     conversationId = result.conversation_id;
+    page.dataset.conversation = conversationId;
+    document.dispatchEvent(new CustomEvent("wick:conversation", { detail: conversationId }));
     if (embedded) {
       tellParent("conversation", conversationId);
       return;

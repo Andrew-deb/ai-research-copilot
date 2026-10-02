@@ -36,6 +36,7 @@ psql "$DATABASE_URL" -f sql/07_fulltext_status_taxonomy.sql # resets fetch_faile
 psql "$DATABASE_URL" -f sql/08_relevance.sql                # additive; deletes nothing
 psql "$DATABASE_URL" -f sql/15_agent_runs.sql               # apply before deploying chat Stop controls
 psql "$DATABASE_URL" -f sql/16_conversation_versions.sql    # apply before deploying history/version controls
+psql "$DATABASE_URL" -f sql/26_wick_context.sql              # apply before durable Wick context deployment
 ```
 
 ## Key Design Decisions
