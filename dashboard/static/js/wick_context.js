@@ -4,7 +4,9 @@
   var controls = document.getElementById("wick-context-controls");
   if (!controls) { return; }
   var page = document.querySelector(".chat-page");
-  var chips = document.getElementById("wick-context-chips");
+  var editor = window.WickEditor;
+  var input = document.getElementById("chat-input");
+  var shortcutRange = null, shortcutOpen = false;
   var status = document.getElementById("wick-context-status");
   var dialog = document.getElementById("wick-asset-picker");
   var results = document.getElementById("wick-asset-results");
@@ -26,18 +28,7 @@
     }
   }
   function render() {
-    chips.replaceChildren();
-    selected.forEach(function (item, index) {
-      var wrapper = document.createElement("span"); wrapper.className = "wick-reference";
-      var destination = window.WickMentions.href(item);
-      var label = document.createElement(destination ? "a" : "span");
-      label.textContent = (item.kind === "page" ? "▤ " : "@") + item.label + (item.available === false ? " (unavailable)" : "");
-      if (destination) { label.href = destination; label.target = "_blank"; label.rel = "noopener"; }
-      var remove = document.createElement("button"); remove.type = "button"; remove.textContent = "×";
-      remove.setAttribute("aria-label", "Remove context: " + item.label);
-      remove.addEventListener("click", function () { selected.splice(index, 1); render(); persist(); });
-      wrapper.append(label, remove); chips.appendChild(wrapper);
-    });
+    editor.sync(selected);
     tellShell();
   }
   function persist() {
@@ -73,11 +64,11 @@
           var label = document.createElement("strong"); label.textContent = item.label;
           var preview = document.createElement("span"); preview.textContent = item.kind + " · " + (item.snippet || "");
           button.append(label, preview);
-          button.disabled = selected.some(function (existing) { return existing.kind === item.kind && existing.id === item.id; });
           button.addEventListener("click", function () {
-            if (selected.length >= 5) { notice.textContent = "Remove an item before adding another (maximum five)."; return; }
-            selected.push({ kind: item.kind, id: item.id, label: item.label }); button.disabled = true;
-            render(); persist(); closePicker(); document.getElementById("chat-input").focus();
+            var existing = selected.some(function (value) { return value.kind === item.kind && value.id === item.id; });
+            if (!existing && selected.length >= 5) { notice.textContent = "Remove an item before adding another (maximum five)."; return; }
+            if (!existing) { selected.push({ kind: item.kind, id: item.id, label: item.label }); }
+            editor.insert(item, shortcutRange); render(); persist(); closePicker(); input.focus();
           }); results.appendChild(button);
         });
         next = body.next_cursor; more.hidden = !next;
@@ -85,6 +76,8 @@
       }).catch(function (error) { if (error.name !== "AbortError") { notice.textContent = "Could not load assets. Try again."; } });
   }
   function closePicker() {
+    shortcutOpen = false; shortcutRange = null;
+    editor.element.setAttribute("aria-expanded", "false");
     menu.hidden = true; dialog.hidden = true; plus.setAttribute("aria-expanded", "false");
     if (controller) { controller.abort(); } generation++; clearTimeout(timer);
   }
@@ -92,17 +85,17 @@
     closePicker(); menu.hidden = false; plus.setAttribute("aria-expanded", "true");
     menu.dataset.up = window.innerHeight - plus.getBoundingClientRect().bottom < 130 ? "true" : "false";
   }
-  function chooseCategory(value) {
+  function chooseCategory(value, shortcut) {
     category = value; menu.hidden = true; dialog.hidden = false;
     plus.setAttribute("aria-expanded", "true");
-    document.getElementById("wick-asset-title").textContent = category === "pages" ? "▤ Pages" : "@ Assets";
+    document.getElementById("wick-asset-title").textContent = category === "pages" ? "# Pages" : "@ Assets";
     kind.hidden = category === "pages"; kind.value = ""; query.value = "";
     kind.querySelectorAll("button").forEach(function (item) { item.setAttribute("aria-pressed", item.dataset.kind === "" ? "true" : "false"); });
     query.placeholder = category === "pages" ? "Find a page…" : "Find a paper, note, collection or goal…";
     var rect = controls.getBoundingClientRect(), top = formTop();
     dialog.style.bottom = String(rect.bottom - top + 8) + "px";
     dialog.style.maxHeight = String(Math.max(160, top - 16)) + "px";
-    search(false); query.focus();
+    search(false); if (!shortcut) { query.focus(); }
   }
   function formTop() { return document.getElementById("chat-composer").getBoundingClientRect().top; }
   plus.addEventListener("click", function () { menu.hidden && dialog.hidden ? categories() : closePicker(); });
@@ -122,16 +115,33 @@
   more.addEventListener("click", function () { search(true); });
   document.addEventListener("click", function (event) { if (!controls.contains(event.target)) { closePicker(); } });
   document.addEventListener("keydown", function (event) {
-    if (menu.hidden && dialog.hidden) { return; }
-    if (event.key === "Escape") { event.preventDefault(); event.stopImmediatePropagation(); closePicker(); plus.focus(); }
+    if ((menu.hidden && dialog.hidden) || event.isComposing || editor.composing()) { return; }
+    if (event.key === "Escape") { event.preventDefault(); event.stopImmediatePropagation(); var wasShortcut = shortcutOpen; closePicker(); if (wasShortcut) { input.focus(); } else { plus.focus(); } }
+    if (event.key === "Enter" && shortcutOpen && !event.isComposing && !editor.composing()) {
+      event.preventDefault(); event.stopImmediatePropagation(); var first = results.contains(document.activeElement) && document.activeElement.matches("button:not(:disabled)") ? document.activeElement : results.querySelector("button:not(:disabled)"); if (first) { first.click(); } return;
+    }
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       var options = Array.from((menu.hidden ? results : menu).querySelectorAll("button:not(:disabled)"));
       var index = options.indexOf(document.activeElement);
       if (options.length) { event.preventDefault(); options[index < 0 ? (event.key === "ArrowDown" ? 0 : options.length - 1) : (index + (event.key === "ArrowDown" ? 1 : options.length - 1)) % options.length].focus(); }
     }
   }, true);
+  editor.element.setAttribute("aria-controls", "wick-asset-picker");
+  editor.element.setAttribute("aria-expanded", "false");
+  input.addEventListener("input", function () {
+    if (controls.hidden || editor.composing()) { return; }
+    var remaining = editor.references();
+    var nextSelected = selected.filter(function (item) { return remaining.some(function (value) { return value.kind === item.kind && value.id === item.id; }); });
+    if (nextSelected.length !== selected.length) { selected = nextSelected; render(); persist(); }
+    var trigger = editor.shortcut();
+    if (trigger) {
+      if (!shortcutOpen || category !== trigger.category) { chooseCategory(trigger.category, true); }
+      shortcutOpen = true; shortcutRange = trigger.range; editor.element.setAttribute("aria-expanded", "true");
+      query.value = trigger.query; clearTimeout(timer); timer = setTimeout(function () { search(false); }, 200);
+    } else if (shortcutOpen) { closePicker(); }
+  });
   var mode = document.getElementById("chat-mode");
-  if (mode) { mode.addEventListener("change", function () { controls.hidden = mode.value !== "wick"; chips.hidden = controls.hidden; closePicker(); }); }
+  if (mode) { mode.addEventListener("change", function () { controls.hidden = mode.value !== "wick"; closePicker(); }); }
   document.addEventListener("wick:conversation", persist);
   window.addEventListener("message", function (event) {
     if (event.origin !== location.origin || event.source !== window.parent || !event.data || event.data.source !== "alfred-shell" || event.data.type !== "context") { return; }
@@ -140,5 +150,8 @@
     render(); persist();
   });
   window.WickContext = { references: references, formatPrompt: function (text) { return window.WickMentions.format(text, selected); }, ready: function () { return saveChain; } };
+  editor.references().forEach(function (item) {
+    if (selected.length < 5 && !selected.some(function (value) { return value.kind === item.kind && value.id === item.id; })) { selected.push(item); }
+  });
   render();
 })();
