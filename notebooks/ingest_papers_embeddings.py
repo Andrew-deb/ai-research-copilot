@@ -380,7 +380,7 @@ print(f"Run {RUN_ID} claimed the pipeline lock (trigger={RUN_TRIGGER}).")
 # MAGIC `embedding_contract.json` sits beside the model and records what the stored
 # MAGIC vectors mean: base model, dimension, both task prefixes, normalisation. Those four
 # MAGIC values are otherwise kept aligned **by hand** across this notebook,
-# MAGIC `dashboard/config.py`, `mcp_server/config.py` and `sql/`, with only the dimension
+# MAGIC `dashboard/config.py`, `mcp_server/shared_resource/config.py` and `sql/`, with only the dimension
 # MAGIC checked at runtime. Validating the contract closes the other three.
 
 # COMMAND ----------

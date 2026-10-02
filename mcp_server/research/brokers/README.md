@@ -1,4 +1,4 @@
-# mcp_server/brokers/ — External API Clients
+# mcp_server/research/brokers/ — External API Clients
 
 Three broker modules, each owning exactly one external API. No broker may touch the database, call another broker, or import Flask or MCP.
 
