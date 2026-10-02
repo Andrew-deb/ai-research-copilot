@@ -1,5 +1,5 @@
 """
-mcp_server/brokers/__init__.py
+mcp_server/research/brokers/__init__.py
 
 Broker layer package.
 

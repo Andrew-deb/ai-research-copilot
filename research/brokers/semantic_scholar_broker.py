@@ -1,5 +1,5 @@
 """
-mcp_server/brokers/semantic_scholar_broker.py — Semantic Scholar API client.
+mcp_server/research/brokers/semantic_scholar_broker.py — Semantic Scholar API client.
 
 SRP: HTTP calls to Semantic Scholar only. No DB access, no Flask, no other brokers.
 
@@ -12,7 +12,7 @@ import time
 
 import requests
 
-from config import S2_API_KEY, S2_BASE_URL, S2_RATE_LIMIT_DELAY
+from ..config import S2_API_KEY, S2_BASE_URL, S2_RATE_LIMIT_DELAY
 
 logger = logging.getLogger(__name__)
 
