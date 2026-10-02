@@ -19,11 +19,6 @@ import tempfile
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MCP_ROOT = REPO_ROOT / "mcp_server"
 TARGETS = ("research", "assistant", "render")
-COMMON_PACKAGES = ("middleware", "repositories", "shared_resource")
-SERVICES = {
-    "research": ("collection_service", "discovery_service", "planning_service", "progress_service"),
-    "assistant": ("collection_service", "progress_service", "workspace_service"),
-}
 
 
 def copy_file(source: Path, destination: Path) -> None:
@@ -50,22 +45,22 @@ def tools_in(source: Path) -> list[str]:
 
 
 def populate_mcp(target: str, destination: Path) -> None:
-    for name in ("config.py", "exceptions.py", "requirements.txt"):
-        copy_file(MCP_ROOT / name, destination / name)
-    for name in COMMON_PACKAGES:
-        copy_package(MCP_ROOT / name, destination / name)
-    copy_file(MCP_ROOT / "services" / "__init__.py", destination / "services" / "__init__.py")
-    for name in SERVICES[target]:
-        copy_file(MCP_ROOT / "services" / f"{name}.py", destination / "services" / f"{name}.py")
+    copy_file(MCP_ROOT / "shared_resource" / "requirements.txt", destination / "requirements.txt")
+    copy_package(MCP_ROOT / "shared_resource", destination / "shared_resource")
     copy_package(MCP_ROOT / target, destination / target)
-    if target == "research":
-        copy_file(MCP_ROOT / "research_mcp_server.py", destination / "research_mcp_server.py")
-        copy_package(MCP_ROOT / "brokers", destination / "brokers")
     copy_file(MCP_ROOT / "deploy" / f"{target}.app.yaml", destination / "app.yaml")
 
 
 def populate_render(destination: Path) -> None:
-    copy_package(MCP_ROOT / "shared_resource", destination / "shared_resource")
+    # Render consumes pure shared contracts, not MCP configuration, middleware,
+    # database pools or runtime bindings. Its own repository is injected.
+    shared = MCP_ROOT / "shared_resource"
+    for name in ("__init__.py", "exceptions.py"):
+        copy_file(shared / name, destination / "shared_resource" / name)
+    copy_package(shared / "services", destination / "shared_resource" / "services")
+    for path in sorted((shared / "repositories").glob("*.py")):
+        if path.name != "lakebase.py":
+            copy_file(path, destination / "shared_resource" / "repositories" / path.name)
     dashboard = REPO_ROOT / "dashboard"
     for path in sorted(dashboard.glob("*.py")):
         copy_file(path, destination / path.name)
@@ -111,8 +106,7 @@ def build(target: str, output: Path) -> Path:
             tools = []
         else:
             populate_mcp(target, stage)
-            source = (MCP_ROOT / "research_mcp_server.py" if target == "research"
-                      else MCP_ROOT / "assistant" / "server.py")
+            source = MCP_ROOT / target / "server.py"
             tools = tools_in(source)
         files = {str(p.relative_to(stage)).replace("\\", "/"):
                  hashlib.sha256(p.read_bytes()).hexdigest()

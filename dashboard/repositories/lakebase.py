@@ -4,7 +4,7 @@ dashboard/repositories/lakebase.py — Database access layer for the dashboard.
 SRP: All SQL and pgvector queries for the dashboard live here.
      No Flask request context, no HTTP calls, no business logic.
 
-Mirrors mcp_server/repositories/lakebase.py in connection pattern and most
+Mirrors mcp_server/shared_resource/repositories/lakebase.py in connection pattern and most
 domain functions. Dashboard-specific additions: stat aggregations and
 paginated listing queries optimised for UI rendering.
 """

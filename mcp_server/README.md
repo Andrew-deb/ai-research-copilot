@@ -1,114 +1,51 @@
-# mcp_server/ — MCP Server (Databricks App #1)
+# Research and Wick MCP servers
 
-FastMCP server exposing 13 tools to the AI agent. Follows a strict layered architecture — see the project implementation plan for the full layer contract.
+Two independently deployed FastMCP servers share infrastructure and business operations. Research exposes its existing 13 tools; Wick exposes 10 workspace tools. Each server has its own registration and startup module.
 
-## Directory Structure
+| Source | Responsibility |
+| --- | --- |
+| `research/server.py` | Research tool catalog and startup |
+| `research/services/` | Research discovery orchestration |
+| `research/brokers/` | OpenAlex, Semantic Scholar and Wikipedia clients |
+| `research/config.py` | Research provider settings |
+| `assistant/server.py` | Wick workspace tool catalog and startup |
+| `shared_resource/` | Common services, adapters, repositories, middleware, configuration and errors |
+| `deploy/` | Artifact builder, App specifications and deployment runbook |
 
-```
-mcp_server/
-├── config.py                   # Single source of truth for all configuration
-├── exceptions.py               # Domain exception classes
-├── research_mcp_server.py      # Tool registration (interface layer)
-├── brokers/                    # External API clients (HTTP only)
-│   ├── openalex_broker.py      # OpenAlex paper discovery
-│   ├── semantic_scholar_broker.py  # S2 enrichment (TLDRs, influence, recommendations)
-│   └── wikipedia_broker.py     # Wikipedia topic summaries
-├── services/                   # Business logic layer
-│   ├── discovery_service.py
-│   ├── collection_service.py
-│   ├── planning_service.py
-│   └── progress_service.py
-├── repositories/               # Data access layer (all SQL lives here)
-│   └── lakebase.py
-├── middleware/                  # Cross-cutting concerns
-│   ├── request_context.py      # User identity capture
-│   └── trace_middleware.py     # Per-call telemetry → mcp_traces table
-├── app.yaml                    # Databricks App deployment config
-└── requirements.txt
-```
+The obsolete top-level MVP entrypoint and module folders have been removed. Runtime imports are namespaced and common package imports are relative. Research and Wick launch directly; neither loads a legacy entrypoint or imports the other server.
 
-## Setup
+## Local startup
+
+From the repository root, install dependencies, then launch from the MCP source root:
 
 ```bash
-# From the repo root (ai-research-copilot/), with .env holding DATABASE_URL + API keys
-pip install -r mcp_server/requirements.txt   # needs mcp<2 (FastMCP 1.x) — pinned there
-
-# HTTP transport (what Databricks Apps runs) — MCP endpoint at POST /mcp, health at GET /healthz
-MCP_TRANSPORT=streamable-http PORT=8080 python mcp_server/research_mcp_server.py
-
-# stdio transport (Claude Desktop, MCP Inspector)
-MCP_TRANSPORT=stdio python mcp_server/research_mcp_server.py
+pip install -r mcp_server/shared_resource/requirements.txt
+cd mcp_server
+MCP_TRANSPORT=streamable-http PORT=8080 python -m research.server
+# In another terminal, from the same directory:
+PORT=8081 python -m assistant.server
 ```
 
-**Imports here are flat** (`from config import …`, not `from mcp_server.config import …`).
-A Databricks App deploy flattens this folder's *contents* to `/app/python/source_code/`,
-so no `mcp_server` package exists at runtime. The entrypoint puts its own directory on
-`sys.path`, so the same code runs from the repo and from the flattened app root
-(`python -m research_mcp_server`). `tests/test_mcp_server.py` enforces both.
-`MCP_TRANSPORT` ∈ `streamable-http` (default) · `sse` · `stdio`. For the HTTP transports
-the server binds `MCP_HOST` (default `0.0.0.0`) : `DATABRICKS_APP_PORT` / `PORT` / `8080`.
+Research retains its streamable HTTP, SSE and stdio transport options. Wick uses streamable HTTP. HTTP startup uses `MCP_HOST` (default `0.0.0.0`) and `DATABRICKS_APP_PORT` / `PORT` / `8080`; `/mcp` serves MCP and `/healthz` serves health checks.
 
-Quick check that all 13 tools are live:
+Shared database configuration loads the `database/lakebase-url` secret with `DATABASE_URL` fallback. Research retains the `semantic-scholar/api-key` and `openrouter/api-key` secret scopes and existing environment fallbacks, including `OPENALEX_EMAIL`. Wick does not load Research’s provider configuration.
+
+## Runtime boundaries
+
+Business services receive repositories explicitly. Thin shared adapters bind them to the MCP database adapter. Tool interfaces resolve the acting user and delegate to these operations; identity and tracing remain shared middleware. Provider HTTP calls remain in Research’s broker layer. Services raise typed domain errors.
+
+The Databricks proxy authenticates the trusted Render caller before accepting its acting-user header. Wick requires identity middleware at startup. Private reads and writes require attributable identity; public access remains bounded. Moving middleware does not change authorization or app grants.
+
+Render selects Research through `RESEARCH_MCP_SERVER_URL` (with legacy `MCP_SERVER_URL` fallback), and Wick through `WICK_MCP_SERVER_URL`, without Research fallback. Tool schema caches are keyed by mode and endpoint, with strict catalog validation. `agent/wick_system_prompt.md` is selected and bundled by Render orchestration; sharing an MCP package does not share prompts or tool access.
+
+Structured Allow once / Always allow permissions and further write capabilities remain separate planned work. This cleanup adds no tools or database migrations.
+
+## Deployment
+
+See [the deployment runbook](deploy/DEPLOYMENT.md). Build from the repository root:
 
 ```bash
-curl -s -X POST localhost:8080/mcp \
-  -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
+python mcp_server/deploy/build.py --output dist/release-candidate
 ```
 
-## Key Design Decisions
-
-**`config.py` as single config source** — No module calls `os.getenv()` directly. All constants, API URLs, and secret-scope lookups are centralised in `config.py`. Secret loading tries the Databricks SDK first, then falls back to the `.env` file, so the same code runs locally and on Databricks without changes.
-
-**Broker layer SRP** — Each broker owns exactly one external API. The service layer orchestrates brokers but never calls `requests` directly. This means switching from OpenAlex to Lens.org requires changing one file only.
-
-**Tool = one line** — Every `@mcp.tool` function in `research_mcp_server.py` calls exactly one service function and returns its result. No business logic, no SQL, no HTTP in the tool layer.
-
-**Exceptions, not error dicts** — Services raise typed domain exceptions (`PaperNotFoundError`, `ValidationError`, etc.). The MCP server's error handler converts these to structured error responses. Individual tools never contain `try/except`.
-
-**Middleware for cross-cutting concerns** — Request tracing and user-identity resolution are handled by middleware, not by individual tools. Adding a new cross-cutting concern (e.g., audit logging) requires one middleware change, not changes to 13 tools.
-
-## Secret Scope Names
-
-| Scope | Key | Value |
-|-------|-----|-------|
-| `database` | `lakebase-url` | Lakebase Postgres connection URL |
-| `semantic-scholar` | `api-key` | Semantic Scholar API key |
-| `openrouter` | `api-key` | OpenRouter API key |
-| `openalex` | `email` | OpenAlex polite pool email |
-
-## Wick's independent workspace server
-
-From this source root, run `python -m assistant.server`. Wick serves streamable
-HTTP at `/mcp` with `/healthz` and exactly nine tools: finite workspace discovery,
-resource reads, local paper metadata, personal reading progress, collection
-creation/membership changes, reading status, and rich note creation. It never
-registers Research's discovery, comparison, topic or planning tools. Shared
-operations remain in `shared_resource`; Research's 13-tool entry point is unchanged.
-
-The Databricks App proxy must authenticate the trusted Render caller before the
-identity header is accepted. Identity middleware is mandatory for Wick startup.
-Private reads/writes require an attributable acting user; anonymous lookup only
-sees supported public pages, global papers, and explicitly curated collections.
-The standalone command is a development/startup contract, not a deployment or
-new service-authentication implementation. Self-contained deployment packaging,
-App grants, and live identity/ownership verification are the next release step.
-
-### Render routing
-
-- `RESEARCH_MCP_SERVER_URL` selects Research; the legacy `MCP_SERVER_URL` remains
-  its compatibility fallback.
-- `WICK_MCP_SERVER_URL` selects Wick and must be configured separately. There is
-  no fallback to Research if it is absent or fails. Existing Databricks caller
-  credentials may be shared if both Apps grant that caller access.
-- Tool schema caches are keyed by mode and endpoint; each turn binds its selected
-  mode and acting user. Wick rejects a mismatched server catalog before model work.
-- The dedicated prompt source is `agent/wick_system_prompt.md`, selected by the
-  Render orchestration rather than the MCP server. Until deployment packaging
-  includes that source in the Render artifact, the dashboard uses a separate
-  workspace-specific fallback, never Research's base prompt.
-
-The initial server preserves collection removal with the existing conversational
-confirmation guidance. This is **not** structured Allow once/Always allow enforcement.
-Note deletion/overwrite tools remain unregistered; scoped approvals, revocation,
-and resumable runs require a later increment. No new migration is introduced.
+The GitHub workflow validates and publishes independent `deploy/research` and `deploy/assistant` branches. Their artifact roots and startup commands remain unchanged. After merging this source cleanup and waiting for publication, manually redeploy both Databricks Apps; Render’s Blueprint rebuilds its artifact automatically.

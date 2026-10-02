@@ -60,7 +60,7 @@ def test_no_package_qualified_imports():
 
 
 def _requirement_lines() -> list[str]:
-    text = (MCP_DIR / "requirements.txt").read_text(encoding="utf-8")
+    text = (MCP_DIR / "shared_resource" / "requirements.txt").read_text(encoding="utf-8")
     return [ln.strip().lower() for ln in text.splitlines()
             if ln.strip() and not ln.lstrip().startswith("#")]
 
@@ -97,7 +97,7 @@ def _rpc(url: str, method: str, timeout: float = 10.0, params=None) -> dict:
         return json.loads(resp.read())
 
 
-@pytest.fixture(scope="module", params=["research_mcp_server", "assistant.server", "built-research", "built-assistant"])
+@pytest.fixture(scope="module", params=["research.server", "assistant.server", "built-research", "built-assistant"])
 def flattened_server(tmp_path_factory, request):
     """Copy mcp_server/'s *contents* to a temp root (what Databricks does) and run it."""
     pytest.importorskip("mcp.server.fastmcp", reason="needs mcp<2 (FastMCP 1.x API)")
@@ -180,9 +180,9 @@ def test_research_adapters_and_bulk_ordering_remain_deployable():
     script = '''
 from unittest.mock import Mock
 from shared_resource.exceptions import ValidationError as SharedValidationError
-from exceptions import ValidationError
-from services import collection_service, progress_service, planning_service
-from repositories import lakebase
+from shared_resource.exceptions import ValidationError
+from shared_resource.adapters import collection_service, progress_service, planning_service
+from shared_resource.repositories import lakebase
 
 assert ValidationError is SharedValidationError
 lakebase.get_collection = Mock(return_value={"user_id": "owner"})

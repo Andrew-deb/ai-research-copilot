@@ -379,7 +379,7 @@ def test_the_header_name_matches_on_both_sides():
     from services import mcp_client
 
     src = (pathlib.Path(__file__).resolve().parents[1] / "mcp_server"
-           / "middleware" / "identity_middleware.py")
+           / "shared_resource" / "middleware" / "identity_middleware.py")
     server_side = re.search(r'USER_ID_HEADER = "([^"]+)"',
                             io.open(src, encoding="utf-8").read()).group(1)
     assert mcp_client.USER_ID_HEADER == server_side
@@ -393,12 +393,10 @@ def test_a_write_without_identity_raises_rather_than_using_the_demo_account():
     import importlib.util
     import pathlib
 
-    # Loaded by path, not by import: `middleware` already resolves to the
-    # dashboard's package of that name, and the MCP server's is a different one
-    # with the same name.
+    # Load the namespaced MCP module without touching dashboard middleware.
     path = (pathlib.Path(__file__).resolve().parents[1] / "mcp_server"
-            / "middleware" / "request_context.py")
-    spec = importlib.util.spec_from_file_location("mcp_request_context", path)
+            / "shared_resource" / "middleware" / "request_context.py")
+    spec = importlib.util.spec_from_file_location("mcp_server.shared_resource.middleware.request_context", path)
     request_context = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(request_context)
 

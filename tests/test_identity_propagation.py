@@ -52,17 +52,17 @@ def rc(monkeypatch):
         lookups.append(email)
         return {"user_id": DEMO_ID, "email": email}
 
-    fake = types.ModuleType("repositories.lakebase")
+    fake = types.ModuleType("shared_resource.repositories.lakebase")
     fake.get_or_create_user = get_or_create_user
-    package = types.ModuleType("repositories")
+    package = types.ModuleType("shared_resource.repositories")
     package.lakebase = fake
 
-    # setitem, so the dashboard's own `repositories` is restored afterwards.
-    monkeypatch.setitem(sys.modules, "repositories", package)
-    monkeypatch.setitem(sys.modules, "repositories.lakebase", fake)
+    # Keep test doubles scoped to the MCP namespace and restore them afterwards.
+    monkeypatch.setitem(sys.modules, "shared_resource.repositories", package)
+    monkeypatch.setitem(sys.modules, "shared_resource.repositories.lakebase", fake)
 
     spec = importlib.util.spec_from_file_location(
-        "mcp_request_context", MCP / "middleware" / "request_context.py")
+        "shared_resource.middleware.request_context", MCP / "shared_resource" / "middleware" / "request_context.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     module.lookups = lookups
@@ -165,7 +165,7 @@ def test_identity_does_not_survive_the_request(rc):
 # ---------------------------------------------------------------------------
 
 def _source(*parts) -> str:
-    return (MCP.joinpath(*parts)).read_text(encoding="utf-8")
+    return (MCP.joinpath("shared_resource", *parts)).read_text(encoding="utf-8")
 
 
 def test_the_decorator_uses_the_side_effect_free_accessors():

@@ -1,5 +1,5 @@
 """
-mcp_server/repositories/lakebase.py — Database access layer for the MCP server.
+mcp_server/shared_resource/repositories/lakebase.py — Database access layer for the MCP server.
 
 SRP: All SQL and pgvector queries for the MCP server live here.
      No Flask, no HTTP calls, no business logic.
@@ -23,7 +23,7 @@ import psycopg2
 import psycopg2.extras
 import psycopg2.pool
 
-from config import DATABASE_URL, EMBEDDING_DIMENSION
+from ..config import DATABASE_URL, EMBEDDING_DIMENSION
 
 logger = logging.getLogger(__name__)
 

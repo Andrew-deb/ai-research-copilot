@@ -58,7 +58,7 @@ The output contains:
 
 Each MCP artifact has its own `app.yaml`, requirements, runtime adapters and
 `shared_resource` copy generated from one source. Wick omits Research's entry
-point, discovery/planning adapters and external-provider brokers. Shared module
+point, discovery orchestration, provider configuration and external-provider brokers. Shared module
 presence is not a tool grant; only explicit registrations are exposed.
 
 `deployment_manifest.json` records the Git revision, tool names and SHA-256 of
@@ -311,3 +311,9 @@ from another browser/device, change pages without replacing saved context, check
 foreign/deleted assets, inspect preview truncation, and verify Research-mode
 requests do not use Wick context. Browser and live PostgreSQL checks remain
 necessary in addition to repository tests.
+
+## Shared-infrastructure source migration
+
+Both server entrypoints now live directly in their own packages. Common runtime bindings, identity/tracing middleware, database connection and configuration live under `shared_resource`; Research-only provider clients and discovery remain in `research`. The obsolete root MVP modules are removed. Both MCP dependency installs use `mcp_server/shared_resource/requirements.txt` in source; generated artifacts still have root `requirements.txt`. Render packages only pure shared contracts and uses its own runtime infrastructure.
+
+After merging, wait for the main GitHub workflow to publish both deployment branches, then manually deploy each App from its existing branch and repository-root source. Render’s existing Blueprint build automatically follows the updated builder. URLs, Git source branches, App startup commands, environment variables, OAuth credentials, grants and database schema remain unchanged. Verify `/healthz`, the exact 13-tool Research / 10-tool Wick catalogs, and an authenticated workspace read/write after deployment. Keep prior deployment commits available for rollback.

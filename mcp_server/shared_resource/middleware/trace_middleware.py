@@ -1,5 +1,5 @@
 """
-mcp_server/middleware/trace_middleware.py — Telemetry & Tool Observability.
+mcp_server/shared_resource/middleware/trace_middleware.py — Telemetry & Tool Observability.
 
 Decorator that wraps FastMCP tool executions, logs timing, captures input/output
 payloads, and persists trace records to the mcp_traces table in Lakebase.
@@ -12,8 +12,8 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Callable
 
-from middleware.request_context import get_bound_user_id, get_current_user_email
-from repositories import lakebase
+from .request_context import get_bound_user_id, get_current_user_email
+from ..repositories import lakebase
 
 logger = logging.getLogger("mcp_trace")
 

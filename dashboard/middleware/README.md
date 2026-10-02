@@ -16,7 +16,7 @@ Infrastructure aspects that cut across every route: end-user identity resolution
 ### 1. Identity via Proxy Header, Not a Login Form
 * Databricks Apps run behind an authenticating proxy that injects `X-Forwarded-Email` (plus `X-Forwarded-Preferred-Username`, `X-Forwarded-User`, and optionally `X-Forwarded-Access-Token`) on every request — the app never sees a password and needs no session store.
 * `auth.py` upserts the user on first sight (`get_or_create_user`), so a brand-new Databricks user gets a row automatically.
-* Local development has no proxy, so with `REQUIRE_FORWARDED_AUTH=false` (the default) the middleware falls back to `demo@research-copilot.dev` — the *same* identity `mcp_server/middleware/request_context.py` defaults to, so the agent and the dashboard read and write one account.
+* Local development has no proxy, so with `REQUIRE_FORWARDED_AUTH=false` (the default) the middleware falls back to `demo@research-copilot.dev` — the *same* identity `mcp_server/shared_resource/middleware/request_context.py` defaults to, so the agent and the dashboard read and write one account.
 * In the Databricks App environment, set `REQUIRE_FORWARDED_AUTH=true`. A request that reaches the app *without* the header has bypassed the proxy and is refused with `401` rather than silently served as the demo user.
 * `/healthz` and `/favicon.ico` are exempt from the hook — they must answer during deploy health checks before any database or identity resolution.
 

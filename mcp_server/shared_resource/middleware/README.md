@@ -1,4 +1,4 @@
-# mcp_server/middleware/ — Cross-Cutting Concerns
+# mcp_server/shared_resource/middleware/ — Cross-Cutting Concerns
 
 This directory encapsulates infrastructure aspects that cross-cut across multiple services and tools: identity resolution and observability telemetry.
 
@@ -6,6 +6,7 @@ This directory encapsulates infrastructure aspects that cross-cut across multipl
 
 | File | Purpose |
 |------|---------|
+| `identity_middleware.py` | Bind and clear the trusted caller’s acting-user header around requests. |
 | `request_context.py` | Thread-safe user context propagation via `contextvars`, supporting header-injected Databricks identity and demo defaults. |
 | `trace_middleware.py` | Tool telemetry decorator (`@trace_tool`) logging start/finish timestamps, duration (ms), inputs/outputs, and exceptions to `mcp_traces`. |
 
@@ -18,5 +19,5 @@ This directory encapsulates infrastructure aspects that cross-cut across multipl
 * We utilize Python's built-in `contextvars.ContextVar` to guarantee clean isolation between concurrent agent calls while avoiding having to pass `user_id` explicitly through every layer of the tool interface.
 
 ### 2. Non-Intrusive Observability Decorator
-* Tool functions in `research_mcp_server.py` focus purely on delegating to services.
+* Tool functions in `research/server.py` and `assistant/server.py` focus purely on delegating to services.
 * The `@trace_tool(tool_name)` decorator transparently intercepts calls, times execution, captures parameters, and handles telemetry persistence in a `finally` block so failures in logging never disrupt tool results.

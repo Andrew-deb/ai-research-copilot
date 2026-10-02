@@ -46,6 +46,6 @@ Flask-WTF>=1.2.0
 # environment simply drifted away from the local one between two builds. An
 # unbounded requirement means the next rebuild is a version bump nobody chose.
 #
-# mcp_server/requirements.txt carries the same ceiling, so both halves of the
+# mcp_server/shared_resource/requirements.txt carries the same ceiling, so both halves of the
 # protocol move together and deliberately.
 mcp>=1.29.0,<2.0.0

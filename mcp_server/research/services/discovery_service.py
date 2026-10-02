@@ -1,5 +1,5 @@
 """
-mcp_server/services/discovery_service.py — Paper Discovery & Exploration Service.
+mcp_server/research/services/discovery_service.py — Paper Discovery & Exploration Service.
 
 Orchestrates multi-source search (OpenAlex + Semantic Scholar + Lakebase vector search),
 paper details retrieval, neural recommendations, paper comparison, and Wikipedia topic caching.
@@ -9,9 +9,9 @@ import uuid
 import logging
 from typing import List, Optional
 
-from brokers import openalex_broker, semantic_scholar_broker, wikipedia_broker
-from exceptions import PaperNotFoundError, ValidationError
-from repositories import lakebase
+from ..brokers import openalex_broker, semantic_scholar_broker, wikipedia_broker
+from shared_resource.exceptions import PaperNotFoundError, ValidationError
+from shared_resource.repositories import lakebase
 
 logger = logging.getLogger(__name__)
 

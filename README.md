@@ -9,7 +9,7 @@ A portfolio-grade capstone for the **Rise of the AI Data Engineer** bootcamp. Us
 | Requirement | Deliverable |
 |---|---|
 | **Data pipeline in Spark** | `notebooks/ingest_papers_embeddings.py` — distributed abstract embedding via `sentence-transformers` in batched pandas workloads, upserted to pgvector |
-| **≥ 1 third-party API** | **Three:** OpenAlex (discovery), Semantic Scholar (TLDRs / influence / recommendations), Wikipedia REST (prerequisite context) — `mcp_server/brokers/` |
+| **≥ 1 third-party API** | **Three:** OpenAlex (discovery), Semantic Scholar (TLDRs / influence / recommendations), Wikipedia REST (prerequisite context) — `mcp_server/research/brokers/` |
 | **Processing unstructured data** | Paper abstracts, user notes, and topic summaries are chunked (800/100) and embedded into 384-dim vectors for semantic retrieval |
 | **Databricks App with a frontend** | `dashboard/` — Flask + Jinja2, server-rendered, deployed as a Databricks App |
 | **An AI agent that does stuff** | 13-tool MCP server the agent calls to **read and write** — collections, reading status, notes, reading plans — `mcp_server/` + `agent/` |
@@ -36,7 +36,7 @@ flowchart TB
     end
 
     subgraph MCP["Databricks App #1 — MCP Server"]
-        M["research_mcp_server.py<br/>13 thin tools + middleware"]
+        M["research/server.py<br/>13 tools + shared middleware"]
         BRK["brokers/ · services/ · repositories/"]
         M --> BRK
     end
@@ -110,7 +110,7 @@ To run the ingestion pipeline or MCP server locally, and to deploy everything to
 |---|---|---|
 | **Schema** | `python setup_db.py` | same, or run `sql/*.sql` in a SQL editor against Lakebase |
 | **Ingestion pipeline** | `python notebooks/ingest_papers_embeddings.py` | import the notebook, attach a cluster, Run All (or schedule as a Job) |
-| **MCP server** | `python mcp_server/research_mcp_server.py` (needs `mcp<2`) | deploy `mcp_server/` as a Databricks App |
+| **MCP server** | `cd mcp_server && python -m research.server` (needs `mcp<2`) | deploy the generated `deploy/research` branch as a Databricks App |
 | **Agent** | n/a (managed) | Agent Bricks UI — paste `agent/system_prompt.md`, attach the MCP server URL |
 | **Dashboard** | `flask --app dashboard.app run` | deploy as a Databricks App with `REQUIRE_FORWARDED_AUTH=true` |
 

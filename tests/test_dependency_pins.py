@@ -29,7 +29,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 REQUIREMENTS = (
     ROOT / "requirements.txt",
     ROOT / "dashboard" / "requirements.txt",     # what Render installs (rootDir)
-    ROOT / "mcp_server" / "requirements.txt",    # what Databricks installs
+    ROOT / "mcp_server" / "shared_resource" / "requirements.txt",    # what Databricks installs
 )
 
 
@@ -63,7 +63,7 @@ def test_both_halves_of_the_protocol_move_together():
     harder failure to read than this one was.
     """
     client = _requirement(ROOT / "dashboard" / "requirements.txt", "mcp")
-    server = _requirement(ROOT / "mcp_server" / "requirements.txt", "mcp")
+    server = _requirement(ROOT / "mcp_server" / "shared_resource" / "requirements.txt", "mcp")
 
     assert "<2.0.0" in client and "<2.0.0" in server
 

@@ -10,11 +10,11 @@ import os
 from mcp.server.fastmcp import FastMCP
 from starlette.responses import JSONResponse
 
-from middleware.identity_middleware import IdentityMiddleware
-from middleware.request_context import get_bound_user_id, require_current_user_id
-from middleware.trace_middleware import trace_tool
-from services import collection_service, progress_service, workspace_service
-from repositories import lakebase
+from shared_resource.middleware.identity_middleware import IdentityMiddleware
+from shared_resource.middleware.request_context import get_bound_user_id, require_current_user_id
+from shared_resource.middleware.trace_middleware import trace_tool
+from shared_resource.adapters import collection_service, progress_service, workspace_service
+from shared_resource.repositories import lakebase
 from shared_resource.services import paper_search_service, collection_service as shared_collections
 
 mcp = FastMCP(

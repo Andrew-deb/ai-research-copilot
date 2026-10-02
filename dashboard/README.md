@@ -63,7 +63,7 @@ Open <http://localhost:8080>. With `REQUIRE_FORWARDED_AUTH` unset (local default
 
 ## Key Design Decisions
 
-**`config.py` as single config source** — Same pattern as `mcp_server/config.py`: secret scope first (`database`, `openrouter`), then `.env` fallback. No other module calls `os.getenv()`.
+**`config.py` as single config source** — Same pattern as `mcp_server/shared_resource/config.py`: secret scope first (`database`, `openrouter`), then `.env` fallback. No other module calls `os.getenv()`.
 
 **Direct-to-Lakebase, logic mirrored not shared** — The reading-plan heuristic in `services/collection_service.py` is a deliberate copy of the MCP `planning_service` algorithm. A runtime HTTP dependency between the two Databricks Apps would couple their uptime; the shared contract is the algorithm, kept identical in both files.
 

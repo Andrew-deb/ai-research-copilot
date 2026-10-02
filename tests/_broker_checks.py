@@ -14,9 +14,9 @@ import json
 import sys
 import traceback
 
-from brokers.openalex_broker import _standardize_many, _standardize_work, _strip_prefix
-from brokers.semantic_scholar_broker import _standardize_paper
-from brokers.wikipedia_broker import _standardize_summary
+from research.brokers.openalex_broker import _standardize_many, _standardize_work, _strip_prefix
+from research.brokers.semantic_scholar_broker import _standardize_paper
+from research.brokers.wikipedia_broker import _standardize_summary
 
 
 def _work(**overrides) -> dict:

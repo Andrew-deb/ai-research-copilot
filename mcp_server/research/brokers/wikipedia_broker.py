@@ -1,5 +1,5 @@
 """
-mcp_server/brokers/wikipedia_broker.py — Wikipedia REST API client.
+mcp_server/research/brokers/wikipedia_broker.py — Wikipedia REST API client.
 
 SRP: HTTP calls to Wikipedia only. No DB access, no Flask, no other brokers.
 
@@ -14,7 +14,7 @@ import urllib.parse
 
 import requests
 
-from config import OPENALEX_EMAIL, WIKIPEDIA_BASE_URL, WIKIPEDIA_RATE_LIMIT_DELAY
+from ..config import OPENALEX_EMAIL, WIKIPEDIA_BASE_URL, WIKIPEDIA_RATE_LIMIT_DELAY
 
 logger = logging.getLogger(__name__)
 
