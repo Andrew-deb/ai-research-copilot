@@ -603,7 +603,14 @@ def _tool_schemas(tier: str, mode: str = "research") -> list[dict]:
     available = set(callable_tools(tier, mode))
     catalog = mcp_client.list_tools() if mode == "research" else mcp_client.list_tools(mode=mode)
     if mode == "wick" and {tool["name"] for tool in catalog} != WICK_TOOLS:
-        raise ExternalAPIError("The Wick endpoint exposes an incompatible tool catalog.")
+        # A separate MCP deployment may have changed after this worker cached
+        # its catalog. Retry discovery once; never relax the mode boundary.
+        catalog = mcp_client.list_tools(force=True, mode=mode)
+        actual = {tool["name"] for tool in catalog}
+        if actual != WICK_TOOLS:
+            logger.error("Wick tool catalog mismatch missing=%s unexpected=%s",
+                         sorted(WICK_TOOLS - actual), sorted(actual - WICK_TOOLS))
+            raise ExternalAPIError("The Wick endpoint exposes an incompatible tool catalog.")
     return [
         {
             "type": "function",
