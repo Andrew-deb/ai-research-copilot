@@ -12,9 +12,15 @@ from exceptions import GoalNotFoundError, ValidationError
 from repositories import lakebase
 from services import search_service
 
+try:
+    from shared_resource.services import goal_service as domain
+    from shared_resource import exceptions as domain_errors
+except ModuleNotFoundError:
+    from mcp_server.shared_resource.services import goal_service as domain
+    from mcp_server.shared_resource import exceptions as domain_errors
+
 logger = logging.getLogger(__name__)
 
-VALID_STATUSES = {"active", "completed", "archived"}
 _MATCH_TOP_K = 8
 _MATCH_MIN_SIMILARITY = 0.25
 
@@ -50,13 +56,10 @@ def list_goals(user_id: str, with_matches: bool = False) -> list[dict]:
 
 
 def create_goal(user_id: str, title: str, description: str | None = None) -> dict:
-    if not title or not title.strip():
-        raise ValidationError("Learning goal title cannot be empty.")
-    if len(title.strip()) > 300:
-        raise ValidationError("Learning goal title is too long (max 300 characters).")
-    return lakebase.create_learning_goal(
-        user_id=user_id, title=title.strip(), description=(description or "").strip() or None
-    )
+    try:
+        return domain.create_learning_goal(lakebase, user_id, title, description)
+    except domain_errors.ValidationError as exc:
+        raise ValidationError(str(exc)) from exc
 
 
 def get_goal_detail(user_id: str, goal_id: str) -> dict:
@@ -77,10 +80,9 @@ def get_goal_detail(user_id: str, goal_id: str) -> dict:
 
 
 def set_status(user_id: str, goal_id: str, status: str) -> dict:
-    clean = (status or "").strip().lower()
-    if clean not in VALID_STATUSES:
-        raise ValidationError(f"Invalid status '{status}'. Must be one of {sorted(VALID_STATUSES)}.")
-    updated = lakebase.update_goal_status(goal_id, user_id, clean)
-    if not updated:
-        raise GoalNotFoundError(f"Learning goal '{goal_id}' not found.")
-    return updated
+    try:
+        return domain.update_goal_status(lakebase, goal_id, user_id, status)
+    except domain_errors.ValidationError as exc:
+        raise ValidationError(str(exc)) from exc
+    except domain_errors.GoalNotFoundError as exc:
+        raise GoalNotFoundError(str(exc)) from exc

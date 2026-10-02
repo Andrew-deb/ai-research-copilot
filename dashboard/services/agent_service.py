@@ -47,6 +47,7 @@ from exceptions import (
 from middleware.capabilities import (
     LIBRARY_WRITE,
     NOTES_WRITE,
+    GOALS_WRITE,
     PROGRESS_WRITE,
     tier_can,
 )
@@ -111,6 +112,8 @@ TOOL_CAPABILITIES: dict[str, str | None] = {
     "get_workspace_paper": None,
     "get_reading_progress": "workspace:read",
     "create_note": NOTES_WRITE,
+    "create_learning_goal": GOALS_WRITE,
+    "update_goal_status": GOALS_WRITE,
     # write
     "create_collection": LIBRARY_WRITE,
     "add_paper_to_collection": LIBRARY_WRITE,
@@ -158,7 +161,7 @@ RESEARCH_TOOLS = frozenset({
 WICK_TOOLS = frozenset({
     "find_workspace_resources", "get_workspace_resource", "get_workspace_paper", "search_workspace_papers",
     "get_reading_progress", "create_collection", "add_paper_to_collection",
-    "remove_paper_from_collection", "mark_paper_status", "create_note",
+    "remove_paper_from_collection", "mark_paper_status", "create_note", "create_learning_goal", "update_goal_status",
 })
 
 

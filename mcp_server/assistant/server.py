@@ -15,7 +15,7 @@ from shared_resource.middleware.request_context import get_bound_user_id, requir
 from shared_resource.middleware.trace_middleware import trace_tool
 from shared_resource.adapters import collection_service, progress_service, workspace_service
 from shared_resource.repositories import lakebase
-from shared_resource.services import paper_search_service, collection_service as shared_collections
+from shared_resource.services import paper_search_service, goal_service, collection_service as shared_collections
 
 mcp = FastMCP(
     name="wick-workspace",
@@ -108,6 +108,20 @@ def create_note(note_text: str, paper_id: str | None = None,
                 title: str | None = None, tags: list[str] | None = None) -> dict:
     """Create a standalone or paper-linked personal note, optional title/tags; return actual saved fields."""
     return workspace_service.create_note(require_current_user_id(), note_text, paper_id, title, tags)
+
+
+@mcp.tool()
+@trace_tool("create_learning_goal")
+def create_learning_goal(title: str, description: str | None = None) -> dict:
+    """Create one private learning goal when requested; return actual saved fields. Title is at most 300 characters. Does not discover or import papers."""
+    return goal_service.create_learning_goal(lakebase, require_current_user_id(), title, description)
+
+
+@mcp.tool()
+@trace_tool("update_goal_status")
+def update_goal_status(goal_id: str, status: str) -> dict:
+    """Set an owned learning goal to active, completed or archived when explicitly requested. Resolve the exact goal first; archived is reversible and does not delete it."""
+    return goal_service.update_goal_status(lakebase, goal_id, require_current_user_id(), status)
 
 
 def create_app():

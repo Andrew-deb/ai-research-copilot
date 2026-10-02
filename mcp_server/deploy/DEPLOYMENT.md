@@ -53,7 +53,7 @@ The output contains:
 | Directory | Platform | Entry point | Catalog |
 | --- | --- | --- | --- |
 | `dist/release-candidate/research` | Existing Databricks Research App | `python -m research.server` | Existing 13 Research tools |
-| `dist/release-candidate/assistant` | Separate Databricks Wick App | `python -m assistant.server` | Ten workspace tools |
+| `dist/release-candidate/assistant` | Separate Databricks Wick App | `python -m assistant.server` | Twelve workspace tools |
 | `dist/release-candidate/render` | Render dashboard | `gunicorn app:app` from this directory | Orchestration, both bundled system prompts |
 
 Each MCP artifact has its own `app.yaml`, requirements, runtime adapters and
@@ -316,4 +316,10 @@ necessary in addition to repository tests.
 
 Both server entrypoints now live directly in their own packages. Common runtime bindings, identity/tracing middleware, database connection and configuration live under `shared_resource`; Research-only provider clients and discovery remain in `research`. The obsolete root MVP modules are removed. Both MCP dependency installs use `mcp_server/shared_resource/requirements.txt` in source; generated artifacts still have root `requirements.txt`. Render packages only pure shared contracts and uses its own runtime infrastructure.
 
-After merging, wait for the main GitHub workflow to publish both deployment branches, then manually deploy each App from its existing branch and repository-root source. Render’s existing Blueprint build automatically follows the updated builder. URLs, Git source branches, App startup commands, environment variables, OAuth credentials, grants and database schema remain unchanged. Verify `/healthz`, the exact 13-tool Research / 10-tool Wick catalogs, and an authenticated workspace read/write after deployment. Keep prior deployment commits available for rollback.
+After merging, wait for the main GitHub workflow to publish both deployment branches, then manually deploy each App from its existing branch and repository-root source. Render’s existing Blueprint build automatically follows the updated builder. URLs, Git source branches, App startup commands, environment variables, OAuth credentials, grants and database schema remain unchanged. Verify `/healthz`, the exact 13-tool Research / 12-tool Wick catalogs, and an authenticated workspace read/write after deployment. Keep prior deployment commits available for rollback.
+
+## Wick goal-tool increment
+
+Wick now exposes `create_learning_goal` and `update_goal_status` through shared goal services, increasing its catalog from 10 to 12. Research remains at 13 tools. Render permits these only in authenticated Wick mode with `goals:write`; the MCP methods require bound identity and goal updates filter by owner. Existing notes and collections are unchanged.
+
+After merge, wait for the assistant deployment branch publication, manually redeploy Wick, and ensure Render has rebuilt/restarted with the matching 12-tool registry. The exact catalog validator deliberately rejects a 10/12 version mismatch; deploy both versions before acceptance and retry after both are current. Research redeployment is optional for this increment (the earlier shared-infrastructure cleanup still required both servers). No new migration or environment setting is required. Test explicit goal creation and active/completed/archived transitions, plus anonymous and foreign-owner refusal. Structured permission prompts are still a separate feature.
