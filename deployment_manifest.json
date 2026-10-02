@@ -38,7 +38,7 @@
     "shared_resource/services/progress_service.py": "bd374dcdd9b7b5d63663ce635a6e88bfc5c1dc7f052374156da63c9961da273d",
     "shared_resource/services/workspace_service.py": "13aa4b8127c3c53b2a53364bf6407e04aabc5e72d98b4f64e978840e4b01d172"
   },
-  "source_revision": "ecad5479222ee8b51a036717c8dff593ad2167b9",
+  "source_revision": "ee3bf5e22965a29d7aa377787c8e48e9f4e4f4fa",
   "target": "research",
   "tools": [
     "add_paper_to_collection",
