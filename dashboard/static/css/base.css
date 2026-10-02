@@ -3137,3 +3137,7 @@ kbd {
   color: var(--danger);
   font-size: 11.5px;
 }
+
+/* Unmetered: a label and a count, no bar. The bar's whole job is to show how
+   much of something is left, and there is no something. */
+.usage-row-plain { grid-template-columns: 1fr auto; }
