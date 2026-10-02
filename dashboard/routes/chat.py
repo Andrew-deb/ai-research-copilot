@@ -74,7 +74,7 @@ def _context_for_view(owner, conversation_id=None):
 @require_capability(AGENT_QUERY)
 def assistant_assets():
     return jsonify(assistant_context.search(current_user_id(), request.args.get('q', ''),
-                   request.args.get('kind') or None, request.args.get('cursor')))
+                   request.args.get('kind') or None, request.args.get('cursor'), request.args.get('category')))
 
 
 @bp.post("/chat/<conversation_id>/context")

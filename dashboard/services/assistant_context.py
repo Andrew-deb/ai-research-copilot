@@ -159,9 +159,24 @@ def bundle(owner, references):
 
 
 
-def search(owner, query='', kind=None, cursor=None):
+def search(owner, query='', kind=None, cursor=None, category=None):
+    kinds = [kind] if kind else None
+    if category == 'pages':
+        if kind and kind != 'page':
+            raise ValidationError('Invalid page category.')
+        kinds = ['page']
+    elif category == 'assets':
+        if kind and kind not in {'paper', 'note', 'collection', 'goal'}:
+            raise ValidationError('Invalid asset category.')
+        kinds = [kind] if kind else ['paper', 'note', 'collection', 'goal']
+        if not owner:
+            kinds = [item for item in kinds if item not in {'note', 'goal'}]
+            if not kinds:
+                raise ValidationError('Sign in to reference personal assets.')
+    elif category is not None:
+        raise ValidationError('Invalid context category.')
     try:
         return shared_workspace.find_workspace_resources(lakebase, owner, query,
-            [kind] if kind else None, limit=20, cursor=cursor)
+            kinds, limit=20, cursor=cursor)
     except (domain_errors.ValidationError, domain_errors.WorkspaceResourceNotFoundError) as exc:
         raise ValidationError(str(exc)) from exc

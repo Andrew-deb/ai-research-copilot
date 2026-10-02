@@ -33,7 +33,7 @@
   {% if goals %}
     <ul class="goal-list">
       {% for goal in goals %}
-        <li class="goal-item" data-goal-id="{{ goal.goal_id }}">
+        <li class="goal-item" id="goal-{{ goal.goal_id }}" data-goal-id="{{ goal.goal_id }}">
           <div class="goal-head">
             <div>
               <h3>{{ goal.title }}</h3>

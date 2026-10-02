@@ -200,7 +200,8 @@
     el.className = "chat-msg chat-msg-user";
     var bubble = document.createElement("div");
     bubble.className = "chat-prompt-text";
-    bubble.textContent = text;
+    if (window.WickMentions) { window.WickMentions.render(bubble, text); }
+    else { bubble.textContent = text; }
     el.appendChild(bubble);
     ensureThread().appendChild(el);
     scrollToLatest();
@@ -1014,6 +1015,10 @@
   async function send(question, options) {
     options = options || {};
     if (pending) { return; }
+    if (!options.action && window.WickContext && (embedded || page.dataset.chatMode === "wick")) {
+      question = window.WickContext.formatPrompt(question);
+      if (question.length > 2000) { addNotice("Shorten your prompt or remove a reference (2,000 characters including references)."); return; }
+    }
     completedWrites = [];
     activeRunId = null;
     stopRequested = false;
