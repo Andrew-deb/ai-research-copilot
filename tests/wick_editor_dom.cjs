@@ -50,6 +50,7 @@ function type(text) {
   assert(requests.some(url => url.includes('category=assets') && url.includes('q=pap')));
   editor.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
   assert.equal(editor.querySelector('a').textContent, '@Paper title');
+  assert.equal(editor.dataset.empty, 'false');
   assert.equal(editor.textContent, 'Review @Paper title ');
   assert.equal(input.value, 'Review [@Paper title](/paper/' + id + ') ');
   assert.equal(editor.querySelector('a').getAttribute('contenteditable'), 'false');
@@ -63,6 +64,8 @@ function type(text) {
   d.querySelector('.wick-asset-result').click();
   assert.equal(editor.textContent, 'Open #Notes ');
   assert.equal(editor.querySelector('a').getAttribute('href'), '/notes');
+  input.value = input.value.replace('Open ', ''); assert.equal(editor.dataset.empty, 'false');
+  assert(!input.value.includes('Type @'));
   // Clearing a draft keeps background context without inserting tokens into the next draft.
   input.value = ''; assert.equal(editor.querySelector('a'), null); assert.equal(w.WickContext.references().length, 1);
   assert.equal(editor.dataset.empty, 'true');
