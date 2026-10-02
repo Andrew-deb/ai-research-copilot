@@ -96,3 +96,12 @@ def remove_paper_from_collection(repository, collection_id: str, paper_id: str, 
         "message": "Paper removed from collection.",
         "rows_affected": rows_deleted
     }
+
+
+def append_paper_to_collection(repository, collection_id, paper_id, user_id):
+    """Owned idempotent append used by workspace interfaces."""
+    require_owned_collection(repository, collection_id, user_id)
+    paper = require_paper(repository, paper_id)
+    position = repository.append_paper_to_collection(collection_id, paper_id)
+    return {"status": "success", "collection_id": collection_id, "paper_id": paper_id,
+            "sequence_order": position, "message": f"Paper '{paper['title']}' is in the collection."}

@@ -124,11 +124,8 @@ def add_paper(user_id: str, collection_id: str, paper_id: str) -> dict:
     if not lakebase.get_paper(paper_id):
         raise PaperNotFoundError(f"Paper '{paper_id}' not found in the catalog.")
 
-    # Append at the end, with the position computed in SQL. Fetching every paper in
-    # the collection just to take max(sequence_order) meant a full join across papers
-    # and reading_progress crossing the wire to produce one integer.
-    next_order = lakebase.append_paper_to_collection(collection_id, paper_id)
-    return {"status": "ok", "collection_id": collection_id, "paper_id": paper_id, "sequence_order": next_order}
+    from services import workspace_paper_service
+    return workspace_paper_service.append(user_id, collection_id, paper_id)
 
 
 def remove_paper(user_id: str, collection_id: str, paper_id: str) -> dict:

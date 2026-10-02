@@ -26,10 +26,10 @@ def test_endpoint_configuration_never_falls_back_for_wick(monkeypatch):
 
 
 def test_mode_tier_and_write_gate_are_independent(monkeypatch):
-    assert len(agent_service.callable_tools("authenticated", "wick")) == 9
+    assert len(agent_service.callable_tools("authenticated", "wick")) == 10
     assert len(agent_service.callable_tools("authenticated", "research")) == 13
     assert set(agent_service.callable_tools("anonymous", "wick")) == {
-        "find_workspace_resources", "get_workspace_resource", "get_workspace_paper"}
+        "find_workspace_resources", "get_workspace_resource", "get_workspace_paper", "search_workspace_papers"}
     for tool, mode in (("search_papers", "wick"), ("create_note", "research"),
                        ("generate_reading_plan", "wick")):
         with pytest.raises(CapabilityDeniedError):

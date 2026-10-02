@@ -65,6 +65,7 @@ def populate_mcp(target: str, destination: Path) -> None:
 
 
 def populate_render(destination: Path) -> None:
+    copy_package(MCP_ROOT / "shared_resource", destination / "shared_resource")
     dashboard = REPO_ROOT / "dashboard"
     for path in sorted(dashboard.glob("*.py")):
         copy_file(path, destination / path.name)

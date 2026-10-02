@@ -162,7 +162,7 @@ def test_serves_thirteen_tools_from_flattened_layout(flattened_server):
     result = _rpc(f"{flattened_server}/mcp", "tools/list")
     names = {t["name"] for t in result["result"]["tools"]}
     expected = EXPECTED_TOOLS if _get_json(flattened_server + "/")["server"] == "ai-research-copilot" else {
-        "find_workspace_resources", "get_workspace_resource", "get_workspace_paper",
+        "find_workspace_resources", "get_workspace_resource", "get_workspace_paper", "search_workspace_papers",
         "get_reading_progress", "create_collection", "add_paper_to_collection",
         "remove_paper_from_collection", "mark_paper_status", "create_note",
     }

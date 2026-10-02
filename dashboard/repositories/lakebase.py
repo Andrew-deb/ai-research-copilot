@@ -681,20 +681,12 @@ def append_paper_to_collection(collection_id: str, paper_id: str) -> int:
     statement always returns a row: re-adding a paper reports the position it
     already occupies instead of silently returning nothing.
     """
-    row = run_write(
-        """
-        INSERT INTO collection_papers (collection_id, paper_id, sequence_order)
-        SELECT %(cid)s, %(pid)s, COALESCE(MAX(sequence_order), 0) + 1
-          FROM collection_papers
-         WHERE collection_id = %(cid)s
-        ON CONFLICT (collection_id, paper_id) DO UPDATE
-            SET sequence_order = collection_papers.sequence_order
-        RETURNING sequence_order;
-        """,
-        {"cid": collection_id, "pid": paper_id},
-        returning=True,
-    )
-    return int(row["sequence_order"]) if row else 1
+    try:
+        from shared_resource.repositories.collection_membership_repository import append_paper
+    except ModuleNotFoundError:
+        from mcp_server.shared_resource.repositories.collection_membership_repository import append_paper
+    import sys
+    return append_paper(sys.modules[__name__], collection_id, paper_id)
 
 
 def remove_paper_from_collection(collection_id: str, paper_id: str) -> int:
