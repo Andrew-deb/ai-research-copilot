@@ -1,11 +1,11 @@
 """dashboard/routes/collections.py — Collections and reading plans."""
 
-from flask import Blueprint, render_template, request, url_for
+from flask import Blueprint, jsonify, render_template, request, url_for
 
 from middleware.capabilities import require_capability, require_quota
 from middleware.auth import current_user_id
 from routes.helpers import action_response, form_or_json
-from services import collection_service
+from services import collection_service, workspace_paper_service
 
 bp = Blueprint("collections", __name__)
 
@@ -83,3 +83,21 @@ def reorder(collection_id: str):
         redirect_to=url_for("collections.collection_detail", collection_id=collection_id),
         flash_message="Reading order updated.",
     )
+
+
+@bp.get("/collection/<collection_id>/paper-options")
+@require_capability("library:write")
+def paper_options(collection_id):
+    collection_service._require_writable_collection(collection_id, current_user_id())
+    scope = request.args.get("scope", "corpus")
+    if scope not in {"corpus", "saved"}:
+        from exceptions import ValidationError
+        raise ValidationError("Unknown paper search scope.")
+    result = workspace_paper_service.search(current_user_id(), request.args.get("q", ""),
+                                           scope == "saved", cursor=request.args.get("cursor"))
+    existing = {str(p["paper_id"]) for p in collection_service.get_collection_detail(
+        current_user_id(), collection_id)["papers"]}
+    for paper in result["items"]:
+        paper["already_added"] = str(paper["paper_id"]) in existing
+        paper["url"] = url_for("search.paper_detail", paper_id=paper["paper_id"])
+    return jsonify(result)

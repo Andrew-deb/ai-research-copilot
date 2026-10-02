@@ -78,3 +78,17 @@
   .reading-item.is-static   { grid-template-columns: minmax(0, 1fr); }
   .reading-item .seq { display: none; }
 }
+
+.paper-picker { width: min(760px, calc(100vw - 32px)); max-height: 85vh; padding: 24px; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); }
+.paper-picker::backdrop { background: rgb(0 0 0 / 55%); }
+.picker-heading, .picker-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.picker-heading h2 { margin: 0; }
+.picker-controls { display: flex; gap: 12px; align-items: end; flex-wrap: wrap; }
+.picker-controls label { display: flex; flex-direction: column; gap: 6px; }
+.picker-controls label:first-child { flex: 1; min-width: 180px; }
+.picker-controls input, .picker-controls select { padding: 10px; color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+.picker-results { max-height: 42vh; overflow-y: auto; }
+.picker-paper { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 12px; padding: 14px 0; border-top: 1px solid var(--border); }
+.picker-paper input { margin-top: 4px; }
+.picker-abstract { color: var(--text-muted); font-size: 13px; margin: 6px 0; }
+.picker-footer { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border); }
