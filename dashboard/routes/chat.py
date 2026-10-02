@@ -22,7 +22,8 @@ from middleware.capabilities import AGENT_QUERY, consume_quota, require_capabili
 from routes.helpers import form_or_json, wants_json
 from services import (agent_service, assistant_context, collection_service,
                       conversation_service, goal_service, quota_service, telemetry_service)
-from repositories import agent_runs
+from repositories import agent_runs, action_approvals, lakebase
+from services import action_approval_service as approvals
 
 logger = logging.getLogger(__name__)
 
@@ -344,12 +345,29 @@ def ask():
             },
         )
 
-    result = _run_turn(question, tier, user_id, conversation_id,
-                       prepared=prepared, context=context, chat_mode=chat_mode)
-    return jsonify(_with_conversation(result, user_id, conversation_id, question,
-                                     prepared=prepared, mode=mode, source_id=source_id,
-                                     context=context, surface=surface,
-                                     chat_mode=chat_mode))
+    run_id = str(uuid.uuid4()) if chat_mode == 'wick' else None
+    if run_id: agent_runs.create(run_id,current_quota_scope())
+    try:
+        result = _run_turn(question, tier, user_id, conversation_id,
+                           prepared=prepared, context=context, chat_mode=chat_mode,
+                           **({'should_stop': lambda: agent_runs.status(
+                               run_id, current_quota_scope()) == 'stop_requested'} if run_id else {}))
+        if run_id and agent_runs.finish(run_id, current_quota_scope()) == 'stopped':
+            result = dict(result, answer=None, status=agent_service.STATUS_STOPPED)
+        return jsonify(_with_conversation(result, user_id, conversation_id, question,
+                                         prepared=prepared, mode=mode, source_id=source_id,
+                                         context=context, surface=surface,
+                                         chat_mode=chat_mode))
+    except approvals.ApprovalRequired as exc:
+        job={'question':question,'conversation_id':conversation_id,'prepared':prepared,'mode':mode,
+             'source_id':source_id,'context':context,'surface':surface,'checkpoint':exc.checkpoint}
+        proposal=action_approvals.pause(run_id,user_id,exc.proposal,job)
+        if not proposal: abort(409)
+        return jsonify(status='awaiting_approval',approval=proposal,conversation_id=conversation_id)
+    except Exception:
+        if run_id:
+            agent_runs.finish(run_id, current_quota_scope(), failed=True)
+        raise
 
 
 @bp.post("/chat/runs/<uuid:run_id>/stop")
@@ -382,7 +400,8 @@ def _wants_stream() -> bool:
 
 def _run_turn(question: str, tier: str, user_id: str | None,
               conversation_id: str | None = None, on_event=None,
-              should_stop=None, prepared=None, context=None, chat_mode="research") -> dict:
+              should_stop=None, prepared=None, context=None, chat_mode="research",
+              resume=None, permit=None) -> dict:
     """
     One measured turn. Shared by the JSON and streaming paths.
 
@@ -392,6 +411,9 @@ def _run_turn(question: str, tier: str, user_id: str | None,
     the row is written.
     """
     tally = llm_client.Usage()
+    pending_approval = None
+    prior_llm_turns = resume['state']['llm_turns'] if resume else 0
+    prior_tool_calls = len(resume['tool_calls']) if resume else 0
     # `metric` stays agent_query for both modes — it is the quota key, and
     # splitting it would hand every account two separate agent allowances. The
     # mode rides alongside so the usage page can tell Research from Wick, which
@@ -406,12 +428,18 @@ def _run_turn(question: str, tier: str, user_id: str | None,
                        "usage": tally}
             if chat_mode != "research":
                 options["mode"] = chat_mode
+                options['before_tool'] = lambda name,args,checkpoint: approvals.guard(user_id,name,args,checkpoint,permit)
+                if resume: options['resume'] = resume
             if context:
                 options["page_context"] = context
             if should_stop:
                 options["should_stop"] = should_stop
             try:
                 result = agent_service.ask(question, **options)
+            except approvals.ApprovalRequired as exc:
+                pending_approval = exc
+                result = agent_service.envelope(question,status='awaiting_approval',
+                    tool_calls=exc.checkpoint['tool_calls'],llm_turns=exc.checkpoint['state']['llm_turns'])
             except agent_service.RunStopped:
                 result = agent_service.envelope(
                     question, status=agent_service.STATUS_STOPPED,
@@ -419,6 +447,9 @@ def _run_turn(question: str, tier: str, user_id: str | None,
             op.llm_turns = result["usage"]["llm_turns"]
             op.tool_calls = result["usage"]["tool_calls"]
             op.embedding_calls = result["usage"]["embedding_calls"]
+            if resume:
+                op.llm_turns = max(0, op.llm_turns - prior_llm_turns)
+                op.tool_calls = max(0, op.tool_calls - prior_tool_calls)
             if result.get("status") == agent_service.STATUS_STOPPED:
                 op.ok = False
                 op.error = "stopped by user"
@@ -427,6 +458,8 @@ def _run_turn(question: str, tier: str, user_id: str | None,
             # expensive failure is the one measurement 3.6 can least afford to
             # be missing when it sets a ceiling.
             op.spent(tally)
+    if pending_approval:
+        raise pending_approval
     return result
 
 
@@ -490,6 +523,24 @@ def _stream_turn(question: str, tier: str, user_id: str | None,
                 chat_mode=chat_mode)
                 if result.get("answer")
                                  else result)
+        except approvals.ApprovalRequired as exc:
+            job = {'question':question,'conversation_id':conversation_id,'prepared':prepared,
+                   'mode':mode,'source_id':source_id,'context':context,'surface':surface,
+                   'checkpoint':exc.checkpoint}
+            try:
+                proposal = action_approvals.pause(run_id,user_id,exc.proposal,job)
+            except Exception:
+                logger.exception('Could not persist action approval')
+                agent_runs.finish(run_id, owner, failed=True)
+                outcome['error'] = 'Action approval is unavailable. No proposed write was executed.'
+                return
+            if proposal:
+                outcome['result'] = {'status':'awaiting_approval','approval':proposal,
+                                     'conversation_id':conversation_id}
+            else:
+                agent_runs.finish(run_id,owner)
+                outcome['result'] = agent_service.envelope(question,status=agent_service.STATUS_STOPPED,
+                    message='Stopped before the proposed action.')
         except ResearchCopilotError as exc:
             terminal = agent_runs.finish(run_id, owner, failed=True) if run_id else "failed"
             if terminal == "stopped":
@@ -560,3 +611,60 @@ def register_chat_context(app) -> None:
             "can_ask": can_ask,
             "agent_daily_limit": agent_quota,
         }
+
+
+@bp.get('/chat/runs/<uuid:run_id>/approval')
+def pending_approval(run_id):
+    user_id=require_user_id()
+    proposal=action_approvals.pending(str(run_id),user_id)
+    if not proposal:abort(404)
+    return jsonify(approval=proposal)
+
+
+@bp.post('/chat/approvals/<uuid:approval_id>')
+@require_capability(AGENT_QUERY)
+def decide_approval(approval_id):
+    user_id=require_user_id()
+    decision=form_or_json('decision')['decision']
+    if decision not in ('once','always','deny'):abort(400)
+    if not agent_service.is_connected('wick'):abort(503)
+    record=action_approvals.claim(str(approval_id),user_id,decision)
+    if not record:abort(409,description='This approval expired, was stopped, or was already decided.')
+    job=record['job'];run_id=record['run_id'];owner=('user',user_id)
+    permit={**record['proposal'],'decision':decision}
+    try:
+        if not lakebase.get_conversation(user_id, job['conversation_id']):
+            abort(409, description='This conversation is unavailable. Start a new turn.')
+        current=conversation_service.prepare_turn(user_id,job['conversation_id'],job['mode'],job['source_id'])
+        if current['expected_head'] != job['prepared']['expected_head']:
+            abort(409,description='This conversation changed while waiting. Start a new turn.')
+        # Capabilities are rechecked by the current agent policy before each call.
+        result=_run_turn(job['question'],current_tier(),user_id,job['conversation_id'],
+            prepared=job['prepared'],context=job['context'],chat_mode='wick',
+            resume=job['checkpoint'],permit=permit,
+            should_stop=lambda:agent_runs.status(run_id,owner)=='stop_requested')
+        terminal=agent_runs.finish(run_id,owner)
+        if terminal=='stopped':
+            result=dict(result,status=agent_service.STATUS_STOPPED,message='Stopped. Completed writes were not rolled back.')
+        return jsonify(_with_conversation(result,user_id,job['conversation_id'],job['question'],
+            prepared=job['prepared'],mode=job['mode'],source_id=job['source_id'],context=job['context'],
+            surface=job['surface'],chat_mode='wick') if result.get('answer') else result)
+    except approvals.ApprovalRequired as exc:
+        proposal=action_approvals.pause(run_id,user_id,exc.proposal,{**job,'checkpoint':exc.checkpoint})
+        if not proposal:agent_runs.finish(run_id,owner);abort(409)
+        return jsonify(status='awaiting_approval',approval=proposal,conversation_id=job['conversation_id'])
+    except Exception:
+        agent_runs.finish(run_id,owner,failed=True)
+        raise
+
+
+@bp.get('/chat/permissions')
+def permissions():
+    user_id=require_user_id()
+    return render_template('action_permissions.html',grants=action_approvals.grants(user_id))
+
+
+@bp.post('/chat/permissions/<uuid:grant_id>/revoke')
+def revoke_permission(grant_id):
+    if not action_approvals.revoke(require_user_id(),str(grant_id)):abort(404)
+    return redirect(url_for('chat.permissions'))
