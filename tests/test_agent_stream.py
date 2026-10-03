@@ -282,8 +282,9 @@ def test_a_failure_mid_turn_is_reported_as_an_event(anon_client, db, monkeypatch
     events = _events(resp)
 
     assert resp.status_code == 200          # already committed
-    assert events[-1]["type"] == "error"
-    assert "not running" in events[-1]["message"]
+    assert events[-1]["type"] == "done"
+    assert events[-1]["result"]["status"] == "failed"
+    assert "not running" in events[-1]["result"]["message"]
 
 
 def test_the_turn_is_metered_even_when_it_fails(anon_client, db, monkeypatch):

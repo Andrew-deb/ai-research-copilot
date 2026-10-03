@@ -954,6 +954,11 @@
       return;
     }
 
+    return readTurnStream(res, trace, question, options);
+  }
+
+  async function readTurnStream(res, trace, question, options) {
+    var terminal = null;
     var reader = res.body.getReader();
     var decoder = new TextDecoder();
     var buffer = "";
@@ -974,8 +979,9 @@
         var event;
         try { event = JSON.parse(line.slice(5).trim()); } catch (e) { return; }
         handle(event, trace, function (result) {
+          terminal = result;
           finishTurn(result, trace, question);
-          if (embedded && completedWrites.length) {
+          if (embedded && completedWrites.length && result.status !== "awaiting_approval") {
             tellParent("writes", completedWrites.slice());
             completedWrites = [];
           }
@@ -987,6 +993,8 @@
         });
       });
     }
+    if (!terminal) { throw new Error("The connection ended before the run finished. Checking its status…"); }
+    return terminal;
   }
 
   function rememberConversation(result, question) {
@@ -1041,7 +1049,7 @@
     card.setAttribute("aria-label", "Approve workspace action");
     var title = document.createElement("h3"); title.textContent = proposal.label;
     var target = document.createElement("p"); target.textContent = "Target: " + proposal.target_label;
-    var hint = document.createElement("p"); hint.textContent = "Review this change. Approval expires in 15 minutes. Always allow applies only to this operation and target.";
+    var hint = document.createElement("p"); hint.textContent = "Review this change. Approval expires in 15 minutes. Allow once approves supported writes for this task only. Always allow saves permission for this operation and target; different operations may still ask.";
     card.append(title, target, hint);
     (proposal.display || []).forEach(function (item) {
       var label = document.createElement("strong"); label.textContent = item.label;
@@ -1059,17 +1067,22 @@
         var trace = createTrace();
         try {
           var res = await fetch("/chat/approvals/" + encodeURIComponent(proposal.approval_id), {
-            method: "POST", headers: {"Content-Type":"application/json", "X-CSRFToken":
+            method: "POST", headers: {"Content-Type":"application/json", "Accept":"text/event-stream", "X-CSRFToken":
               (document.querySelector('meta[name="csrf-token"]') || {}).content || ""},
             body: JSON.stringify({decision:item[0]})});
           if (!res.ok) { throw new Error("This approval could not resume. It may have expired or already been decided. Check the run before retrying."); }
-          var result = await res.json();
-          card.remove(); approvalCard = null; approvalRunId = null; activeRunId = null; rememberRun(null);
-          finishTurn(result, trace, "");
-          var writes = (result.tool_calls || []).filter(function (call) {
-            return call.ok && writeTools.indexOf(call.name) >= 0;
-          }).map(function (call) { return call.name; });
-          if (embedded && writes.length) { tellParent("writes", writes); }
+          card.remove(); approvalCard = null; approvalRunId = null;
+          var result;
+          if ((res.headers && res.headers.get("Content-Type") || "").includes("event-stream")) {
+            result = await readTurnStream(res, trace, "", {});
+          } else {
+            result = await res.json(); finishTurn(result, trace, "");
+            var writes = (result.tool_calls || []).filter(function (call) {
+              return call.ok && writeTools.indexOf(call.name) >= 0;
+            }).map(function (call) { return call.name; });
+            if (embedded && writes.length && result.status !== "awaiting_approval") { tellParent("writes", writes); }
+          }
+          if (result.status !== "awaiting_approval") { activeRunId = null; rememberRun(null); }
         } catch (error) { trace.finish(); addNotice(error.message); await recoverRun(proposal.run_id); }
         finally { if (!activeRunId || approvalRunId) { setPending(false); } buttons.querySelectorAll("button").forEach(function (b) { b.disabled = false; }); }
       });

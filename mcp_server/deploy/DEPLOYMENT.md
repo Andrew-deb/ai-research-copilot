@@ -339,7 +339,8 @@ and Research at 13. Neither Databricks App requires redeployment for this dashbo
 increment. Future prompt bundles include the updated Wick guidance.
 
 The dashboard pauses before each unapproved Wick write and persists a private
-continuation. Allow once releases the exact tool/arguments once. Always allow is
+continuation. Allow once releases the exact pending call and the remaining writes
+in that bounded task, without granting future prompts. Always allow is
 scoped to the current actor, Wick endpoint, operation and target (creation uses
 that user's workspace). Grants can be revoked at `/chat/permissions`, linked from
 Settings → Security. Current capabilities and resource ownership still apply.
@@ -406,3 +407,39 @@ reject a partial/stale list and foreign/curated collection. Select Autonomous,
 perform a supported write, switch back to Ask, revoke any saved grant and confirm
 approval pauses. Verify anonymous/Research autonomy is refused and both surfaces
 show the left permission control in both themes.
+
+### Approval continuation and failed-history correction
+
+Apply `sql/28_approval_continuation_usage.sql` before merging this dashboard
+increment, then let Render rebuild through its Blueprint. It adds the
+`ai_operations.is_continuation` marker used by usage reporting. No MCP catalog,
+Databricks deployment, dependency, credential or environment-variable change is
+required; Wick remains at 16 tools and Research at 13.
+
+Allow once now authorizes the remaining supported writes in the current bounded
+task, including destructive writes, without creating a grant or changing the
+composer's Ask preference. The first resumed proposal is still matched exactly;
+capabilities and current ownership are checked for subsequent writes. Future
+prompts start under their own selected policy. Always allow continues to save an
+operation/target/endpoint grant; another operation or target can still require a
+new approval. Review/revoke grants in Settings → Security → Wick permissions.
+
+Approval decisions request SSE progress, retain the existing run/checkpoint, and
+refresh the workspace only at a terminal outcome, not between approvals. This
+removes the silent blocking-response wait and mid-task reload; it does not
+eliminate provider, MCP or database latency. Approval POSTs do not consume a new
+query quota. Continuation token/tool/cost measurements remain recorded, while
+question counts exclude them. Execution failure rates/latencies remain measured
+per segment. Old unmarked telemetry rows cannot be reliably reclassified.
+
+Accepted failed/stopped prompts are stored with a labelled outcome and remain
+accessible in recent history, including a failed first prompt. Approval pauses
+remain unfinished and do not advance the conversation head. Previously discarded
+prompts cannot be recovered by this change; database outages can still prevent
+history persistence without withholding a successful answer.
+
+Live checks: create a collection and add multiple papers with Allow once; confirm
+one daily query charge. With Ask selected, approve Always allow, finish any later
+approval, then repeat/revoke the same operation/target. Verify progress is visible,
+Stop still works, and the panel remains open until the task ends. Fail a first and
+later prompt, reopen both histories, and retry without losing earlier messages.

@@ -564,7 +564,7 @@ def record_ai_operation(**fields) -> None:
     allowed = (
         "metric", "tier", "user_id", "mode", "provider", "model",
         "input_tokens", "output_tokens", "estimated_cost_usd", "latency_ms",
-        "llm_turns", "tool_calls", "embedding_calls", "ok", "error",
+        "llm_turns", "tool_calls", "embedding_calls", "ok", "error", "is_continuation",
     )
     cols = [k for k in allowed if k in fields]
     if not cols:

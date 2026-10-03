@@ -916,3 +916,18 @@ def test_the_split_is_announced_to_a_screen_reader(client, db, me):
     bar = template.split('class="usage-bar"')[1].split("</span>")[0]
     assert "aria-label" in bar
     assert "part.label" in bar
+
+
+def test_approval_segments_keep_costs_but_count_as_one_question(db, me):
+    _op(db,me,mode='wick',input_tokens=100,estimated_cost_usd=0.01)
+    _op(db,me,mode='wick',is_continuation=True,input_tokens=200,estimated_cost_usd=0.02)
+    _op(db,me,mode='wick',is_continuation=True,input_tokens=300,estimated_cost_usd=0.03,ok=False)
+    data = usage_service.analytics(me,7)
+    feature = data['features'][0]
+    assert feature['operations'] == 1
+    assert feature['input_tokens'] == 600
+    assert feature['cost_usd'] == pytest.approx(0.06)
+    assert feature['failure_rate'] == 33
+    assert data['daily'][-1]['operations'] == 1
+    from repositories import usage_analytics
+    assert usage_analytics.today(me)[0]['operations'] == 1

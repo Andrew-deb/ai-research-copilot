@@ -100,7 +100,8 @@ def by_metric(user_id: str, days: int = 7, feature: str | None = None) -> list[d
         f"""
         SELECT metric,
                {_mode_expr()}                                              AS mode,
-               count(*)                                                   AS operations,
+               count(*) FILTER (WHERE NOT is_continuation)                 AS operations,
+               count(*)                                                  AS segments,
                count(*) FILTER (WHERE NOT ok)                             AS failures,
                COALESCE(sum(input_tokens), 0)                             AS input_tokens,
                COALESCE(sum(output_tokens), 0)                            AS output_tokens,
@@ -134,7 +135,7 @@ def today(user_id: str) -> list[dict]:
         f"""
         SELECT metric,
                {_mode_expr()} AS mode,
-               count(*)       AS operations
+               count(*) FILTER (WHERE NOT is_continuation) AS operations
           FROM ai_operations
          WHERE user_id = %s
            AND occurred_at >= CURRENT_DATE
@@ -165,7 +166,7 @@ def by_day(user_id: str, days: int = 7, feature: str | None = None) -> list[dict
     return run_query(
         f"""
         SELECT d.day::date                       AS day,
-               COALESCE(count(o.op_id), 0)       AS operations
+               COALESCE(count(o.op_id) FILTER (WHERE NOT o.is_continuation), 0) AS operations
           FROM generate_series(
                  current_date - (%s - 1),
                  current_date,

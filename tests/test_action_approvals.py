@@ -252,3 +252,77 @@ def test_pending_lookup_never_exposes_checkpoint_job(monkeypatch):
     sql, params = cursor.execute.call_args.args
     assert params == ('run','owner','owner')
     assert "expires_at>now()" in sql and "r.state='awaiting_approval'" in sql
+
+
+def test_task_once_resumes_all_pending_writes_but_does_not_grant_future_tasks(loop):
+    loop['turns'] = [{'tool_calls': [call('create_collection', {'name':'One'}, '1'),
+                                    call('create_collection', {'name':'Two'}, '2')]}]
+    with pytest.raises(policy.ApprovalRequired) as paused:
+        agent_service.ask('Create two collections', tier='authenticated', user_id='owner', mode='wick',
+            before_tool=lambda n,a,c: policy.guard('owner',n,a,c))
+    permit = {**paused.value.proposal, 'decision':'once'}
+    result = agent_service.ask('Create two collections', tier='authenticated', user_id='owner', mode='wick',
+        resume=paused.value.checkpoint,
+        before_tool=lambda n,a,c: policy.guard('owner',n,a,c,permit,mode='autonomous'))
+    assert result['answer'] == 'Done.'
+    assert loop['calls'] == [('create_collection', {'name':'One'}), ('create_collection', {'name':'Two'})]
+    assert not permit
+    with pytest.raises(policy.ApprovalRequired):
+        policy.guard('owner', 'create_collection', {'name':'Three'}, {})
+
+
+@pytest.mark.parametrize('decision', ['once', 'always'])
+def test_approval_continuation_streams_progress_without_consuming_quota(client, db, monkeypatch, decision):
+    from routes import chat
+    from tests.conftest import DEV_EMAIL
+    owner = str(db.get_or_create_user(DEV_EMAIL)['user_id'])
+    cid = str(db.create_conversation(owner,'Wick',origin='assistant')['conversation_id'])
+    prepared = chat.conversation_service.prepare_turn(owner,cid,'new',None)
+    run_id = '40aa3e42-3083-4fa5-a924-c466e13db3b8'
+    chat.agent_runs.create(run_id,('user',owner))
+    job = dict(question='Create and fill a collection',conversation_id=cid,prepared=prepared,
+               mode='new',source_id=None,context=None,surface='assistant',checkpoint={'pending':['write']})
+    monkeypatch.setattr(chat.agent_service,'is_connected',lambda *args: True)
+    monkeypatch.setattr(chat.action_approvals,'claim',lambda *args: {
+        'job':job,'run_id':run_id,'proposal':{'tool':'create_collection'}})
+    monkeypatch.setattr(chat,'consume_quota',lambda *args: pytest.fail('Approval consumed quota'))
+    def run(question,tier,user,cid,**kwargs):
+        assert kwargs['resume'] is job['checkpoint']
+        assert kwargs['permit']['decision'] == decision
+        assert kwargs['approval_mode'] == ('autonomous' if decision == 'once' else 'ask')
+        kwargs['on_event']({'type':'tool_start','name':'create_collection'})
+        kwargs['on_event']({'type':'tool_end','name':'create_collection','ok':True})
+        return agent_service.envelope(question,answer='Completed.')
+    monkeypatch.setattr(chat,'_run_turn',run)
+    response = client.post('/chat/approvals/'+TARGET,json={'decision':decision},headers={'Accept':'text/event-stream'})
+    assert response.status_code == 200
+    events = [json.loads(line[6:]) for line in response.text.splitlines() if line.startswith('data: ')]
+    assert [e['type'] for e in events] == ['conversation','run','status','tool_start','tool_end','done']
+    assert events[-1]['result']['answer'] == 'Completed.'
+    assert events[-1]['result']['conversation_id'] == cid
+    assert len(db.get_conversation_messages(cid)) == 2
+
+
+def test_always_grant_covers_other_papers_in_same_collection_only(gate, monkeypatch):
+    granted = policy.proposal('owner','add_paper_to_collection',{'collection_id':TARGET,'paper_id':'one'})
+    monkeypatch.setattr(action_approvals,'has_grant',lambda owner,key: key == granted['scope_key'])
+    policy.guard('owner','add_paper_to_collection',{'collection_id':TARGET,'paper_id':'two'}, {})
+    with pytest.raises(policy.ApprovalRequired):
+        policy.guard('owner','add_paper_to_collection',{
+            'collection_id':'fd4a8fd8-6972-4386-a199-bf9ae959e0d6','paper_id':'two'}, {})
+    with pytest.raises(policy.ApprovalRequired):
+        policy.guard('owner','remove_paper_from_collection',{'collection_id':TARGET,'paper_id':'two'}, {})
+
+
+def test_continuation_telemetry_is_marked_without_hiding_work(monkeypatch):
+    from routes import chat
+    captured = []
+    monkeypatch.setattr(chat.telemetry_service,'record',lambda **fields: captured.append(fields))
+    monkeypatch.setattr(chat.agent_service,'ask',lambda question,**kwargs:
+        agent_service.envelope(question,answer='Done',llm_turns=3,tool_calls=[{'ok':True},{'ok':True}]))
+    checkpoint = {'state':{'llm_turns':2},'tool_calls':[{'ok':True}]}
+    chat._run_turn('question','authenticated','owner',None,prepared={'history':[]},
+                   chat_mode='wick',resume=checkpoint)
+    assert captured[0]['is_continuation'] is True
+    assert captured[0]['llm_turns'] == 1
+    assert captured[0]['tool_calls'] == 1
