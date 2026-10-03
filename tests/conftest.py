@@ -859,11 +859,12 @@ def db(monkeypatch):
                 "metric": op["metric"],
                 "mode": (op.get("mode") or "research")
                         if op["metric"] == "agent_query" else None,
-                "operations": 0, "failures": 0,
+                "operations": 0, "segments": 0, "failures": 0,
                 "input_tokens": 0, "output_tokens": 0, "llm_turns": 0,
                 "tool_calls": 0, "cost_usd": 0, "cost_unknown": 0,
                 "_latencies": []})
-            row["operations"] += 1
+            row["operations"] += 0 if op.get("is_continuation") else 1
+            row["segments"] += 1
             row["failures"] += 0 if op.get("ok", True) else 1
             for field in ("input_tokens", "output_tokens", "llm_turns", "tool_calls"):
                 row[field] += op.get(field) or 0
@@ -898,7 +899,7 @@ def db(monkeypatch):
             if feature is not None and _feature_of(op) != feature:
                 continue
             day = (op.get("occurred_at") or _now()).date()
-            counts[day] = counts.get(day, 0) + 1
+            counts[day] = counts.get(day, 0) + (0 if op.get("is_continuation") else 1)
         # Every day in the window, including the empty ones — a chart drawn only
         # from days that have rows draws a line straight over a fortnight's
         # silence.
@@ -922,7 +923,7 @@ def db(monkeypatch):
                 "mode": (op.get("mode") or "research")
                         if op["metric"] == "agent_query" else None,
                 "operations": 0})
-            row["operations"] += 1
+            row["operations"] += 0 if op.get("is_continuation") else 1
         return sorted(rows.values(), key=lambda r: -r["operations"])
 
     for name, method in (("by_metric", ua_by_metric), ("by_day", ua_by_day),

@@ -147,11 +147,17 @@ def record_turn(user_id: str | None, conversation_id: str | None,
     the person has their answer either way, and losing the record is the
     smaller loss by a wide margin.
 
-    Returns None when there is nothing to store: an anonymous visitor, or an
-    answer that never arrived.
+    Failed and stopped turns retain their prompt and a clearly labelled outcome.
+    Anonymous turns and approval pauses are not stored here: a pause is still
+    the same unfinished turn and must not advance its checkpoint's history head.
     """
-    if not user_id or not result or not result.get("answer"):
+    if not user_id or not result or result.get('status') == 'awaiting_approval':
         return None
+    if not result.get('answer'):
+        status = result.get('status') or 'failed'
+        text = result.get('message') or 'The request did not complete. You can retry it.'
+        result = dict(result, answer=('Stopped: ' if status == 'stopped' else 'Request failed: ') + text,
+                      usage={**(result.get('usage') or {}), 'turn_status': status})
 
     try:
         if conversation_id:

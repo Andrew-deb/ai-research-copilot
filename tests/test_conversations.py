@@ -263,16 +263,22 @@ def test_a_streamed_turn_is_stored_too(client, db, answering):
     assert len(db.conversations) == 1
 
 
-def test_a_turn_with_no_answer_is_not_stored(client, db, monkeypatch):
-    """An outage is not a conversation."""
+def test_a_failed_first_turn_remains_accessible(client, db, monkeypatch):
+    """An accepted prompt must remain visible even when no answer arrived."""
     monkeypatch.setattr(agent_service, "is_connected", lambda: True)
     monkeypatch.setattr(agent_service, "ask",
                         lambda q, **kw: agent_service.envelope(
                             q, status=agent_service.STATUS_NOT_CONNECTED,
                             message="unavailable"))
 
-    client.post("/chat/ask", json={"question": "why?"}, headers=XHR)
-    assert db.conversations == {}
+    response = client.post("/chat/ask", json={"question": "why?"}, headers=XHR)
+    cid = response.json["conversation_id"]
+    assert cid and response.json["answer"] is None
+    assert client.get(f"/chat/{cid}").status_code == 200
+    messages = db.get_conversation_messages(cid)
+    assert messages[0]["content"] == "why?"
+    assert messages[1]["content"] == "Request failed: unavailable"
+    assert messages[1]["usage"]["turn_status"] == agent_service.STATUS_NOT_CONNECTED
 
 
 def test_a_storage_failure_does_not_lose_the_answer(client, db, answering, monkeypatch):
@@ -759,3 +765,31 @@ def test_a_collapsed_column_does_not_hide_an_open_drawer():
     css = _chat_css()
     mobile = css.split("@media (max-width: 1100px)")[1].split("@media (min-width: 1101px)")[0]
     assert ".chat-rail.is-collapsed .chat-rail-body { display: block; }" in mobile
+
+
+def test_failed_later_turn_keeps_prior_answer_and_new_prompt(client, db, answering, monkeypatch):
+    cid = client.post('/chat/ask',json={'question':'first'},headers=XHR).json['conversation_id']
+    monkeypatch.setattr(agent_service,'ask',lambda q,**kw: (_ for _ in ()).throw(RuntimeError('upstream broke')))
+    response = client.post('/chat/ask',json={'question':'second','conversation_id':cid},headers=SSE)
+    events = [json.loads(line[6:]) for line in response.text.splitlines() if line.startswith('data: ')]
+    assert events[-1]['result']['status'] == 'failed'
+    assert events[-1]['result']['conversation_id'] == cid
+    messages = db.get_conversation_messages(cid)
+    assert [m['content'] for m in messages[:3]] == ['first','Because [1].','second']
+    assert messages[-1]['content'].startswith('Request failed:')
+    assert client.get(f'/chat/{cid}').status_code == 200
+
+
+@pytest.mark.parametrize('headers',[XHR,SSE])
+def test_failed_first_worker_turn_is_reopenable(client, db, monkeypatch, headers):
+    monkeypatch.setattr(agent_service,'is_connected',lambda: True)
+    monkeypatch.setattr(agent_service,'ask',lambda q,**kw: (_ for _ in ()).throw(RuntimeError('upstream broke')))
+    response = client.post('/chat/ask',json={'question':'failed opener'},headers=headers)
+    result = response.json if response.is_json else [json.loads(line[6:]) for line in response.text.splitlines()
+        if line.startswith('data: ')][-1]['result']
+    assert result['status'] == 'failed'
+    assert result['answer'] is None
+    cid = result['conversation_id']
+    assert client.get(f'/chat/{cid}').status_code == 200
+    assert db.get_conversation_messages(cid)[0]['content'] == 'failed opener'
+    assert db.get_conversation_messages(cid)[1]['usage']['turn_status'] == 'failed'

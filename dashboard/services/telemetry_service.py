@@ -45,7 +45,7 @@ class Operation:
 
     __slots__ = ("metric", "tier", "user_id", "mode", "provider", "model",
                  "input_tokens", "output_tokens", "estimated_cost_usd",
-                 "llm_turns", "tool_calls", "embedding_calls", "ok", "error")
+                 "llm_turns", "tool_calls", "embedding_calls", "ok", "error", "is_continuation")
 
     def __init__(self, metric: str, tier: str, user_id: str | None):
         self.metric = metric
@@ -54,6 +54,7 @@ class Operation:
         # Which flavour of this metric. Only the agent has two (research and
         # wick); everything else leaves it None, and `metric` already says
         # everything there is to say.
+        self.is_continuation = False
         self.mode: str | None = None
         self.provider: str | None = None
         self.model: str | None = None
@@ -133,6 +134,7 @@ def measure(metric: str, tier: str, user_id: str | None = None,
             latency_ms=int((time.perf_counter() - started) * 1000),
             user_id=op.user_id,
             mode=op.mode,
+            is_continuation=op.is_continuation,
             provider=op.provider,
             model=op.model,
             input_tokens=op.input_tokens,

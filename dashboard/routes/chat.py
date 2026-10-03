@@ -16,6 +16,7 @@ from flask import (Blueprint, Response, abort, jsonify, redirect,
 
 import llm_client
 import suggestions
+from werkzeug.exceptions import HTTPException
 from exceptions import ResearchCopilotError
 from middleware.auth import current_tier, current_user_id, current_quota_scope, require_user_id
 from middleware.capabilities import AGENT_QUERY, consume_quota, require_capability, tier_can
@@ -315,7 +316,9 @@ def ask():
         if chat_mode != "research":
             options["mode"] = chat_mode
         result = agent_service.ask(question, **options)
-        return jsonify(result), 503
+        return jsonify(_with_conversation(result, user_id, conversation_id, question,
+            prepared=prepared, mode=mode, source_id=source_id, context=context,
+            surface=surface, chat_mode=chat_mode)), 503
 
     consume_quota(quota_service.AGENT_QUERY)
 
@@ -323,9 +326,14 @@ def ask():
     # A page navigation can sever SSE while the run continues; the browser must
     # already know which conversation to reopen when the worker stores its answer.
     if chat_mode == "wick" and user_id and not conversation_id and mode == "new":
-        conversation_id = str(conversation_service.start(
-            user_id, question, origin="assistant",
-            origin_context=context["label"] if context else None)["conversation_id"])
+        try:
+            conversation_id = str(conversation_service.start(
+                user_id, question, origin="assistant" if chat_mode == "wick" else "agent",
+                origin_context=context["label"] if context else None)["conversation_id"])
+        except Exception:
+            # History availability must not prevent a read-only answer. Wick's
+            # approval persistence still fails closed before a proposed write.
+            logger.exception("Could not open conversation before agent turn")
 
     if chat_mode == "wick" and user_id and conversation_id:
         assistant_context.save(user_id, conversation_id, references)
@@ -371,9 +379,13 @@ def ask():
         if not proposal: abort(409)
         return jsonify(status='awaiting_approval',approval=proposal,conversation_id=conversation_id)
     except Exception:
+        logger.exception('Agent request failed')
         if run_id:
             agent_runs.finish(run_id, current_quota_scope(), failed=True)
-        raise
+        failed = agent_service.envelope(question, status='failed', message='The request could not complete. You can retry it.')
+        return jsonify(_with_conversation(failed, user_id, conversation_id, question,
+            prepared=prepared, mode=mode, source_id=source_id, context=context,
+            surface=surface, chat_mode=chat_mode)), 503
 
 
 @bp.post("/chat/runs/<uuid:run_id>/stop")
@@ -425,7 +437,7 @@ def _run_turn(question: str, tier: str, user_id: str | None,
     # mode rides alongside so the usage page can tell Research from Wick, which
     # cost very different amounts.
     with telemetry_service.measure(quota_service.AGENT_QUERY, tier, user_id,
-                                   mode=chat_mode) as op:
+                                   mode=chat_mode, is_continuation=bool(resume)) as op:
         try:
             history = (prepared["history"] if prepared is not None else
                        conversation_service.agent_context(user_id, conversation_id))
@@ -495,7 +507,7 @@ def _sse(payload: dict) -> str:
 def _stream_turn(question: str, tier: str, user_id: str | None,
                  conversation_id: str | None = None, *, run_id=None, owner=None,
                  prepared=None, mode="new", source_id=None, context=None, surface="agent",
-                 chat_mode="research", approval_mode="ask"):
+                 chat_mode="research", approval_mode="ask", resume=None, permit=None):
     """
     Run the turn on a worker thread and relay its progress as it happens.
 
@@ -518,7 +530,8 @@ def _stream_turn(question: str, tier: str, user_id: str | None,
                 question, tier, user_id, conversation_id, on_event=events.put,
                 should_stop=(lambda: agent_runs.status(run_id, owner) == "stop_requested")
                 if run_id else None, prepared=prepared, context=context,
-                chat_mode=chat_mode, approval_mode=approval_mode)
+                chat_mode=chat_mode, approval_mode=approval_mode,
+                **({"resume": resume, "permit": permit} if resume else {}))
             terminal = agent_runs.finish(run_id, owner) if run_id else "completed"
             if terminal == "stopped" or result.get("status") == agent_service.STATUS_STOPPED:
                 result = dict(result, status=agent_service.STATUS_STOPPED,
@@ -526,9 +539,7 @@ def _stream_turn(question: str, tier: str, user_id: str | None,
             outcome["result"] = (_with_conversation(
                 result, user_id, conversation_id, question, prepared=prepared,
                 mode=mode, source_id=source_id, context=context, surface=surface,
-                chat_mode=chat_mode)
-                if result.get("answer")
-                                 else result)
+                chat_mode=chat_mode))
         except approvals.ApprovalRequired as exc:
             job = {'question':question,'conversation_id':conversation_id,'prepared':prepared,
                    'mode':mode,'source_id':source_id,'context':context,'surface':surface,
@@ -565,6 +576,15 @@ def _stream_turn(question: str, tier: str, user_id: str | None,
             else:
                 outcome["error"] = "The research assistant failed on that question."
         finally:
+            if 'error' in outcome:
+                failed = agent_service.envelope(question, status='failed', message=outcome.pop('error'))
+                outcome['result'] = _with_conversation(failed, user_id, conversation_id, question,
+                    prepared=prepared, mode=mode, source_id=source_id, context=context,
+                    surface=surface, chat_mode=chat_mode)
+            elif outcome.get('result', {}).get('status') == agent_service.STATUS_STOPPED and 'conversation_id' not in outcome['result']:
+                outcome['result'] = _with_conversation(outcome['result'], user_id, conversation_id, question,
+                    prepared=prepared, mode=mode, source_id=source_id, context=context,
+                    surface=surface, chat_mode=chat_mode)
             events.put(None)                          # sentinel: work is over
 
     worker = threading.Thread(target=work, daemon=True)
@@ -644,24 +664,42 @@ def decide_approval(approval_id):
         current=conversation_service.prepare_turn(user_id,job['conversation_id'],job['mode'],job['source_id'])
         if current['expected_head'] != job['prepared']['expected_head']:
             abort(409,description='This conversation changed while waiting. Start a new turn.')
+        # One approval now covers this bounded checkpoint's remaining task,
+        # not a browser/session preference or a durable permission grant.
+        task_mode = 'autonomous' if decision == 'once' else 'ask'
+        if _wants_stream():
+            return Response(stream_with_context(_stream_turn(
+                job['question'], current_tier(), user_id, job['conversation_id'],
+                run_id=run_id, owner=owner, prepared=job['prepared'], mode=job['mode'],
+                source_id=job['source_id'], context=job['context'], surface=job['surface'],
+                chat_mode='wick', approval_mode=task_mode, resume=job['checkpoint'], permit=permit)),
+                mimetype='text/event-stream', headers={'Cache-Control':'no-cache','X-Accel-Buffering':'no'})
         # Capabilities are rechecked by the current agent policy before each call.
         result=_run_turn(job['question'],current_tier(),user_id,job['conversation_id'],
             prepared=job['prepared'],context=job['context'],chat_mode='wick',
-            resume=job['checkpoint'],permit=permit,
+            resume=job['checkpoint'],permit=permit, approval_mode=task_mode,
             should_stop=lambda:agent_runs.status(run_id,owner)=='stop_requested')
         terminal=agent_runs.finish(run_id,owner)
         if terminal=='stopped':
             result=dict(result,status=agent_service.STATUS_STOPPED,message='Stopped. Completed writes were not rolled back.')
         return jsonify(_with_conversation(result,user_id,job['conversation_id'],job['question'],
             prepared=job['prepared'],mode=job['mode'],source_id=job['source_id'],context=job['context'],
-            surface=job['surface'],chat_mode='wick') if result.get('answer') else result)
+            surface=job['surface'],chat_mode='wick'))
     except approvals.ApprovalRequired as exc:
         proposal=action_approvals.pause(run_id,user_id,exc.proposal,{**job,'checkpoint':exc.checkpoint})
         if not proposal:agent_runs.finish(run_id,owner);abort(409)
         return jsonify(status='awaiting_approval',approval=proposal,conversation_id=job['conversation_id'])
-    except Exception:
-        agent_runs.finish(run_id,owner,failed=True)
+    except HTTPException:
+        agent_runs.finish(run_id, owner, failed=True)
         raise
+    except Exception:
+        logger.exception('Approved agent continuation failed')
+        agent_runs.finish(run_id, owner, failed=True)
+        failed = agent_service.envelope(job['question'], status='failed',
+            message='The approved task could not complete. Completed writes were not rolled back.')
+        return jsonify(_with_conversation(failed, user_id, job['conversation_id'], job['question'],
+            prepared=job['prepared'], mode=job['mode'], source_id=job['source_id'],
+            context=job['context'], surface=job['surface'], chat_mode='wick')), 503
 
 
 @bp.get('/chat/permissions')

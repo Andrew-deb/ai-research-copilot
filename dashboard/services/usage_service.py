@@ -245,10 +245,9 @@ def analytics(user_id: str, days: int = DEFAULT_WINDOW,
             "label": _label(row["metric"], row.get("mode")),
             "operations": operations,
             "failures": row["failures"] or 0,
-            # Shown as a rate rather than a count: two failures means something
-            # different out of five requests than out of five hundred.
-            "failure_rate": round((row["failures"] or 0) / operations * 100)
-                            if operations else 0,
+            # Approval continuations count toward execution health, not new
+            # questions. Match the failure numerator's segment denominator.
+            "failure_rate": round((row["failures"] or 0) / (row.get("segments", operations) or 1) * 100),
             "input_tokens": row["input_tokens"] or 0,
             "output_tokens": row["output_tokens"] or 0,
             "tokens": (row["input_tokens"] or 0) + (row["output_tokens"] or 0),

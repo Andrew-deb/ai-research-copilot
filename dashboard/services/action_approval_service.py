@@ -75,7 +75,8 @@ def proposal(user_id, name, arguments):
         shown = value
         asset_kind = ASSET_ARGUMENTS.get(argument)
         if asset_kind and isinstance(value, str) and value:
-            shown = _asset_label(user_id, asset_kind, value) or 'Unavailable asset'
+            shown = (target_label if argument == key and value == target else
+                     _asset_label(user_id, asset_kind, value) or 'Unavailable asset')
         display.append({
             'label': argument.replace('_', ' ').capitalize(),
             'value': shown if isinstance(shown, str) else json.dumps(shown, ensure_ascii=False),
