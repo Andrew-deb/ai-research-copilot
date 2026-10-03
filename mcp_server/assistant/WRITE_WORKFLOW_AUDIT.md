@@ -42,7 +42,7 @@ No MCP mutation tools are added. Wick remains at 12 tools and Research at 13; st
 
 ## Structured approvals (next increment)
 
-Existing Wick writes now pass a dashboard action policy before MCP I/O. Exact-call
+Existing Wick writes now pass a dashboard action policy before MCP I/O. Task-scoped
 one-time approvals and revocable operation/target/endpoint grants are durable and
 owner scoped. Read access, context selection and model text never create grants.
 Run checkpoints preserve remaining tool calls across a pause without repeating
@@ -80,3 +80,19 @@ existing scoped grants; Autonomous does not save grants and retains resource and
 capability checks. It is unavailable to anonymous users and Research. Defaults
 reset on reload. Wick now has 16 focused tools; further expansion should revisit
 frequency and overlap before adding more tools.
+
+## Approval continuation correction
+
+Allow once matches the first pending call exactly, then authorizes remaining
+supported writes for that bounded checkpoint only. It does not save a grant or
+change the user's composer setting; future Ask prompts still pause. Always allow
+retains the existing owner/endpoint/operation/target scope and revocation. Target
+labels reuse the ownership lookup already performed for proposal validation.
+
+Continuation progress streams through the existing route and run ledger. Embedded
+workspace refresh is deferred until the final outcome, preserving later approval
+cards. Quota is consumed by the initial prompt only; resumed work retains its
+token/tool/cost telemetry without counting as another question. Accepted failed
+turns retain their prompt and a labelled failure in conversation versions;
+approval pauses do not advance the history head. Migration 28 is required before
+Render rebuild; source and built MCP catalogs remain Wick 16 / Research 13.
