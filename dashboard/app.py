@@ -34,6 +34,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 import embedding
 from config import (
     DEBUG,
+    DB_KEEPWARM_SECONDS,
     EMBEDDING_PRELOAD,
     SECRET_KEY,
     SESSION_COOKIE_HTTPONLY,
@@ -119,10 +120,51 @@ def create_app() -> Flask:
 
     @app.get("/healthz")
     def healthz():
+        """
+        Liveness. Deliberately touches nothing.
+
+        This is Render's health check path AND the external pinger's target, and
+        both reasons point the same way: a health check that queried the
+        database would restart the service during a database blip it cannot fix
+        by restarting, and would make the keep-awake ping fail exactly when the
+        service most needed to stay up.
+        """
         return {"status": "ok", "embedding_model_loaded": embedding.is_loaded()}
+
+    @app.get("/readyz")
+    def readyz():
+        """
+        Readiness. Does one cheap query, and says so honestly.
+
+        Separate from /healthz on purpose, and NOT wired to Render's
+        healthCheckPath — see above. This is for a human diagnosing "is the
+        database reachable from the app?", and for an external monitor that
+        wants to know the difference between awake and usable.
+
+        Measured from a developer machine on 6 October 2026: a cold Lakebase
+        connect took 9.8 s, a warm round trip 0.33 s. The gap is the free
+        tier's compute suspending, which TCP keepalives cannot prevent.
+        """
+        ok, detail = lakebase.ping()
+        return ({"status": "ok" if ok else "degraded", "database": detail},
+                200 if ok else 503)
 
     if EMBEDDING_PRELOAD:
         threading.Thread(target=embedding.warmup, name="embedding-warmup", daemon=True).start()
+
+    # Keeps the database warm while the service is awake.
+    #
+    # The external pinger keeps RENDER awake; nothing was keeping LAKEBASE
+    # awake, and its free tier suspends compute after inactivity. Pinging
+    # /healthz more often would not have helped — it never touches the database,
+    # for the reasons above.
+    #
+    # In-process rather than a second external schedule: it runs only while the
+    # service is up, which is exactly when a warm pool is worth having, and it
+    # needs nothing configured outside the deployment.
+    if DB_KEEPWARM_SECONDS > 0:
+        threading.Thread(target=lakebase.keep_warm, args=(DB_KEEPWARM_SECONDS,),
+                         name="db-keepwarm", daemon=True).start()
 
     atexit.register(lakebase.close_pool)
 
