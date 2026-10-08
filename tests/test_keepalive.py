@@ -207,7 +207,7 @@ def test_the_overnight_schedule_is_documented_against_readyz():
     It has to be `/readyz`: `/healthz` never touches the database, so pinging it
     would wake Render and leave Lakebase exactly as idle as it was.
     """
-    guide = (ROOT.parent / "context" / "setup"
+    guide = (ROOT / "docs" / "setup"
              / "pinger_setup.md").read_text(encoding="utf-8")
     overnight = guide.split("## 3. Lakebase, overnight")[1]
 
