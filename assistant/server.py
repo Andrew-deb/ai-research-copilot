@@ -15,11 +15,11 @@ from shared_resource.middleware.request_context import get_bound_user_id, requir
 from shared_resource.middleware.trace_middleware import trace_tool
 from shared_resource.adapters import collection_service, progress_service, workspace_service
 from shared_resource.repositories import lakebase
-from shared_resource.services import paper_search_service, goal_service, note_service, collection_service as shared_collections
+from shared_resource.services import paper_discovery_service, paper_search_service, goal_service, note_service, collection_service as shared_collections
 
 mcp = FastMCP(
     name="wick-workspace",
-    instructions="Wick reads authorized workspace assets and performs explicitly requested workspace changes. Research discovery belongs to the separate Research server.",
+    instructions="Wick reads authorized workspace assets and performs explicitly requested workspace changes. Targeted external paper discovery and selected metadata import support collection tasks; general research belongs to Research.",
 )
 
 
@@ -47,6 +47,21 @@ def search_workspace_papers(query: str = "", saved_only: bool = False,
                             limit: int = 20, cursor: str | None = None) -> dict:
     """Search existing corpus titles/abstracts/authors with ranked keyword matching. No external discovery/imports. Empty query browses papers; saved_only searches the acting user's saved papers. Return IDs internally, never ask users for IDs."""
     return paper_search_service.search_workspace_papers(lakebase, get_bound_user_id(), query, saved_only, limit, cursor)
+
+
+@mcp.tool()
+@trace_tool("discover_external_papers")
+def discover_external_papers(query: str, limit: int = 10, page: int = 1) -> dict:
+    """Read-only OpenAlex candidate search after corpus search is insufficient. Returns stable OpenAlex IDs; never saves results. Metadata/abstracts only, not full text. At most five pages."""
+    require_current_user_id()
+    return paper_discovery_service.discover_papers(query, limit, page)
+
+
+@mcp.tool()
+@trace_tool("import_external_paper")
+def import_external_paper(openalex_id: str) -> dict:
+    """Explicitly import one selected OpenAlex work's verified metadata into Alfred's shared paper catalog. Reuse exact existing identities. Returns the local paper_id for add_paper_to_collection. No PDF download or indexing; this alone does not add membership."""
+    return paper_discovery_service.import_paper(lakebase, require_current_user_id(), openalex_id)
 
 
 @mcp.tool()
