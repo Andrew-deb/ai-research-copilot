@@ -399,6 +399,11 @@ class FakeDB:
             if str(op.get("user_id")) == uid:
                 op["user_id"] = None
 
+    def ping(self):
+        """Always reachable. The readiness route's failure path is tested by
+        monkeypatching this, not by making the fake unreliable."""
+        return True, "reachable in 1 ms"
+
     def get_user_profile(self, user_id):
         row = self.profiles.get(str(user_id))
         return dict(row) if row else None
