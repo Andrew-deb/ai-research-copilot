@@ -2,7 +2,7 @@
 
 from flask import Blueprint, jsonify, render_template, request, url_for
 
-from middleware.capabilities import require_capability, require_quota
+from middleware.capabilities import require_capability, require_quota, consume_quota
 from middleware.auth import current_user_id
 from routes.helpers import action_response, form_or_json
 from services import collection_service, workspace_paper_service
@@ -101,3 +101,27 @@ def paper_options(collection_id):
         paper["already_added"] = str(paper["paper_id"]) in existing
         paper["url"] = url_for("search.paper_detail", paper_id=paper["paper_id"])
     return jsonify(result)
+
+
+@bp.get("/collection/<collection_id>/external-paper-options")
+@require_capability("library:write")
+def external_paper_options(collection_id):
+    collection_service._require_writable_collection(collection_id, current_user_id())
+    from exceptions import ValidationError
+    from services import quota_service
+    try:
+        page = int(request.args.get("page", "1"))
+    except ValueError:
+        raise ValidationError("Invalid discovery page.") from None
+    query = workspace_paper_service.validate_discovery(request.args.get("q", ""), page)
+    consume_quota(quota_service.SEMANTIC_SEARCH)
+    return jsonify(workspace_paper_service.discover(query, page))
+
+
+@bp.post("/collection/<collection_id>/external-paper-imports")
+@require_capability("library:write")
+def import_external_paper(collection_id):
+    collection_service._require_writable_collection(collection_id, current_user_id())
+    data = form_or_json("openalex_id")
+    # Import is explicit. Membership remains the existing add-paper operation.
+    return jsonify(workspace_paper_service.import_external(current_user_id(), data.get("openalex_id")))

@@ -72,13 +72,15 @@
 <dialog id="paper-picker" class="paper-picker"
         data-search-url="{{ url_for('collections.paper_options', collection_id=collection.collection_id) }}"
         data-add-url="{{ url_for('collections.add_paper', collection_id=collection.collection_id) }}"
+        data-external-search-url="{{ url_for('collections.external_paper_options', collection_id=collection.collection_id) }}"
+        data-import-url="{{ url_for('collections.import_external_paper', collection_id=collection.collection_id) }}"
         aria-labelledby="paper-picker-title">
   <div class="picker-heading"><h2 id="paper-picker-title">Add papers</h2>
     <button type="button" class="btn btn-ghost" id="picker-close" aria-label="Close paper picker">✕</button></div>
-  <p>Find papers already available in Alfred.</p>
+  <p>Find papers in Alfred, or discover external candidates. External selections import metadata before adding; PDFs are not downloaded.</p>
   <form id="picker-search" class="picker-controls">
     <label>Search<input name="q" type="search" maxlength="300" placeholder="Topic, title, or author"></label>
-    <label>Look in<select name="scope"><option value="corpus">All papers</option><option value="saved">My saved papers</option></select></label>
+    <label>Look in<select name="scope"><option value="corpus">All papers</option><option value="saved">My saved papers</option><option value="external">External · OpenAlex</option></select></label>
     <button class="btn btn-primary" type="submit">Search</button>
   </form>
   <p id="picker-status" role="status" aria-live="polite"></p>

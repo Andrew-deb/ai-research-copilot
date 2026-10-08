@@ -24,3 +24,10 @@ def test_streamed_approval_keeps_panel_until_task_finishes():
         pytest.skip('Optional jsdom test runtime is unavailable')
     subprocess.run(['node', str(Path(__file__).with_name('action_approval_stream_dom.cjs'))],
                    check=True, capture_output=True, text=True)
+
+
+def test_external_picker_selected_import_and_membership_retry():
+    if subprocess.run(['node', '-e', "require.resolve('jsdom')"], capture_output=True).returncode:
+        pytest.skip('Optional jsdom test runtime is unavailable')
+    subprocess.run(['node', str(Path(__file__).with_name('external_paper_picker_dom.cjs'))],
+                   check=True, capture_output=True, text=True)

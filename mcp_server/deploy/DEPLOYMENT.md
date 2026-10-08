@@ -53,12 +53,13 @@ The output contains:
 | Directory | Platform | Entry point | Catalog |
 | --- | --- | --- | --- |
 | `dist/release-candidate/research` | Existing Databricks Research App | `python -m research.server` | Existing 13 Research tools |
-| `dist/release-candidate/assistant` | Separate Databricks Wick App | `python -m assistant.server` | Twelve workspace tools |
+| `dist/release-candidate/assistant` | Separate Databricks Wick App | `python -m assistant.server` | 18 workspace tools |
 | `dist/release-candidate/render` | Render dashboard | `gunicorn app:app` from this directory | Orchestration, both bundled system prompts |
 
 Each MCP artifact has its own `app.yaml`, requirements, runtime adapters and
 `shared_resource` copy generated from one source. Wick omits Research's entry
-point, discovery orchestration, provider configuration and external-provider brokers. Shared module
+point, research discovery orchestration and Research-only providers. Both MCP artifacts
+and Render include the shared OpenAlex broker for targeted metadata discovery/import. Shared module
 presence is not a tool grant; only explicit registrations are exposed.
 
 `deployment_manifest.json` records the Git revision, tool names and SHA-256 of
@@ -121,8 +122,8 @@ PostgreSQL roles.
 | Resource | Research | Wick |
 | --- | --- | --- |
 | `database/lakebase-url` secret or configured `DATABASE_URL` | Preserve working connection | Grant Wick access to its selected database connection |
-| Provider secrets | Preserve existing OpenAlex/Semantic Scholar settings | No discovery provider grants needed for Wick's catalog |
-| Lakebase global corpus | Existing reads/ingestion behavior | Read papers, authors and paper-author associations |
+| Provider secrets | Preserve existing OpenAlex/Semantic Scholar settings | Optional OpenAlex key for targeted discovery/import; no Semantic Scholar/OpenRouter provider calls |
+| Lakebase global corpus | Existing reads/ingestion behavior | Read and import public metadata into papers, authors and paper-author associations; grant corresponding INSERT/UPDATE privileges if using a separate Wick DB role |
 | Personal workspace tables | Existing Research operations | Read notes, collections, membership, progress, goals; create notes/collections, add/remove membership, upsert progress |
 | `mcp_traces` | Preserve trace insert permission | Permit trace insertion; verify acting user attribution |
 
@@ -443,3 +444,36 @@ one daily query charge. With Ask selected, approve Always allow, finish any late
 approval, then repeat/revoke the same operation/target. Verify progress is visible,
 Stop still works, and the panel remains open until the task ends. Fail a first and
 later prompt, reopen both histories, and retry without losing earlier messages.
+
+
+## Selected external paper import release
+
+Wick now exposes 18 tools, including read-only `discover_external_papers` and the
+approval-protected `import_external_paper`. Research retains its 13-tool catalog
+and existing search-and-save behaviour. The collection picker has an explicit
+External · OpenAlex scope, then imports only checked candidates before using the
+existing collection membership endpoint. Imports save public metadata, not PDFs
+or embeddings. Exact OpenAlex/DOI matches reuse an existing paper; ambiguous
+identity conflicts are rejected. No schema migration is required.
+
+After merge, wait for the publication workflow to finish. Deploy the latest
+`deploy/assistant` **and** `deploy/research` branch revisions on the correct
+Databricks Apps: both artifacts contain the relocated shared broker. Render's
+Blueprint builds the matching dashboard automatically. Verify the assistant's
+manifest/catalog has 18 tools and that Render is using this same release; a
+Render/Databricks catalog mismatch intentionally fails closed.
+
+Optional `OPENALEX_API_KEY` can be set on Render and both Databricks Apps; the
+broker sends it as a bearer header. Keep it in environment configuration, never
+Git or prompts. Existing `OPENALEX_EMAIL` remains supported. Provider allowance
+or connectivity failures produce explicit errors, with no automatic paid plan
+upgrade or alternate-provider fallback. Manual external searches use the existing
+search allowance (one unit per page); Wick remains within the normal agent-run
+quota and tool budgets. Import/add approval continuation does not create another
+user request. Local uploads and storage provisioning remain deferred.
+
+Smoke check: search an absent topic externally without importing, select one
+paper and add it, retry the selection to confirm identity reuse, and ask Wick to
+resolve an external candidate, approve its metadata import, then approve adding
+the returned local paper ID to an owned collection. Decline an import and confirm
+nothing was saved. Check general Research search still behaves as before.

@@ -8,9 +8,9 @@ from shared_resource.config import _get_secret
 logger = logging.getLogger(__name__)
 
 # --- OpenAlex ---
-OPENALEX_BASE_URL: str = "https://api.openalex.org"
-OPENALEX_EMAIL: str = os.getenv("OPENALEX_EMAIL", "user@research-copilot.dev")
-OPENALEX_RATE_LIMIT_DELAY: float = float(os.getenv("OPENALEX_RATE_LIMIT_DELAY", "0.12"))
+from shared_resource.brokers.settings import (
+    OPENALEX_BASE_URL, OPENALEX_EMAIL, OPENALEX_RATE_LIMIT_DELAY,
+)
 
 # --- Semantic Scholar ---
 S2_BASE_URL: str = "https://api.semanticscholar.org"

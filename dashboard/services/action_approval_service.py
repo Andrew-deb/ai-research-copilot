@@ -11,6 +11,7 @@ from services import assistant_context
 
 # Explicit policies for Wick's registered writes; no catch-all mutation tool.
 ACTIONS = {
+    "import_external_paper": ("Import paper metadata into Alfred", None, None),
     'reorder_collection_papers': ('Reorder collection papers', 'collection', 'collection_id'),
     'create_collection': ('Create a collection', None, None),
     'create_note': ('Create a note', None, None),
@@ -59,6 +60,11 @@ def proposal(user_id, name, arguments):
 
     label, kind, key = ACTIONS[name]
     target, target_label = 'workspace', 'your workspace'
+    if name == 'import_external_paper':
+        import re
+        if not isinstance(arguments.get('openalex_id'), str) or not re.fullmatch(r'W[0-9]{1,20}', arguments['openalex_id']):
+            raise ValidationError('Invalid OpenAlex work identifier.')
+        target_label = 'Alfred shared paper catalog'
     if key:
         try:
             target = str(UUID(arguments.get(key, '')))
