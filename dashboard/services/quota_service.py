@@ -31,6 +31,7 @@ from config import (
     ANON_RAG_PER_DAY,
     ANON_SEARCH_PER_DAY,
     GLOBAL_AGENT_PER_DAY,
+    GLOBAL_ANON_AGENT_PER_DAY,
     GLOBAL_RAG_PER_DAY,
     QUOTAS_ENABLED,
     USER_AGENT_PER_DAY,
@@ -60,6 +61,22 @@ _METRIC_LABEL = {
 _GLOBAL_LIMITS = {
     RAG_QUERY: GLOBAL_RAG_PER_DAY,
     AGENT_QUERY: GLOBAL_AGENT_PER_DAY,
+}
+
+# Ceilings for one tier's share of a shared allowance, checked in ADDITION to
+# the global one above.
+#
+# A per-visitor limit cannot protect a shared pool: it resets with a cleared
+# cookie, so ten anonymous visitors at one question each are ten questions
+# however low it is set. This is the only limit that bounds the tier itself.
+#
+# Counted under its own scope so it cannot be confused with either the global
+# counter or any individual's.
+_TIER_GLOBAL_LIMITS = {
+    # The literal, matching the policy table above and
+    # `middleware.auth.TIER_ANONYMOUS`. A test asserts they agree, because a
+    # silent mismatch here would not fail — it would simply never apply the cap.
+    ("anonymous", AGENT_QUERY): GLOBAL_ANON_AGENT_PER_DAY,
 }
 
 
@@ -102,6 +119,11 @@ def global_limit_for(metric: str) -> int | None:
     return _GLOBAL_LIMITS.get(metric)
 
 
+def tier_global_limit_for(tier: str, metric: str) -> int | None:
+    """The ceiling on one tier's total use, or None where a tier has no cap."""
+    return _TIER_GLOBAL_LIMITS.get((tier, metric))
+
+
 def check_and_consume(metric: str, tier: str, scope: str, scope_id: str) -> dict:
     """
     Consume one unit of `metric`, or raise QuotaExceededError.
@@ -131,6 +153,23 @@ def check_and_consume(metric: str, tier: str, scope: str, scope_id: str) -> dict
             raise QuotaExceededError(
                 f"{_METRIC_LABEL[metric].capitalize()} are resting for today.",
                 metric=metric, scope="global", used=used_globally, limit=ceiling,
+            )
+
+    # The tier's own share, checked after the global ceiling and before the
+    # individual's. The order is the message: "resting for everyone" is a
+    # different fact from "this tier has had its share", and both are different
+    # from "you personally are out" — which is the only one worth offering a
+    # sign-in for.
+    tier_ceiling = tier_global_limit_for(tier, metric)
+    if tier_ceiling is not None:
+        used_by_tier = lakebase.increment_usage(f"tier:{tier}", "global", metric)
+        if used_by_tier > tier_ceiling:
+            logger.warning("Tier %s %s ceiling reached (%d/%d)",
+                           tier, metric, used_by_tier, tier_ceiling)
+            raise QuotaExceededError(
+                f"{_METRIC_LABEL[metric].capitalize()} are resting for visitors "
+                f"today. Sign in to use your own allowance.",
+                metric=metric, scope="tier", used=used_by_tier, limit=tier_ceiling,
             )
 
     allowance = limit_for(tier, metric, scope_id if scope == "user" else None)
