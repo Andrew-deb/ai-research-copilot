@@ -172,6 +172,53 @@ def close_pool() -> None:
             _POOL = None
 
 
+def ping() -> tuple[bool, str]:
+    """
+    Is the database reachable, and how long did finding out take?
+
+    Returns (ok, detail) rather than raising: the caller is a readiness probe,
+    and a probe that raises has told the caller nothing it can report.
+
+    The timing is the useful part. On this deployment a warm round trip is a
+    third of a second and a cold one is ten, because the free tier suspends
+    compute — so "slow" and "down" look very different and only one of them
+    needs anybody's attention.
+    """
+    started = time.perf_counter()
+    try:
+        with get_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1;")
+                cur.fetchone()
+        return True, f"reachable in {int((time.perf_counter() - started) * 1000)} ms"
+    except Exception as exc:  # noqa: BLE001 - reported, not raised
+        logger.warning("Database ping failed: %s", exc)
+        return False, f"{type(exc).__name__}: {exc}"[:200]
+
+
+def keep_warm(interval_seconds: int) -> None:
+    """
+    One trivial query every `interval_seconds`, forever. Runs on a daemon thread.
+
+    Why this exists at all: the external pinger keeps Render awake, and nothing
+    was keeping Lakebase awake. Its free tier suspends compute after inactivity,
+    and `/healthz` deliberately never touches the database — so the service
+    could be wide awake and still make the next visitor wait ten seconds.
+
+    Never raises. A failed ping is logged at debug and the loop continues: the
+    database being briefly unreachable is the condition this thread exists to
+    outlast, not a reason for it to stop trying.
+    """
+    logger.info("Database keep-warm every %ds", interval_seconds)
+    while True:
+        time.sleep(interval_seconds)
+        try:
+            ok, detail = ping()
+            logger.debug("Keep-warm: %s", detail if ok else f"failed — {detail}")
+        except Exception:  # noqa: BLE001 - a daemon thread must not die
+            logger.debug("Keep-warm raised", exc_info=True)
+
+
 def run_query(sql: str, params: tuple = ()) -> list[dict]:
     """Execute a SELECT query and return rows as a list of dicts."""
     with get_connection() as conn:
