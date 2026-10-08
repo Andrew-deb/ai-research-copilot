@@ -64,6 +64,44 @@ def me(client, db):
     return next(iter(db.users_by_id))
 
 
+@pytest.fixture
+def roomy(monkeypatch):
+    """
+    A generous allowance, for tests that are about charts rather than quotas.
+
+    They used to run on whatever `USER_AGENT_PER_DAY` happened to be, and broke
+    the day calibration lowered it from 10 to 5 — a test of how a bar is drawn
+    changing its answer because a limit moved.
+    """
+    from services import quota_service
+    monkeypatch.setattr(quota_service._policy, "_LIMITS", {
+        "anonymous": {"semantic_search": 500, "rag_query": 500, "agent_query": 500},
+        "authenticated": {"semantic_search": 500, "rag_query": 500, "agent_query": 500},
+    })
+    monkeypatch.setattr(quota_service, "_GLOBAL_LIMITS",
+                        {"rag_query": 500, "agent_query": 500})
+    monkeypatch.setattr(quota_service, "_TIER_GLOBAL_LIMITS", {})
+
+
+@pytest.fixture
+def allowance_of_ten(monkeypatch):
+    """
+    A known allowance, for the two tests that assert exact bar percentages.
+
+    They need a SPECIFIC limit rather than a generous one — the arithmetic they
+    check is "8 of 10 is 80% of the bar" — so they state it instead of
+    inheriting whatever the deployment is calibrated to this week.
+    """
+    from services import quota_service
+    monkeypatch.setattr(quota_service._policy, "_LIMITS", {
+        "anonymous": {"semantic_search": 10, "rag_query": 10, "agent_query": 10},
+        "authenticated": {"semantic_search": 10, "rag_query": 10, "agent_query": 10},
+    })
+    monkeypatch.setattr(quota_service, "_GLOBAL_LIMITS",
+                        {"rag_query": 100, "agent_query": 100})
+    monkeypatch.setattr(quota_service, "_TIER_GLOBAL_LIMITS", {})
+
+
 def _op(db, user, **overrides):
     row = {"metric": "agent_query", "tier": "authenticated", "user_id": str(user),
            "occurred_at": _now(), "input_tokens": 100, "output_tokens": 50,
@@ -813,7 +851,7 @@ def test_the_page_says_the_allowance_is_shared(client, db, me):
 # does not exist. So the one bar is divided by what used it.
 # ---------------------------------------------------------------------------
 
-def test_the_shared_bar_is_split_into_segments(db, me):
+def test_the_shared_bar_is_split_into_segments(db, me, roomy):
     from services import quota_service
 
     for _ in range(6):
@@ -830,7 +868,7 @@ def test_the_shared_bar_is_split_into_segments(db, me):
     assert all("percent" in p for p in row["breakdown"])
 
 
-def test_the_segments_fill_exactly_the_bar(db, me):
+def test_the_segments_fill_exactly_the_bar(db, me, allowance_of_ten):
     """
     The geometry has to agree with the number printed beside it. Segments drawn
     from raw counts would overflow or fall short whenever the two tables
@@ -851,7 +889,7 @@ def test_the_segments_fill_exactly_the_bar(db, me):
     assert round(sum(p["percent"] for p in row["breakdown"]), 2) == 80
 
 
-def test_a_mixed_bar_divides_in_proportion(db, me):
+def test_a_mixed_bar_divides_in_proportion(db, me, allowance_of_ten):
     from services import quota_service
 
     for _ in range(5):
@@ -870,7 +908,7 @@ def test_a_mixed_bar_divides_in_proportion(db, me):
     assert round(segments["research"], 2) == 12.5
 
 
-def test_the_legend_counts_stay_as_recorded(db, me):
+def test_the_legend_counts_stay_as_recorded(db, me, roomy):
     """
     Only the geometry is scaled. The counts are a fact, and rewriting them to
     make the arithmetic tidy would be inventing numbers.
