@@ -117,7 +117,18 @@ MCP_TIMEOUT_SECONDS: int = int(os.getenv("MCP_TIMEOUT_SECONDS", "30"))
 # looping on itself; the deadline stops a slow provider from running past
 # gunicorn's own timeout and returning nothing at all. Whichever trips first
 # ends the turn, and telemetry records which one did.
-AGENT_MAX_TOOL_CALLS: int = int(os.getenv("AGENT_MAX_TOOL_CALLS", "6"))
+#
+# The default is 4 because of THIS deployment's provider allowance, not because
+# four is the right number for the product. Calibration measured 2.46 provider
+# requests per agent question with a ceiling of 7, against an OpenRouter free
+# tier of 50 requests a day: the tail is what exhausts the allowance, and
+# capping the tail is what buys back questions for everyone else.
+#
+# It stays an environment variable for exactly that reason. A self-hosted copy,
+# or one on a paid provider, should raise it and re-run
+# `scripts/calibrate_quotas.py` against its own numbers. Nothing about four is
+# a product decision.
+AGENT_MAX_TOOL_CALLS: int = int(os.getenv("AGENT_MAX_TOOL_CALLS", "4"))
 
 # --- The two timeouts, and why they are two --------------------------------
 #
@@ -227,14 +238,52 @@ ANON_RAG_PER_DAY: int = int(os.getenv("ANON_RAG_PER_DAY", "3"))
 ANON_AGENT_PER_DAY: int = int(os.getenv("ANON_AGENT_PER_DAY", "1"))
 
 USER_SEARCH_PER_DAY: int = int(os.getenv("USER_SEARCH_PER_DAY", "200"))
-USER_RAG_PER_DAY: int = int(os.getenv("USER_RAG_PER_DAY", "30"))
-USER_AGENT_PER_DAY: int = int(os.getenv("USER_AGENT_PER_DAY", "10"))
+# Calibrated, and kept at or below the global ceilings below. A per-user
+# allowance ABOVE the global one is not a looser limit, it is an incoherent
+# pair: the individual number promises something the shared one will refuse,
+# and the person is told they have allowance left at the moment they are turned
+# away. These two were left at their placeholders when render.yaml was
+# calibrated, which is exactly that state.
+USER_RAG_PER_DAY: int = int(os.getenv("USER_RAG_PER_DAY", "8"))
+USER_AGENT_PER_DAY: int = int(os.getenv("USER_AGENT_PER_DAY", "5"))
 
 # The ceilings that protect the budget. On a free tier they protect availability:
 # exhausting a provider's daily allowance means the feature is dead until it
 # resets, for everyone, including whoever is demonstrating it.
-GLOBAL_RAG_PER_DAY: int = int(os.getenv("GLOBAL_RAG_PER_DAY", "200"))
-GLOBAL_AGENT_PER_DAY: int = int(os.getenv("GLOBAL_AGENT_PER_DAY", "50"))
+GLOBAL_RAG_PER_DAY: int = int(os.getenv("GLOBAL_RAG_PER_DAY", "8"))
+GLOBAL_AGENT_PER_DAY: int = int(os.getenv("GLOBAL_AGENT_PER_DAY", "9"))
+
+# A second ceiling, for anonymous agent use alone.
+#
+# The per-visitor limit cannot protect a shared allowance: it resets with a
+# cleared cookie, so ten curious visitors at one question each are ten questions
+# however low it is set. Calibration measured 2.46 provider requests per agent
+# question against a 50/day allowance, which means anonymous traffic can drain
+# the day before a signed-in user asks anything.
+#
+# So anonymous visitors keep their one question — the headline feature is worth
+# trying before committing to an account — and the tier as a whole is capped
+# well below the global one. What is left is reserved for people who came back.
+GLOBAL_ANON_AGENT_PER_DAY: int = int(os.getenv("GLOBAL_ANON_AGENT_PER_DAY", "4"))
+
+# How often a background thread runs one trivial query, in seconds. 0 disables.
+#
+# Lakebase's free tier suspends compute after about FIVE MINUTES idle, and a
+# suspended compute costs ~9.8 s to wake — measured 6 October 2026, against
+# 0.33 s warm. TCP keepalives are already set on the pool and do not help: the
+# socket is not what goes away, the server is.
+#
+# 240, not 600. The first value was chosen by analogy with Render's fifteen
+# minute spin-down, before the database's own idle timer was known. At ten
+# minutes against a five minute timer the compute suspends before the thread
+# knocks, so visitors pay the cold connect anyway AND the deployment pays for a
+# wake cycle every ten minutes to achieve it.
+#
+# This keeps the database warm only while the service is AWAKE. It cannot
+# protect the endpoint overnight, when Render has stopped and this thread has
+# stopped with it — that is what the external schedule in
+# `context/setup/pinger_setup.md` is for, and the two are not interchangeable.
+DB_KEEPWARM_SECONDS: int = int(os.getenv("DB_KEEPWARM_SECONDS", "240"))
 
 # Off switch for local work, where metering only gets in the way.
 QUOTAS_ENABLED: bool = os.getenv("QUOTAS_ENABLED", "true").lower() == "true"

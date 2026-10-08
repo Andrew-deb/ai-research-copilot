@@ -118,8 +118,12 @@ services:
       # must stop and write the answer.
       - key: AGENT_DEADLINE_SECONDS
         value: "75"
+      # Four, not six, after the 6 October calibration: the tail is what
+      # exhausts a 50-request daily allowance, and capping it buys questions
+      # back for everyone. Raise it on a paid provider and re-calibrate — see
+      # the note in dashboard/config.py.
       - key: AGENT_MAX_TOOL_CALLS
-        value: "6"
+        value: "4"
       - key: AGENT_MAX_TOKENS
         value: "2400"
 
@@ -127,29 +131,68 @@ services:
       # Explicit rather than relying on the code default: this is the switch
       # that decides whether the product has a bill it can survive, and it
       # should be visible in the deployment rather than inferred.
+      # One trivial query every N seconds, to stop Lakebase's free tier
+      # suspending its compute after ~5 minutes idle. A cold connect measured
+      # 9.8 s against 0.33 s warm. 0 disables.
+      #
+      # This only runs while the service is awake. Protecting the endpoint
+      # overnight is the external schedule's job — see
+      # context/setup/pinger_setup.md. The two are not interchangeable.
+      - key: DB_KEEPWARM_SECONDS
+        value: "240"
+
       - key: QUOTAS_ENABLED
         value: "true"
 
-      # PLACEHOLDER VALUES. Phase 3.6 measures real cost per operation from the
-      # ai_operations table and replaces every number here. They are deliberately
-      # stingy so that an un-calibrated deploy is cheap rather than expensive,
-      # and they live here rather than in code so 3.6 changes configuration, not
-      # source.
+      # CALIBRATED 6 October 2026 by scripts/calibrate_quotas.py, against 41
+      # real agent runs and the OpenRouter account's own stated allowance.
+      #
+      # The measurement that matters, and the one the placeholders missed:
+      # ONE AGENT QUESTION IS NOT ONE PROVIDER REQUEST. 41 questions consumed
+      # 101 OpenRouter requests — mean 2.46, p95 6, max 7. The old ceilings
+      # (50 agent + 200 rag) would have asked for 323 requests a day against an
+      # allowance of 50, so they never bound anything: OpenRouter refused first
+      # and the quota layer was decorative.
+      #
+      #   50 allowance − 18 reserve (35%) = 32 distributable requests/day
+      #     agent share 24 ÷ 2.46 (mean) = 9
+      #     rag share    8 ÷ 1           = 8
+      #
+      # Sized by the MEAN, deliberately. §6c argues for p95, which gives 4 a
+      # day across every visitor — defensible arithmetic and not a demo. The
+      # mean is the most usable number that is still bounded, and the tail is
+      # handled by capping AGENT_MAX_TOOL_CALLS instead.
+      #
+      # Re-run the script after changing the model, the tool budget, or the
+      # provider. All three move, and these numbers are only true for one set.
       - key: ANON_SEARCH_PER_DAY
         value: "20"
       - key: ANON_RAG_PER_DAY
         value: "3"
+      # Kept at one: the headline feature is worth trying before committing to
+      # an account. The tier ceiling below is what stops that being unbounded.
       - key: ANON_AGENT_PER_DAY
         value: "1"
+      # Searches embed via Hugging Face and make no completion call, so they do
+      # not draw on the allowance above. Generous on purpose.
       - key: USER_SEARCH_PER_DAY
         value: "200"
       - key: USER_RAG_PER_DAY
-        value: "30"
+        value: "8"
       - key: USER_AGENT_PER_DAY
-        value: "10"
-      # The ceilings that actually protect the bill. Per-visitor limits reset
-      # when somebody clears a cookie; these do not.
+        value: "5"
+      # The ceilings that actually protect availability. Per-visitor limits
+      # reset when somebody clears a cookie; these do not.
       - key: GLOBAL_RAG_PER_DAY
-        value: "200"
+        value: "8"
       - key: GLOBAL_AGENT_PER_DAY
-        value: "50"
+        value: "9"
+      # The anonymous tier's share of that ceiling.
+      #
+      # A per-visitor limit cannot protect a shared pool — it resets with a
+      # cleared cookie, so ten visitors at one question each are ten questions
+      # however low it is set. This is the only limit that bounds the tier, and
+      # it leaves the rest of the allowance for people who signed in.
+      - key: GLOBAL_ANON_AGENT_PER_DAY
+        value: "4"
+      # AGENT_MAX_TOOL_CALLS is set with the other agent settings above.
