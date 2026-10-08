@@ -71,14 +71,15 @@
   function render(paper) {
     const row = document.createElement("label"); row.className = "picker-paper";
     const check = document.createElement("input"); check.type = "checkbox";
-    check.value = paper.paper_id; check.disabled = paper.already_added;
+    const key = paper.paper_id || "openalex:" + paper.openalex_id;
+    check.value = key; check.disabled = paper.already_added;
     if (paper.already_added) check.dataset.added = "true";
-    check.checked = selected.has(paper.paper_id);
+    check.checked = selected.has(key);
     check.addEventListener("change", function () {
       if (check.checked && selected.size >= 20) {
         check.checked = false; status.textContent = "Add up to 20 papers at a time."; return;
       }
-      if (check.checked) selected.set(paper.paper_id, paper); else selected.delete(paper.paper_id);
+      if (check.checked) selected.set(key, paper); else selected.delete(key);
       update();
     });
     const body = document.createElement("div");
@@ -102,16 +103,18 @@
       results.replaceChildren(); nextCursor = null;
     }
     const params = new URLSearchParams({ q: activeQuery, scope: activeScope });
-    if (append && nextCursor) params.set("cursor", nextCursor);
+    const external = activeScope === "external";
+    if (external && !activeQuery) { status.textContent = "Enter a topic, title or author for external discovery."; update(); return; }
+    if (append && nextCursor) params.set(external ? "page" : "cursor", nextCursor);
     status.textContent = "Finding papers…"; more.hidden = true; add.disabled = true;
     try {
-      const response = await fetch(dialog.dataset.searchUrl + "?" + params, { signal: controller.signal, headers: { Accept: "application/json" } });
+      const response = await fetch((external ? dialog.dataset.externalSearchUrl : dialog.dataset.searchUrl) + "?" + params, { signal: controller.signal, headers: { Accept: "application/json" } });
       const data = await response.json();
       if (requestGeneration !== generation) return;
       if (!response.ok) throw new Error(data.detail || data.error || data.message || "Could not load papers.");
-      data.items.forEach(render); nextCursor = data.next_cursor;
+      data.items.forEach(render); nextCursor = external ? data.next_page : data.next_cursor;
       more.hidden = !nextCursor;
-      status.textContent = results.children.length ? "Select papers to add. Selection stays while you search." : "No matching papers in this scope. Try a broader topic, title, or author.";
+      status.textContent = results.children.length ? (external ? "Select papers to import metadata and add. External discovery uses your search allowance." : "Select papers to add. Selection stays while you search.") : "No matching papers in this scope. Try a broader topic, title, or author.";
     } catch (error) { if (requestGeneration === generation && error.name !== "AbortError") status.textContent = error.message; }
     finally { if (requestGeneration === generation) update(); }
   }
@@ -130,7 +133,20 @@
     try {
       for (const [id, paper] of selected) {
         status.textContent = "Adding " + paper.title + "…";
-        await window.RC.postJSON(dialog.dataset.addUrl, { paper_id: id });
+        if (!paper.paper_id) {
+          status.textContent = "Importing metadata for " + paper.title + "…";
+          const receipt = await window.RC.postJSON(dialog.dataset.importUrl, { openalex_id: paper.openalex_id });
+          if (!receipt.paper_id) throw new Error("Import did not return a saved paper identifier.");
+          paper.paper_id = receipt.paper_id; // Keep a successful import if membership needs retry.
+          results.querySelectorAll("input").forEach(function (check) {
+            if (check.value === id) {
+              const badge = document.createElement("span");
+              badge.textContent = receipt.already_imported ? "Metadata already in Alfred" : "Metadata imported into Alfred";
+              check.parentElement.querySelector("div").append(badge);
+            }
+          });
+        }
+        await window.RC.postJSON(dialog.dataset.addUrl, { paper_id: paper.paper_id });
         selected.delete(id); changed = true; count += 1;
         results.querySelectorAll("input").forEach(function (check) {
           if (check.value === id) { check.checked = false; check.dataset.added = "true"; }

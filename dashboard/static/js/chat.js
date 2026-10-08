@@ -113,7 +113,7 @@
     }); }
   }
   var completedWrites = [];
-  var writeTools = ["create_collection", "reorder_collection_papers", "add_paper_to_collection",
+  var writeTools = ["import_external_paper", "create_collection", "reorder_collection_papers", "add_paper_to_collection",
     "remove_paper_from_collection", "generate_reading_plan", "mark_paper_status", "save_note", "create_note", "edit_note", "set_note_pinned", "delete_note", "create_learning_goal", "update_goal_status"];
   function tellParent(type, value) {
     if (embedded && window.parent !== window) {
