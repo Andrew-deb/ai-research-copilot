@@ -214,10 +214,17 @@ def test_a_connected_agent_consumes_allowance(anon_client, db, connected):
 def test_a_connected_agent_counts_against_the_global_ceiling_too(
         anon_client, db, connected):
     """Per-visitor limits shape usage; the global ceiling protects capacity.
-    Clearing cookies resets the first and cannot touch the second."""
+    Clearing cookies resets the first and cannot touch the second.
+
+    Three counters since the 3.6 calibration, not two. The tier counter sits
+    between them and answers the question neither of the others can: a
+    per-visitor limit resets with a cleared cookie, and the global ceiling
+    cannot tell anonymous traffic from anybody else's — so without it, visitors
+    could drain a shared provider allowance before a signed-in user asked
+    anything."""
     anon_client.post("/chat/ask", json={"question": "why?"}, headers=XHR)
     scopes = {scope for (scope, _sid, metric) in db.usage if metric == "agent_query"}
-    assert scopes == {"anon", "global"}
+    assert scopes == {"anon", "global", "tier:anonymous"}
 
 
 def test_a_connected_agent_is_refused_once_the_allowance_is_gone(
