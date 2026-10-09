@@ -17,6 +17,7 @@ from exceptions import (
     ExternalAPIError,
     GoalNotFoundError,
     NoteNotFoundError,
+    UploadNotFoundError,
     PaperNotFoundError,
     ResearchCopilotError,
     CapabilityDeniedError,
@@ -39,6 +40,7 @@ _STATUS_MAP: list[tuple[type[Exception], int, str]] = [
     (CollectionNotFoundError, 404, "Collection not found"),
     (GoalNotFoundError, 404, "Learning goal not found"),
     (NoteNotFoundError, 404, "Note not found"),
+    (UploadNotFoundError, 404, "File unavailable"),
     (ExternalAPIError, 502, "Upstream service error"),
     (ResearchCopilotError, 500, "Something went wrong"),
 ]

@@ -90,3 +90,7 @@ class QuotaExceededError(ResearchCopilotError):
         self.scope = scope
         self.used = used
         self.limit = limit
+
+
+class UploadNotFoundError(ResearchCopilotError):
+    """An owned private file or conversation is unavailable."""
