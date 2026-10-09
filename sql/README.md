@@ -77,3 +77,9 @@ psql "$DATABASE_URL" -f sql/26_wick_context.sql              # apply before dura
 `15_agent_runs.sql` before deploying the dashboard approval feature. This adds
 private run checkpoints and owner-scoped grants, plus the `awaiting_approval`
 run state. It does not add MCP tools.
+
+**Private uploads:** apply `29_private_uploads.sql` before enabling
+`UPLOADS_ENABLED` on Render. Originals/extracted text live in private object
+storage; these tables retain ownership, capacity reservations and durable jobs.
+See `docs/setup/private_uploads.md` for Azure credentials, privileges and rollout.
+No MCP catalog migration is involved.

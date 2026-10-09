@@ -1016,3 +1016,12 @@
 #wick-permission-picker[hidden] { display: none; }
 #wick-permission-picker .mode-pick { max-width: none; white-space: nowrap; }
 #wick-permission-picker .mode-pick-menu { left: 0; right: auto; max-width: calc(100vw - 48px); }
+
+/* Private file controls remain outside the editable prompt, without another box. */
+.private-files { flex-basis: 100%; min-width: 0; font-size: .8rem; }
+.private-files:has(#upload-list:empty):has(#upload-status:empty) { display: none; }
+.private-files-note { color: var(--text-muted); margin: .4rem 0; }
+.private-file { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; padding: .25rem 0; }
+.private-file > span:first-child { overflow-wrap: anywhere; }
+.private-file button { border: 0; background: transparent; color: var(--text-muted); cursor: pointer; font: inherit; padding: .2rem; }
+.private-file a { font: inherit; }

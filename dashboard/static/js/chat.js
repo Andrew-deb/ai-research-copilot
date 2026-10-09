@@ -139,6 +139,11 @@
     } catch (e) { /* Private browsing may block storage. */ }
   }
   var conversationId = (page && page.dataset.conversation) || null;
+  document.addEventListener("uploads:conversation", function (event) {
+    conversationId = event.detail.conversation_id;
+    if (page) page.dataset.conversation = conversationId;
+    document.dispatchEvent(new Event("wick:conversation"));
+  });
   var draftKey = embedded ? "alfred-panel-draft:" + page.dataset.owner : null;
   if (embedded) {
     try { if (!input.value) { input.value = sessionStorage.getItem(draftKey) || ""; } }

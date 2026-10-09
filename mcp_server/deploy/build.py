@@ -59,6 +59,7 @@ def populate_render(destination: Path) -> None:
         copy_file(shared / name, destination / "shared_resource" / name)
     copy_package(shared / "services", destination / "shared_resource" / "services")
     copy_package(shared / "brokers", destination / "shared_resource" / "brokers")
+    copy_package(shared / "storage", destination / "shared_resource" / "storage")
     for path in sorted((shared / "repositories").glob("*.py")):
         if path.name != "lakebase.py":
             copy_file(path, destination / "shared_resource" / "repositories" / path.name)
