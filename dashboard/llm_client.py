@@ -12,11 +12,13 @@ one code path. The model is whatever OPENROUTER_MODEL names — the original
 
 import asyncio
 import logging
+import threading
 import time
 
 import httpx
 
-from config import OPENROUTER_API_KEY, OPENROUTER_BASE_URL, OPENROUTER_MODEL
+from config import (OPENROUTER_API_KEY, OPENROUTER_API_KEYS, OPENROUTER_BASE_URL,
+                    OPENROUTER_MODEL)
 from exceptions import ExternalAPIError, LLMTimeoutError
 
 logger = logging.getLogger(__name__)
@@ -91,11 +93,85 @@ class Usage:
 
 
 def is_available() -> bool:
-    """True when an API key is configured — routes use this to hide RAG UI gracefully."""
-    return bool(OPENROUTER_API_KEY)
+    """True when a credential is configured — routes use this to hide RAG UI gracefully."""
+    return bool(OPENROUTER_API_KEYS)
 
 
-async def _request_openrouter(payload: dict, timeout: float):
+# =============================================================================
+# Provider failover
+# =============================================================================
+# Statuses that mean "this credential cannot serve this request", as opposed to
+# "this request is wrong". Only the first kind is worth trying elsewhere:
+#
+#   401 / 403  the credential is rejected — revoked, expired, or not permitted
+#   402        the account cannot pay for it
+#   429        the provider is refusing for now
+#
+# A 400 is NOT here, and that is the important half. A malformed request will
+# be malformed for every credential, so retrying it spends the next one to
+# learn nothing. The same reasoning excludes 404: a retired model slug is
+# retired everywhere.
+_FAILOVER_STATUSES = frozenset({401, 402, 403, 429})
+
+# What a visitor is told when the model cannot be reached, whatever the reason.
+#
+# One sentence, no status code, no provider name, and an instruction they can
+# act on. `LLM request failed (429): ...` told somebody researching protein
+# folding about HTTP semantics and gave them nothing to do about it.
+_UNAVAILABLE_MESSAGE = (
+    "The research assistant is unavailable right now. "
+    "Please try again in a few minutes."
+)
+
+
+def _refusal_detail(resp) -> str:
+    """
+    The provider's own explanation, for the log and the telemetry row.
+
+    Never shown to a visitor. It is the thing that makes a refusal diagnosable
+    later — "rate limit exceeded" and "key disabled" need very different
+    responses from whoever runs the deployment, and both look identical once
+    they have been flattened into a friendly sentence.
+    """
+    try:
+        body = resp.json()
+    except ValueError:
+        body = None
+
+    if isinstance(body, dict):
+        error = body.get("error")
+        if isinstance(error, dict):
+            return str(error.get("message") or error)
+        if error:
+            return str(error)
+        return str(body)
+    return (getattr(resp, "text", "") or "").strip() or "<empty response body>"
+
+# Which credential to reach for first. Advanced only when one fails over, so a
+# working credential keeps being used and the others stay untouched.
+#
+# In-process and deliberately not persisted. The state is worth nothing beyond
+# the life of a worker — provider limits reset on their own schedule, and a
+# restart rediscovering a now-working credential is the correct behaviour
+# rather than a bug to engineer around.
+_preferred = 0
+_preferred_lock = threading.Lock()
+
+
+def _credential_order() -> list[tuple[int, str]]:
+    """Configured credentials, starting from the one that last worked."""
+    total = len(OPENROUTER_API_KEYS)
+    return [((_preferred + offset) % total, OPENROUTER_API_KEYS[(_preferred + offset) % total])
+            for offset in range(total)]
+
+
+def _prefer(index: int) -> None:
+    global _preferred
+    with _preferred_lock:
+        _preferred = index
+
+
+async def _request_openrouter(payload: dict, timeout: float, credential: str):
     """
     Perform one OpenRouter HTTP request.
 
@@ -114,7 +190,7 @@ async def _request_openrouter(payload: dict, timeout: float):
     async with httpx.AsyncClient(timeout=socket_timeout) as client:
         return await client.post(
             f"{OPENROUTER_BASE_URL}/chat/completions",
-            headers={"Authorization": f"Bearer {OPENROUTER_API_KEY}", **_HEADERS_EXTRA},
+            headers={"Authorization": f"Bearer {credential}", **_HEADERS_EXTRA},
             json={"model": OPENROUTER_MODEL, **payload},
         )
 
@@ -130,8 +206,8 @@ def _post(payload: dict, timeout: float | None = None,
     upstream that kept the connection active could leave Alfred "Thinking..."
     for minutes despite a nominal ~55-second planner budget.
     """
-    if not OPENROUTER_API_KEY:
-        raise ExternalAPIError("OPENROUTER_API_KEY is not configured.")
+    if not OPENROUTER_API_KEYS:
+        raise ExternalAPIError("No OpenRouter credential is configured.")
 
     effective_timeout = timeout or _TIMEOUT_SECONDS
     started = time.monotonic()
@@ -143,31 +219,59 @@ def _post(payload: dict, timeout: float | None = None,
         len(payload.get("tools") or []),
     )
 
-    try:
-        resp = asyncio.run(asyncio.wait_for(
-            _request_openrouter(payload, effective_timeout),
-            timeout=effective_timeout,
-        ))
-    except TimeoutError as exc:
-        elapsed = time.monotonic() - started
-        logger.error(
-            "OpenRouter wall-clock timeout after %.2fs model=%s limit=%.1fs",
-            elapsed, OPENROUTER_MODEL, effective_timeout,
+    attempts = _credential_order()
+    last_refusal: tuple[int, str] | None = None
+    resp = None
+
+    for position, (index, credential) in enumerate(attempts):
+        try:
+            resp = asyncio.run(asyncio.wait_for(
+                _request_openrouter(payload, effective_timeout, credential),
+                timeout=effective_timeout,
+            ))
+        except TimeoutError as exc:
+            # Transport failures are not a credential's fault, so they do not
+            # cause failover — trying the next one would spend it to learn
+            # nothing and double the wait somebody is already enduring.
+            elapsed = time.monotonic() - started
+            logger.error(
+                "OpenRouter wall-clock timeout after %.2fs model=%s limit=%.1fs",
+                elapsed, OPENROUTER_MODEL, effective_timeout,
+            )
+            raise LLMTimeoutError(
+                f"LLM request exceeded its {effective_timeout:.1f}s wall-clock deadline."
+            ) from exc
+        except httpx.TimeoutException as exc:
+            elapsed = time.monotonic() - started
+            logger.error(
+                "OpenRouter socket timeout after %.2fs model=%s: %s",
+                elapsed, OPENROUTER_MODEL, exc,
+            )
+            raise LLMTimeoutError(f"LLM request timed out: {exc}") from exc
+        except httpx.HTTPError as exc:
+            elapsed = time.monotonic() - started
+            logger.error("OpenRouter request failed after %.2fs: %s", elapsed, exc)
+            raise ExternalAPIError(_UNAVAILABLE_MESSAGE, detail=f"{type(exc).__name__}: {exc}") from exc
+
+        if resp.status_code not in _FAILOVER_STATUSES:
+            # Worked, or failed in a way the next credential would fail too.
+            _prefer(index)
+            break
+
+        detail = _refusal_detail(resp)
+        last_refusal = (resp.status_code, detail)
+        logger.warning(
+            "OpenRouter credential %d of %d unavailable status=%s: %s",
+            position + 1, len(attempts), resp.status_code, detail[:200],
         )
-        raise LLMTimeoutError(
-            f"LLM request exceeded its {effective_timeout:.1f}s wall-clock deadline."
-        ) from exc
-    except httpx.TimeoutException as exc:
-        elapsed = time.monotonic() - started
-        logger.error(
-            "OpenRouter socket timeout after %.2fs model=%s: %s",
-            elapsed, OPENROUTER_MODEL, exc,
-        )
-        raise LLMTimeoutError(f"LLM request timed out: {exc}") from exc
-    except httpx.HTTPError as exc:
-        elapsed = time.monotonic() - started
-        logger.error("OpenRouter request failed after %.2fs: %s", elapsed, exc)
-        raise ExternalAPIError(f"LLM request failed: {exc}") from exc
+    else:
+        # Every configured credential came back unusable. The visitor gets one
+        # sentence; the status and the provider's own words go to the log and
+        # to ai_operations, which is where they are diagnosable.
+        status, detail = last_refusal or (503, "no credential could be used")
+        logger.error("Every OpenRouter credential (%d) is unavailable; last status=%s",
+                     len(attempts), status)
+        raise ExternalAPIError(_UNAVAILABLE_MESSAGE, status_code=status, detail=detail)
 
     elapsed = time.monotonic() - started
 
@@ -197,9 +301,12 @@ def _post(payload: dict, timeout: float | None = None,
         if usage is not None and isinstance(body, dict):
             usage.add(body)
 
-        raise ExternalAPIError(
-            f"LLM request failed ({resp.status_code}): {detail_text[:200]}"
-        )
+        # A status the failover loop decided not to retry — a malformed
+        # request, or a model slug that no longer exists. Still not a status
+        # code for a visitor to read.
+        raise ExternalAPIError(_UNAVAILABLE_MESSAGE,
+                               status_code=resp.status_code,
+                               detail=detail_text[:500])
 
     if not isinstance(body, dict):
         logger.error(
@@ -207,7 +314,9 @@ def _post(payload: dict, timeout: float | None = None,
             resp.status_code,
             elapsed,
         )
-        raise ExternalAPIError("LLM returned an unexpected response format.")
+        raise ExternalAPIError(_UNAVAILABLE_MESSAGE,
+                               status_code=resp.status_code,
+                               detail="non-JSON response body")
 
     response_usage = body.get("usage") or {}
     logger.info(
@@ -273,7 +382,9 @@ def chat_with_tools(messages: list[dict], tools: list[dict],
         return body["choices"][0]["message"]
     except (KeyError, IndexError) as exc:
         logger.error("Unexpected OpenRouter response shape: %s", str(body)[:500])
-        raise ExternalAPIError("LLM returned an unexpected response format.") from exc
+        raise ExternalAPIError(_UNAVAILABLE_MESSAGE,
+                               status_code=resp.status_code,
+                               detail="non-JSON response body") from exc
 
 
 def chat(system_prompt: str, user_prompt: str, temperature: float = 0.2,
@@ -300,7 +411,9 @@ def chat(system_prompt: str, user_prompt: str, temperature: float = 0.2,
         message = body["choices"][0]["message"]
     except (KeyError, IndexError) as exc:
         logger.error("Unexpected OpenRouter response shape: %s", str(body)[:500])
-        raise ExternalAPIError("LLM returned an unexpected response format.") from exc
+        raise ExternalAPIError(_UNAVAILABLE_MESSAGE,
+                               status_code=resp.status_code,
+                               detail="non-JSON response body") from exc
 
     text = message_text(message)
     if not text:
