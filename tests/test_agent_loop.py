@@ -940,7 +940,14 @@ def test_a_call_is_never_given_an_impossible_deadline(wired, monkeypatch):
 
 def test_openrouter_http_error_keeps_provider_detail(monkeypatch, caplog):
     """A non-2xx response must expose OpenRouter's diagnostic body, not just
-    requests' generic '404 Not Found' text."""
+    requests' generic '404 Not Found' text.
+
+    The detail moved on 10 October 2026. It used to be concatenated into the
+    exception's message, which meant the only way to preserve it was to show a
+    visitor `LLM request failed (404): No endpoints found for this model`. It
+    now rides on `.status_code` and `.detail`, so the diagnosis survives
+    without being printed to somebody researching protein folding.
+    """
     import llm_client
     from exceptions import ExternalAPIError
 
@@ -951,7 +958,7 @@ def test_openrouter_http_error_keeps_provider_detail(monkeypatch, caplog):
         def json(self):
             return {"error": {"message": "No endpoints found for this model"}}
 
-    async def fake_request(payload, timeout):
+    async def fake_request(payload, timeout, *_credential):
         return FakeResponse()
 
     monkeypatch.setattr(llm_client, "_request_openrouter", fake_request)
@@ -960,9 +967,13 @@ def test_openrouter_http_error_keeps_provider_detail(monkeypatch, caplog):
     with pytest.raises(ExternalAPIError) as excinfo:
         llm_client.chat_with_tools([{"role": "user", "content": "hi"}], [])
 
-    assert "404" in str(excinfo.value)
-    assert "No endpoints found for this model" in str(excinfo.value)
+    assert excinfo.value.status_code == 404
+    assert "No endpoints found for this model" in excinfo.value.detail
     assert "OpenRouter request rejected" in caplog.text
+
+    # And the visitor-facing half carries neither.
+    assert "404" not in str(excinfo.value)
+    assert "No endpoints found" not in str(excinfo.value)
 
 
 def test_the_llm_client_honours_a_caller_supplied_timeout(monkeypatch):
@@ -977,7 +988,7 @@ def test_the_llm_client_honours_a_caller_supplied_timeout(monkeypatch):
         def json(self):
             return {"choices": [{"message": {"content": "ok"}}]}
 
-    async def fake_request(payload, timeout):
+    async def fake_request(payload, timeout, *_credential):
         captured["timeout"] = timeout
         return FakeResponse()
 
@@ -1019,7 +1030,7 @@ def test_openrouter_call_has_a_true_wall_clock_deadline(monkeypatch):
     import llm_client
     from exceptions import ExternalAPIError
 
-    async def never_finishes(payload, timeout):
+    async def never_finishes(payload, timeout, *_credential):
         await asyncio.sleep(60)
 
     monkeypatch.setattr(llm_client, "_request_openrouter", never_finishes)
