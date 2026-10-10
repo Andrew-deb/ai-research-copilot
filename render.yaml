@@ -45,7 +45,23 @@ services:
         value: "3.12.7"
       - key: DATABASE_URL
         sync: false
+      # Provider failover. A single credential is a single point of failure
+      # for the only part of this application that cannot degrade gracefully:
+      # revoke it, let it expire, or have the provider reject it for a reason
+      # of its own, and every AI feature stops at once.
+      #
+      # OPENROUTER_API_KEY alone is a complete configuration and behaves
+      # exactly as it always has. The numbered ones are optional; each is tried
+      # in turn when the one before it cannot serve a request.
+      #
+      # All sync: false - set in the Render dashboard, never in this file.
       - key: OPENROUTER_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY_1
+        sync: false
+      - key: OPENROUTER_API_KEY_2
+        sync: false
+      - key: OPENROUTER_API_KEY_3
         sync: false
       # Research agent -> MCP server on Databricks (Phase 3.4).
       # Omit all four and the assistant reports itself unavailable; search, RAG,
