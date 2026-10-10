@@ -125,7 +125,7 @@ def test_tokens_are_counted_even_when_the_body_carries_an_error(monkeypatch):
                                             "completion_tokens": 0, "cost": 0.0004},
                     "error": {"message": "rate limited upstream"}}
 
-    async def fake_request(payload, timeout):
+    async def fake_request(payload, timeout, *_credential):
         return Resp()
 
     monkeypatch.setattr(llm_client, "OPENROUTER_API_KEY", "test-key")
