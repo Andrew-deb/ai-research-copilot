@@ -207,7 +207,8 @@ def _post(payload: dict, timeout: float | None = None,
     for minutes despite a nominal ~55-second planner budget.
     """
     if not OPENROUTER_API_KEYS:
-        raise ExternalAPIError("No OpenRouter credential is configured.")
+        raise ExternalAPIError(_UNAVAILABLE_MESSAGE,
+                               detail="No OpenRouter credential is configured.")
 
     effective_timeout = timeout or _TIMEOUT_SECONDS
     started = time.monotonic()
@@ -336,7 +337,9 @@ def _post(payload: dict, timeout: float | None = None,
     if "error" in body:
         message = str(body["error"])
         logger.error("OpenRouter returned an error body: %s", message[:300])
-        raise ExternalAPIError(f"LLM request failed: {message[:200]}")
+        # A 200 carrying an error body. The provider's wording is the operator's
+        # only clue and is kept as detail; it is not a sentence for a visitor.
+        raise ExternalAPIError(_UNAVAILABLE_MESSAGE, detail=message[:200])
     return body
 
 
@@ -383,8 +386,7 @@ def chat_with_tools(messages: list[dict], tools: list[dict],
     except (KeyError, IndexError) as exc:
         logger.error("Unexpected OpenRouter response shape: %s", str(body)[:500])
         raise ExternalAPIError(_UNAVAILABLE_MESSAGE,
-                               status_code=resp.status_code,
-                               detail="non-JSON response body") from exc
+                               detail="response JSON had no choices[0].message") from exc
 
 
 def chat(system_prompt: str, user_prompt: str, temperature: float = 0.2,
@@ -396,7 +398,9 @@ def chat(system_prompt: str, user_prompt: str, temperature: float = 0.2,
     so the Flask error handler can turn it into a single user-facing message.
     """
     if not OPENROUTER_API_KEY:
-        raise ExternalAPIError("OPENROUTER_API_KEY is not configured — RAG summaries are unavailable.")
+        raise ExternalAPIError(
+            _UNAVAILABLE_MESSAGE,
+            detail="OPENROUTER_API_KEY is not configured - RAG summaries are unavailable.")
 
     body = _post({
         "temperature": temperature,
@@ -412,11 +416,11 @@ def chat(system_prompt: str, user_prompt: str, temperature: float = 0.2,
     except (KeyError, IndexError) as exc:
         logger.error("Unexpected OpenRouter response shape: %s", str(body)[:500])
         raise ExternalAPIError(_UNAVAILABLE_MESSAGE,
-                               status_code=resp.status_code,
-                               detail="non-JSON response body") from exc
+                               detail="response JSON had no choices[0].message") from exc
 
     text = message_text(message)
     if not text:
         logger.error("LLM returned no usable text: %s", str(body)[:500])
-        raise ExternalAPIError("LLM returned an empty answer.")
+        raise ExternalAPIError(_UNAVAILABLE_MESSAGE,
+                               detail="LLM returned an empty answer.")
     return text
