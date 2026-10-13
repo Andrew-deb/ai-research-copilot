@@ -19,6 +19,7 @@ import suggestions
 from werkzeug.exceptions import HTTPException
 from exceptions import ResearchCopilotError
 from middleware.auth import current_tier, current_user_id, current_quota_scope, require_user_id
+from middleware.error_handler import visitor_message
 from middleware.capabilities import AGENT_QUERY, consume_quota, require_capability, tier_can
 from routes.helpers import form_or_json, wants_json
 from services import (agent_service, assistant_context, collection_service,
@@ -565,7 +566,11 @@ def _stream_turn(question: str, tier: str, user_id: str | None,
                     question, status=agent_service.STATUS_STOPPED,
                     message="Stopped. Work already completed may have used your allowance.")
             else:
-                outcome["error"] = str(exc)
+                # Not str(exc): this runs in a worker thread, so the error
+                # handlers never see it and their 500-and-above rule never
+                # applied. A quota refusal should still be read verbatim; a
+                # pool failure should not be read at all.
+                outcome["error"] = visitor_message(exc)
         except Exception as exc:                      # noqa: BLE001
             terminal = agent_runs.finish(run_id, owner, failed=True) if run_id else "failed"
             logger.exception("Agent turn failed")
