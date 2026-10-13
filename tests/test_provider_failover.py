@@ -96,11 +96,20 @@ def test_a_single_credential_failing_does_not_retry_itself(one_key, monkeypatch)
 
 
 def test_no_credential_at_all_says_so_plainly(monkeypatch):
+    """
+    Plainly to the operator, who can fix it, and not to the visitor, who
+    cannot. A deployment with no key configured is misconfigured rather than
+    broken, and "No OpenRouter credential is configured" is the sentence that
+    says which — in the log, where somebody is in a position to act on it.
+    """
     monkeypatch.setattr(llm_client, "OPENROUTER_API_KEYS", [])
 
     assert llm_client.is_available() is False
-    with pytest.raises(ExternalAPIError, match="No OpenRouter credential"):
+    with pytest.raises(ExternalAPIError) as raised:
         llm_client._post({"messages": []})
+
+    assert "No OpenRouter credential" in raised.value.detail
+    assert "OPENROUTER" not in str(raised.value)
 
 
 # ---------------------------------------------------------------------------
