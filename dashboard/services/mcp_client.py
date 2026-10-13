@@ -42,6 +42,14 @@ from exceptions import ExternalAPIError, ResearchCopilotError
 
 logger = logging.getLogger(__name__)
 
+# One sentence for every reason the assistant cannot be reached.
+#
+# "Not configured", "could not authenticate" and "incompatible tool catalog"
+# are three different jobs for whoever runs the deployment and the same single
+# fact for whoever asked the question. The distinctions are kept in `detail`,
+# where they are read by someone who can act on them.
+_ASSISTANT_UNAVAILABLE = "The research assistant is unavailable right now. Please try again in a few minutes."
+
 # The header the MCP server reads to learn which application user a tool call is
 # acting for. Named here and consumed there; the two must not drift.
 USER_ID_HEADER = "X-RC-User-Id"
@@ -112,7 +120,8 @@ def _auth_headers(user_id: str | None, mode: str = "research") -> dict[str, str]
     global _databricks_config
 
     if not (is_configured() if mode == "research" else is_configured(mode)):
-        raise ExternalAPIError("The selected assistant is not configured.")
+        raise ExternalAPIError(_ASSISTANT_UNAVAILABLE,
+                               detail="The selected assistant is not configured.")
 
     if _databricks_config is None:
         with _config_lock:
@@ -129,7 +138,9 @@ def _auth_headers(user_id: str | None, mode: str = "research") -> dict[str, str]
         headers = dict(_databricks_config.authenticate())
     except Exception as exc:
         logger.error("Databricks OAuth failed: %s", exc)
-        raise ExternalAPIError("Could not authenticate to the selected MCP service.") from exc
+        raise ExternalAPIError(
+            _ASSISTANT_UNAVAILABLE,
+            detail="Could not authenticate to the selected MCP service.") from exc
 
     # Only sent when we actually have a user. An absent header is what tells the
     # MCP server there is no application user, which it must treat as a refusal
@@ -211,7 +222,17 @@ async def _call(session, name: str, arguments: dict) -> Any:
     result = await session.call_tool(name, arguments or {})
 
     if getattr(result, "isError", False):
-        raise ExternalAPIError(f"Tool '{name}' failed: {_text(result)}")
+        # This message reaches the chat trace, where it is rendered into a
+        # chat-step-error span and read by whoever asked the question. The
+        # tool's own output is a stack trace or a provider status as often as
+        # it is a sentence, so it stays in detail and in the log.
+        detail = _text(result)
+        logger.error("Tool %s failed: %s", name, str(detail)[:300])
+        # The sentence does not name the tool: the trace step already shows the
+        # name as its prefix and renders this beside it, and a second
+        # prettifier here would drift from prettyTool() in chat.js.
+        raise ExternalAPIError("That step could not be completed.",
+                               detail=str(detail)[:500])
 
     structured = getattr(result, "structuredContent", None)
     if structured is not None:
@@ -253,7 +274,8 @@ def list_tools(force: bool = False, mode: str = "research") -> list[dict]:
 
     endpoint = config.mcp_endpoint(mode)
     if not endpoint:
-        raise ExternalAPIError("The selected assistant is not configured.")
+        raise ExternalAPIError(_ASSISTANT_UNAVAILABLE,
+                               detail="The selected assistant is not configured.")
     key = (mode, endpoint)
     with _cache_lock:
         if key in _tool_cache and not force:
