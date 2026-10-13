@@ -22,9 +22,17 @@ def test_pages_render(client, path):
 
 
 def test_unknown_route_is_404_page(client):
+    """
+    Asserted on the page rather than on the sentence. This test used to require
+    the words "not found", which is the status line's vocabulary rather than
+    anything a visitor needs; the wording is free to improve, and
+    tests/test_error_messages.py is where it is held to account.
+    """
     resp = client.get("/no-such-page", headers=ALICE)
     assert resp.status_code == 404
-    assert b"not found" in resp.data.lower()
+    body = resp.get_data(as_text=True)
+    assert "error-page" in body            # our template, not Werkzeug's
+    assert "404" in body
 
 
 def test_unknown_route_is_404_json_for_xhr(client):

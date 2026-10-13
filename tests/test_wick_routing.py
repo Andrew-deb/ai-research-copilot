@@ -114,10 +114,18 @@ def test_large_workspace_result_is_explicitly_truncated_valid_json():
 
 
 def test_wick_refuses_wrong_server_catalog(monkeypatch):
+    """
+    The mismatch is named in `detail` rather than in the message. "Incompatible
+    tool catalog" is the right sentence for whoever pointed the deployment at
+    the wrong server, and nothing at all to the person who asked a question.
+    """
     monkeypatch.setattr(mcp_client, "list_tools", lambda **kwargs: [
         {"name": "search_papers", "description": "", "input_schema": {}}])
-    with pytest.raises(ExternalAPIError, match="incompatible"):
+    with pytest.raises(ExternalAPIError) as raised:
         agent_service._tool_schemas("authenticated", "wick")
+
+    assert "incompatible" in raised.value.detail
+    assert "catalog" not in str(raised.value)
 
 
 def test_wick_refreshes_stale_catalog_once(monkeypatch):
@@ -138,8 +146,9 @@ def test_wick_persistent_mismatch_logs_names_and_stops(monkeypatch, caplog):
         calls.append(kwargs)
         return [{"name": "search_papers", "description": "", "input_schema": {}}]
     monkeypatch.setattr(mcp_client, "list_tools", listed)
-    with pytest.raises(ExternalAPIError, match="incompatible"):
+    with pytest.raises(ExternalAPIError) as raised:
         agent_service._tool_schemas("authenticated", "wick")
+    assert "incompatible" in raised.value.detail
     assert len(calls) == 2
     assert "missing=" in caplog.text and "search_workspace_papers" in caplog.text
     assert "unexpected=['search_papers']" in caplog.text
