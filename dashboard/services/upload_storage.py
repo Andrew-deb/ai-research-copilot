@@ -2,7 +2,6 @@
 
 import os
 from functools import lru_cache
-from urllib.parse import urlsplit
 import upload_config
 
 try:
@@ -18,25 +17,8 @@ def for_location(location):
     # Resolve each row's location, not just a global active-provider switch.
     if location != upload_config.LOCATION_ID:
         raise StorageUnavailable("This file storage location is unavailable.")
-    url = os.getenv("AZURE_STORAGE_ACCOUNT_URL", "")
-    parsed = urlsplit(url)
-    values = [
-        os.getenv(k)
-        for k in (
-            "AZURE_STORAGE_CONTAINER",
-            "AZURE_TENANT_ID",
-            "AZURE_CLIENT_ID",
-            "AZURE_CLIENT_SECRET",
-        )
-    ]
-    if (
-        parsed.scheme != "https"
-        or not parsed.hostname
-        or not parsed.hostname.endswith(".blob.core.windows.net")
-        or parsed.query
-        or parsed.fragment
-        or parsed.username
-        or not all(values)
-    ):
+    connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING", "").strip()
+    container = os.getenv("AZURE_STORAGE_CONTAINER", "").strip()
+    if not connection_string or not container:
         raise StorageUnavailable("Private uploads have not been configured.")
-    return AzureBlobStorage(url, *values)
+    return AzureBlobStorage(connection_string, container)

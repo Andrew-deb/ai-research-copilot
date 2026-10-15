@@ -52,5 +52,4 @@ mcp>=1.29.0,<2.0.0
 
 # Private byte storage and bounded PDF extraction (no OCR/model calls).
 azure-storage-blob>=12.25.0,<13.0.0
-azure-identity>=1.19.0,<2.0.0
 pypdf>=6.0.0,<7.0.0
