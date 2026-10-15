@@ -33,7 +33,22 @@ class ExternalAPIError(ResearchCopilotError):
     """
     Raised when a broker HTTP call fails after all retries.
     Wraps the underlying requests.HTTPError so callers don't need to import requests.
+
+    Two audiences, kept apart on purpose. `str(exc)` is what a visitor may be
+    shown and should read as a sentence; `status_code` and `detail` carry the
+    provider's own words for the log and for `ai_operations`.
+
+    They were one thing, and the message was `LLM request failed (429): ...` —
+    which told somebody researching protein folding about HTTP semantics, gave
+    them nothing to act on, and still lost the detail whenever a caller
+    truncated it.
     """
+
+    def __init__(self, message: str, *, status_code: int | None = None,
+                 detail: str | None = None):
+        super().__init__(message)
+        self.status_code = status_code
+        self.detail = detail
 
 
 class LLMTimeoutError(ExternalAPIError):

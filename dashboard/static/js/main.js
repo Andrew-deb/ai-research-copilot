@@ -277,8 +277,15 @@
       // `message` as well as detail/error: an endpoint that answers with a full
       // envelope puts its explanation there, and without this the caller shows
       // "Request failed (503)" while the reason sits unread in the body.
+      // The server's own explanation when it sent one — those are written for
+      // the reader. Only when it sent nothing do we fall back, and the
+      // fallback is a sentence rather than a status code: "Request failed
+      // (503)" tells somebody researching protein folding about HTTP.
+      //
+      // `err.status` still carries the code for any caller that needs to
+      // BEHAVE differently; it is just never the thing displayed.
       const msg = (body && (body.detail || body.error || body.message))
-                  || ("Request failed (" + res.status + ")");
+                  || "Something went wrong at our end. Please try again in a moment.";
       const err = new Error(msg);
       // The parsed body travels with the error. A non-2xx response can still
       // carry something worth rendering, and it is already gone by the time a

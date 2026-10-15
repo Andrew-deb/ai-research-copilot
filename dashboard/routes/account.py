@@ -25,6 +25,7 @@ from middleware.auth import (
     current_user_id,
 )
 from middleware.capabilities import require_capability
+from middleware.error_handler import visitor_message
 from routes.helpers import action_response
 from services import account_service
 
@@ -144,7 +145,11 @@ def finish_delete():
         return action_response(
             {"ok": False},
             redirect_to=url_for("settings.page", section="security"),
-            flash_message=str(exc),
+            # The refusal this catch exists for — a typed email that does not
+            # match — is a ValidationError whose wording is the whole point of
+            # showing it. But the catch is broad, and a driver error reaching
+            # a flash banner verbatim is the same leak in a different place.
+            flash_message=visitor_message(exc),
         )
 
     session.clear()

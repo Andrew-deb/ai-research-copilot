@@ -165,6 +165,31 @@ def test_the_interval_is_configurable_and_can_be_switched_off():
 LAKEBASE_SUSPEND_SECONDS = 300
 
 
+def _code_default(name: str) -> int:
+    """
+    The literal default in config.py, not the value the environment resolved to.
+
+    `config.DB_KEEPWARM_SECONDS` is whatever os.getenv found, so reading it here
+    asserts against the machine rather than against the code — and the suite
+    itself now sets this one to 0, because a keep-warm thread fighting the
+    fixtures for the connection pool buries pytest's summary under several
+    hundred "pool exhausted" lines.
+    """
+    import ast
+
+    tree = ast.parse((ROOT / "dashboard" / "config.py").read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call) or len(node.args) != 2:
+            continue
+        target = node.func
+        if getattr(target, "attr", None) != "getenv":
+            continue
+        key, fallback = node.args
+        if isinstance(key, ast.Constant) and key.value == name:
+            return int(fallback.value)
+    raise AssertionError(f"no os.getenv default found for {name}")
+
+
 def test_the_interval_knocks_before_the_database_suspends():
     """
     The bug this replaced. The interval was 600 against a 300-second idle timer,
@@ -176,21 +201,20 @@ def test_the_interval_knocks_before_the_database_suspends():
     cycle every ten minutes to achieve nothing. An interval that merely EQUALS
     the window is no better — one slow query and the gap is already over.
     """
-    import config
+    interval = _code_default("DB_KEEPWARM_SECONDS")
 
-    assert config.DB_KEEPWARM_SECONDS < LAKEBASE_SUSPEND_SECONDS, (
-        f"{config.DB_KEEPWARM_SECONDS}s does not fit inside a "
+    assert interval < LAKEBASE_SUSPEND_SECONDS, (
+        f"{interval}s does not fit inside a "
         f"{LAKEBASE_SUSPEND_SECONDS}s idle timer")
 
 
 def test_the_deployment_agrees_with_the_code_default():
-    import config
     import yaml
 
     data = yaml.safe_load((ROOT / "render.yaml").read_text(encoding="utf-8"))
     env = {e["key"]: e.get("value") for s in data["services"]
            for e in s.get("envVars", []) if "key" in e}
-    assert int(env["DB_KEEPWARM_SECONDS"]) == config.DB_KEEPWARM_SECONDS
+    assert int(env["DB_KEEPWARM_SECONDS"]) == _code_default("DB_KEEPWARM_SECONDS")
 
 
 # ---------------------------------------------------------------------------

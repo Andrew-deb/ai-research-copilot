@@ -26,6 +26,17 @@ import uuid
 # ---------------------------------------------------------------------------
 os.environ["EMBEDDING_PRELOAD"] = "false"
 os.environ["APP_ENV"] = "local"
+# No keep-warm thread during the suite.
+#
+# create_app() starts a daemon that pings Lakebase on a timer. Under test that
+# thread competes with the fixtures for the connection pool and loses, printing
+# several hundred "connection pool exhausted" lines across a run — enough to
+# bury pytest's own summary. Nothing asserts against a warm pool; the thread's
+# behaviour is covered directly in test_keepalive.py.
+#
+# Set here rather than branched on in app.py: production code should not have to
+# know it is under test, and 0 is the documented way to turn this off.
+os.environ["DB_KEEPWARM_SECONDS"] = "0"
 # Every request resolves to the dev identity unless a test signs in or uses one
 # of the anonymous fixtures.
 os.environ["ALLOW_DEV_USER_BYPASS"] = "true"

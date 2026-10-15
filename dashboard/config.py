@@ -68,6 +68,57 @@ DONATE_LABEL: str = os.getenv("DONATE_LABEL", "Support the project")
 # --- OpenRouter ---
 OPENROUTER_API_KEY: str | None = _get_secret("openrouter", "api-key", "OPENROUTER_API_KEY")
 OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
+
+
+def _credentials() -> list[str]:
+    """
+    Every configured OpenRouter credential, in the order they will be tried.
+
+    PROVIDER FAILOVER. A single credential is a single point of failure for the
+    only part of this application that cannot degrade gracefully: revoke it,
+    let it expire, exhaust whatever the provider meters, or have the provider
+    reject it for a reason of its own, and every AI feature stops at once.
+    Accepting more than one lets a request that cannot be served by the first
+    be served by the next.
+
+    Backwards compatible in both directions. `OPENROUTER_API_KEY` alone behaves
+    exactly as it always has — one credential, tried once, no failover, nothing
+    to configure and nothing new to understand. That matters: most deployments,
+    including every self-hosted one with a paid key, will have exactly one.
+
+    Two spellings, because deployments differ:
+
+        OPENROUTER_API_KEYS   comma-separated, for hosts that allow long values
+        OPENROUTER_API_KEY_1  numbered, for hosts where one secret per field is
+        OPENROUTER_API_KEY_2  easier to rotate individually
+        ...
+
+    Duplicates are collapsed. The same credential twice is not resilience, and
+    trying it again after it has just failed wastes a request to learn
+    something already known.
+    """
+    found: list[str] = []
+
+    for raw in (os.getenv("OPENROUTER_API_KEYS") or "").split(","):
+        if raw.strip():
+            found.append(raw.strip())
+
+    for index in range(1, 11):
+        value = os.getenv(f"OPENROUTER_API_KEY_{index}")
+        if value and value.strip():
+            found.append(value.strip())
+
+    if OPENROUTER_API_KEY:
+        found.append(OPENROUTER_API_KEY)
+
+    ordered: list[str] = []
+    for credential in found:
+        if credential not in ordered:
+            ordered.append(credential)
+    return ordered
+
+
+OPENROUTER_API_KEYS: list[str] = _credentials()
 # openai/gpt-oss-120b:free was retired by OpenRouter and now 404s, which broke
 # every RAG answer. This default is verified for plain synthesis AND tool
 # calling; the paid slug openai/gpt-oss-120b is the fallback if free-tier

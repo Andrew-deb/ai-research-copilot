@@ -620,7 +620,10 @@ def _tool_schemas(tier: str, mode: str = "research") -> list[dict]:
         if actual != WICK_TOOLS:
             logger.error("Wick tool catalog mismatch missing=%s unexpected=%s",
                          sorted(WICK_TOOLS - actual), sorted(actual - WICK_TOOLS))
-            raise ExternalAPIError("The Wick endpoint exposes an incompatible tool catalog.")
+            raise ExternalAPIError(
+                "The research assistant is unavailable right now. "
+                "Please try again in a few minutes.",
+                detail="The Wick endpoint exposes an incompatible tool catalog.")
     return [
         {
             "type": "function",

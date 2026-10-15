@@ -41,7 +41,12 @@ def _discovery_call(function, *args, **kwargs):
     except domain_errors.PaperNotFoundError as exc:
         raise PaperNotFoundError(str(exc)) from exc
     except domain_errors.ExternalAPIError as exc:
-        raise ExternalAPIError(str(exc)) from exc
+        # The discovery layer's two messages are both written for a visitor
+        # ("External discovery is unavailable or its allowance was reached"),
+        # so they are passed through rather than flattened into something
+        # vaguer. tests/test_error_messages.py holds that contract, because the
+        # pass-through is only safe for as long as it stays true.
+        raise ExternalAPIError(str(exc), detail=f"{type(exc).__name__}: {exc}") from exc
 
 
 def validate_discovery(query, page=1):

@@ -954,7 +954,7 @@
         finishTurn(body, trace, question);
       } else {
         addNotice((body && (body.detail || body.error || body.message)) ||
-                  "Request failed (" + res.status + ")");
+                  "Something went wrong at our end. Please try again in a moment.");
       }
       return;
     }

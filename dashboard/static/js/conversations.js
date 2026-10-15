@@ -125,7 +125,7 @@
       },
       body: JSON.stringify(body || {}),
     }).then(function (res) {
-      if (!res.ok) { throw new Error("Request failed (" + res.status + ")"); }
+      if (!res.ok) { throw new Error("Something went wrong at our end. Please try again in a moment."); }
       return res.status === 204 ? null : res.json();
     });
   }
