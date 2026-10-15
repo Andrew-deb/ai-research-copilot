@@ -36,9 +36,12 @@
     "shared_resource/services/paper_service.py": "fc9b5654881d9969fe0e144a94e314f51c3c16b02c12c887b1de44ff4b8b4cbf",
     "shared_resource/services/planning_service.py": "b7b7f1fa49be07e8a9d3ca6b7543954b2d712fa56e2903692fae87bd09c881a3",
     "shared_resource/services/progress_service.py": "bd374dcdd9b7b5d63663ce635a6e88bfc5c1dc7f052374156da63c9961da273d",
-    "shared_resource/services/workspace_service.py": "13aa4b8127c3c53b2a53364bf6407e04aabc5e72d98b4f64e978840e4b01d172"
+    "shared_resource/services/workspace_service.py": "13aa4b8127c3c53b2a53364bf6407e04aabc5e72d98b4f64e978840e4b01d172",
+    "shared_resource/storage/__init__.py": "0344310d49ebfa84db6d2433e93a19d83aac2bc48e4103ee9487e824be6103cb",
+    "shared_resource/storage/azure_blob.py": "ca3de74f97bdd6ef1b070d4ac4876fac47fd0ced44a0ed20971ca8ed0c0341cd",
+    "shared_resource/storage/contract.py": "2163eacf66d996ff92f1957b91a90a300ac56c07c5438ff4f591ccb8f8fc3891"
   },
-  "source_revision": "1c24f291f88b94bedec9a22cf7db550deaf2a798",
+  "source_revision": "84b6d77fdd50968c06a8603269d643e2f40a99e9",
   "target": "assistant",
   "tools": [
     "add_paper_to_collection",
