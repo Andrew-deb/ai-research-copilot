@@ -36,11 +36,13 @@ Disable anonymous blob access on the account. Create a container such as
 `alfred-private-uploads` with **Private** access. The adapter refuses upload/read
 when the container reports public access. The backend does not create containers.
 
-Use a Microsoft Entra app registration/service principal for Render's Azure
-access. Create a client secret and grant **Storage Blob Data Contributor** on the
-upload container (or the dedicated storage account if the portal requires it).
-Allow role propagation before testing. This Azure identity is separate from
-Google user auth and the Databricks OAuth principal; do not reuse their secrets.
+In the storage account, open **Security + networking → Access keys**, reveal the
+keys and copy the full **Connection string** for one key. Put it in Render as
+`AZURE_STORAGE_CONNECTION_STRING`; do not paste it into Git, prompts or the browser.
+The current adapter uses account-key authentication, so storage account key access
+must be allowed. No Entra app registration or Blob Data Contributor assignment is
+required for this authentication path. The connection string already contains
+the account endpoint and key; configure the private container name separately.
 
 Choose provider soft-delete/versioning/lifecycle retention deliberately. The
 application quota covers its original and extraction objects, not extra copies
@@ -69,11 +71,8 @@ Set these in Render's environment, not Git or the browser:
 | `UPLOADS_ENABLED` | `true` only after the migration/setup |
 | `UPLOAD_WORKER_ENABLED` | `true` for the integrated durable worker |
 | `UPLOAD_STORAGE_LOCATION` | `azure-primary`; retain this logical identity for existing rows |
-| `AZURE_STORAGE_ACCOUNT_URL` | `https://<account>.blob.core.windows.net` (no SAS query) |
+| `AZURE_STORAGE_CONNECTION_STRING` | Full HTTPS connection string from the storage account's Access keys page |
 | `AZURE_STORAGE_CONTAINER` | The private container name |
-| `AZURE_TENANT_ID` | Entra tenant/directory ID |
-| `AZURE_CLIENT_ID` | Entra application/client ID |
-| `AZURE_CLIENT_SECRET` | Entra secret **value**, not secret ID |
 
 Render is still Blueprint-managed. Its existing build/start commands work; the
 build now includes the storage package and small Azure/PDF dependencies. The
