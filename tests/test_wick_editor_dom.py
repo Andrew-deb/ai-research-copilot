@@ -31,3 +31,10 @@ def test_external_picker_selected_import_and_membership_retry():
         pytest.skip('Optional jsdom test runtime is unavailable')
     subprocess.run(['node', str(Path(__file__).with_name('external_paper_picker_dom.cjs'))],
                    check=True, capture_output=True, text=True)
+
+
+def test_private_upload_controls_preserve_prompt_and_bind_conversation():
+    if subprocess.run(['node', '-e', "require.resolve('jsdom')"], capture_output=True).returncode:
+        pytest.skip('Optional jsdom test runtime is unavailable')
+    subprocess.run(['node', str(Path(__file__).with_name('private_uploads_dom.cjs'))],
+                   check=True, capture_output=True, text=True)

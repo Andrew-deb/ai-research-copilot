@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 # global corpus needs no capability, so listing one would imply a decision that
 # was never made.
 LIBRARY_WRITE = "library:write"
+UPLOADS_WRITE = "uploads:write"
 NOTES_WRITE = "notes:write"
 GOALS_WRITE = "goals:write"
 PROGRESS_WRITE = "progress:write"
@@ -50,7 +51,7 @@ CAPABILITIES: dict[str, frozenset[str]] = {
     # "can use" is not "can use without limit".
     TIER_ANONYMOUS: _ANONYMOUS,
     "authenticated": _ANONYMOUS | {
-        LIBRARY_WRITE, NOTES_WRITE, GOALS_WRITE, PROGRESS_WRITE, CHAT_HISTORY, WORKSPACE_READ,
+        LIBRARY_WRITE, NOTES_WRITE, GOALS_WRITE, PROGRESS_WRITE, CHAT_HISTORY, WORKSPACE_READ, UPLOADS_WRITE,
     },
 }
 

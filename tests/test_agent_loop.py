@@ -962,7 +962,7 @@ def test_openrouter_http_error_keeps_provider_detail(monkeypatch, caplog):
         return FakeResponse()
 
     monkeypatch.setattr(llm_client, "_request_openrouter", fake_request)
-    monkeypatch.setattr(llm_client, "OPENROUTER_API_KEY", "test-key")
+    monkeypatch.setattr(llm_client, "OPENROUTER_API_KEYS", ["test-key"])
 
     with pytest.raises(ExternalAPIError) as excinfo:
         llm_client.chat_with_tools([{"role": "user", "content": "hi"}], [])
@@ -993,7 +993,7 @@ def test_the_llm_client_honours_a_caller_supplied_timeout(monkeypatch):
         return FakeResponse()
 
     monkeypatch.setattr(llm_client, "_request_openrouter", fake_request)
-    monkeypatch.setattr(llm_client, "OPENROUTER_API_KEY", "test-key")
+    monkeypatch.setattr(llm_client, "OPENROUTER_API_KEYS", ["test-key"])
 
     llm_client.chat_with_tools([{"role": "user", "content": "hi"}], [], timeout=12.5)
     assert captured["timeout"] == 12.5
@@ -1034,7 +1034,7 @@ def test_openrouter_call_has_a_true_wall_clock_deadline(monkeypatch):
         await asyncio.sleep(60)
 
     monkeypatch.setattr(llm_client, "_request_openrouter", never_finishes)
-    monkeypatch.setattr(llm_client, "OPENROUTER_API_KEY", "test-key")
+    monkeypatch.setattr(llm_client, "OPENROUTER_API_KEYS", ["test-key"])
 
     started = time.monotonic()
     with pytest.raises(ExternalAPIError) as excinfo:

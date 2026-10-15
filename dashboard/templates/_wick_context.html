@@ -1,8 +1,9 @@
-<div class="wick-context-controls" id="wick-context-controls" {% if chat_mode != 'wick' and not wick_panel %}hidden{% endif %}>
+<div class="wick-context-controls" id="wick-context-controls" {% if chat_mode != 'wick' and not wick_panel and not (private_uploads_enabled and is_authenticated) %}hidden{% endif %}>
   <button type="button" id="wick-add-context" class="wick-context-plus" aria-label="Add context" title="Add context" aria-haspopup="menu" aria-expanded="false">＋</button>
   <div id="wick-context-menu" class="wick-context-menu" role="menu" aria-label="Context categories" hidden>
     <button type="button" role="menuitem" data-context-category="pages"><span aria-hidden="true">#</span> Pages</button>
     <button type="button" role="menuitem" data-context-category="assets"><span aria-hidden="true">@</span> Assets</button>
+    {% if private_uploads_enabled and is_authenticated %}<button type="button" role="menuitem" id="upload-choose" title="PDF, TXT, Markdown · up to {{ upload_max_mib }} MiB"><span aria-hidden="true">↥</span> Upload file</button>{% endif %}
     <div id="wick-selected-context" class="wick-selected-context" role="group" aria-label="Selected conversation context" hidden></div>
   </div>
   {% include "_wick_asset_picker.html" %}

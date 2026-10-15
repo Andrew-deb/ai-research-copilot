@@ -1,0 +1,8 @@
+{% if private_uploads_enabled and is_authenticated %}
+  <input type="file" id="upload-input" accept=".pdf,.txt,.md" multiple hidden>
+  <div class="private-files" id="private-files" data-max-mib="{{ upload_max_mib }}" data-retention="{{ upload_retention_days }}">
+    <div id="upload-list"></div>
+    <p id="upload-status" role="status" aria-live="polite"></p>
+    <p class="private-files-note">Private files expire after {{ upload_retention_days }} days. Agent reading is coming next; messages currently use your prompt text only.</p>
+  </div>
+{% endif %}

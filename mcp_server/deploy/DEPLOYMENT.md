@@ -477,3 +477,15 @@ paper and add it, retry the selection to confirm identity reuse, and ask Wick to
 resolve an external candidate, approve its metadata import, then approve adding
 the returned local paper ID to an owned collection. Decline an import and confirm
 nothing was saved. Check general Research search still behaves as before.
+
+
+## Private uploads foundation (Increment B)
+
+Apply `sql/29_private_uploads.sql`, configure private Azure storage and the Entra
+credential on Render, then intentionally enable `UPLOADS_ENABLED`. It defaults
+to false in application configuration; the Blueprint keeps the flag operator-managed
+so deployment before the migration remains compatible.
+See `docs/setup/private_uploads.md` for limits, the durable worker and live checks.
+The Render artifact includes the shared storage contract and Azure adapter; all
+MCP catalogs remain unchanged. No Databricks redeployment is required for this
+increment. Agent access to extracted documents is the subsequent Increment C.

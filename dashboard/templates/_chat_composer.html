@@ -23,6 +23,9 @@
     <textarea class="composer-input" id="chat-input" rows="1"
               placeholder="{{ composer_placeholder | default('Ask Wick about your workspace…' if chat_mode == 'wick' else 'Ask a research question…') }}"
               aria-label="{{ 'Ask Wick' if chat_mode == 'wick' else 'Ask a research question' }}">{{ initial_prompt | default('') }}</textarea>
+    {% if private_uploads_enabled and is_authenticated and not chat_mode and not wick_panel %}
+      <button type="button" id="upload-choose" class="wick-context-plus" title="Upload private files" aria-label="Upload private files">＋</button>
+    {% endif %}
     {% if chat_mode or wick_panel %}
     <div class="composer-footer">
       {% include "_wick_context.html" %}
@@ -85,6 +88,7 @@
     <button class="composer-stop" type="button" hidden aria-label="Stop agent run">Stop</button>
     {% if chat_mode or wick_panel %}</div>{% endif %}
   </form>
+  {% include "_private_uploads.html" %}
 
 
   {# Below the composer, not above it: these are suggestions for an empty input,

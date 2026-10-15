@@ -134,7 +134,7 @@
       event.preventDefault(); event.stopImmediatePropagation(); var first = results.contains(document.activeElement) && document.activeElement.matches("button:not(:disabled)") ? document.activeElement : results.querySelector("button:not(:disabled)"); if (first) { first.click(); } return;
     }
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-      var options = Array.from((menu.hidden ? results : menu).querySelectorAll("button:not(:disabled)"));
+      var options = Array.from((menu.hidden ? results : menu).querySelectorAll("button:not(:disabled):not([hidden])"));
       var index = options.indexOf(document.activeElement);
       if (options.length) { event.preventDefault(); options[index < 0 ? (event.key === "ArrowDown" ? 0 : options.length - 1) : (index + (event.key === "ArrowDown" ? 1 : options.length - 1)) % options.length].focus(); }
     }
@@ -158,7 +158,7 @@
   });
   document.addEventListener("wick:editor-reset", function () { inlineBefore = editor.references().map(key); });
   var mode = document.getElementById("chat-mode");
-  if (mode) { mode.addEventListener("change", function () { controls.hidden = mode.value !== "wick"; closePicker(); }); }
+  if (mode) { mode.addEventListener("change", function () { controls.hidden = mode.value !== "wick" && !document.getElementById("upload-choose"); closePicker(); }); }
   document.addEventListener("wick:conversation", persist);
   window.addEventListener("message", function (event) {
     if (event.origin !== location.origin || event.source !== window.parent || !event.data || event.data.source !== "alfred-shell" || event.data.type !== "context") { return; }

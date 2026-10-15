@@ -31,6 +31,9 @@ from flask import Flask
 from flask_wtf.csrf import CSRFProtect
 from werkzeug.middleware.proxy_fix import ProxyFix
 
+import upload_config
+from routes.uploads import register_upload_context
+
 import embedding
 from config import (
     DEBUG,
@@ -65,6 +68,7 @@ def create_app() -> Flask:
         SECRET_KEY=SECRET_KEY,
         DEBUG=DEBUG,
         JSON_SORT_KEYS=False,
+        MAX_CONTENT_LENGTH=upload_config.LIMITS.max_file_bytes+128*1024,
         # Identity now lives in a cookie rather than a proxy header, which makes
         # these flags load-bearing rather than cosmetic.
         SESSION_COOKIE_HTTPONLY=SESSION_COOKIE_HTTPONLY,
@@ -116,6 +120,14 @@ def create_app() -> Flask:
     register_chat_context(app)
     register_shell_context(app)
     register_routes(app)
+    register_upload_context(app)
+    if upload_config.ENABLED:
+        upload_config.validate()
+        from services import upload_storage
+        upload_storage.for_location(upload_config.LOCATION_ID)
+        if upload_config.WORKER_ENABLED:
+            from services import upload_worker
+            atexit.register(upload_worker.start().set)
     register_error_handlers(app)
 
     @app.get("/healthz")

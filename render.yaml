@@ -41,6 +41,11 @@ services:
       --timeout ${GUNICORN_TIMEOUT_SECONDS:-180}
       --graceful-timeout 30
     envVars:
+      # Apply sql/29_private_uploads.sql and configure Azure secrets before enabling.
+      - key: UPLOADS_ENABLED
+        sync: false
+      - key: UPLOAD_WORKER_ENABLED
+        value: "true"
       - key: PYTHON_VERSION
         value: "3.12.7"
       - key: DATABASE_URL

@@ -128,7 +128,7 @@ def test_tokens_are_counted_even_when_the_body_carries_an_error(monkeypatch):
     async def fake_request(payload, timeout, *_credential):
         return Resp()
 
-    monkeypatch.setattr(llm_client, "OPENROUTER_API_KEY", "test-key")
+    monkeypatch.setattr(llm_client, "OPENROUTER_API_KEYS", ["test-key"])
     monkeypatch.setattr(llm_client, "_request_openrouter", fake_request)
 
     tally = llm_client.Usage()

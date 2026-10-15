@@ -419,3 +419,20 @@ def test_the_discovery_layer_keeps_writing_for_the_visitor():
         assert message[0].isupper() and message.rstrip().endswith("."), message
         for jargon in ("Error", "Exception", "None", "null", "status", "HTTP"):
             assert jargon not in message, f"{jargon!r} in {message!r}"
+
+
+def test_private_file_not_found_preserves_the_shared_error_contract(client, monkeypatch):
+    """The uploads addition and main's visitor messages must coexist after merge."""
+    import upload_config
+    from exceptions import UploadNotFoundError
+    from services import upload_service
+    monkeypatch.setattr(upload_config, 'ENABLED', True)
+
+    def unavailable(*args):
+        raise UploadNotFoundError('That file or conversation is unavailable.')
+
+    monkeypatch.setattr(upload_service, 'download', unavailable)
+    response = client.get('/uploads/00000000-0000-0000-0000-000000000001/download', headers=XHR)
+    assert response.status_code == 404
+    assert response.json['detail'] == 'That file or conversation is unavailable.'
+    assert error_handler._classify(ExternalAPIError('Try again shortly.')) == (502, 'Service unavailable')
