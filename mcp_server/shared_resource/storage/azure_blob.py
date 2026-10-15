@@ -1,29 +1,31 @@
 """Azure implements byte operations only; private access is enforced by callers."""
 
+from urllib.parse import urlsplit
+
 from .contract import StorageUnavailable
 
 
 class AzureBlobStorage:
-    def __init__(self, account_url, container, tenant_id, client_id, client_secret):
-        from azure.identity import ClientSecretCredential
+    def __init__(self, connection_string, container):
         from azure.storage.blob import BlobServiceClient
 
-        credential = ClientSecretCredential(
-            tenant_id,
-            client_id,
-            client_secret,
-            connection_timeout=5,
-            read_timeout=15,
-            retry_total=0,
-        )
-        self.container = BlobServiceClient(
-            account_url,
-            credential=credential,
-            connection_timeout=5,
-            read_timeout=15,
-            retry_total=0,
-            max_single_put_size=4 * 1024 * 1024,
-        ).get_container_client(container)
+        try:
+            client = BlobServiceClient.from_connection_string(
+                connection_string,
+                connection_timeout=5,
+                read_timeout=15,
+                retry_total=0,
+                max_single_put_size=4 * 1024 * 1024,
+            )
+            endpoint = urlsplit(client.url)
+            if endpoint.scheme != "https" or not endpoint.hostname or endpoint.username:
+                raise ValueError("HTTPS storage endpoint required")
+            self.container = client.get_container_client(container)
+        except Exception:
+            # SDK parse errors can contain credentials. Never expose them to callers.
+            raise StorageUnavailable(
+                "Private file storage could not be configured. Check its connection string."
+            ) from None
 
     def _require_private(self):
         if self.container.get_container_properties().get("public_access") is not None:

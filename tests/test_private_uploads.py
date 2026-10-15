@@ -396,7 +396,7 @@ def test_parser_timeout_does_not_inherit_credentials(monkeypatch):
     import subprocess
 
     def timeout(args, **kwargs):
-        assert "AZURE_CLIENT_SECRET" not in kwargs["env"]
+        assert "AZURE_STORAGE_CONNECTION_STRING" not in kwargs["env"]
         assert kwargs["timeout"] == 20
         raise subprocess.TimeoutExpired(args, 20)
 
