@@ -98,9 +98,10 @@ def run(stop):
         try:
             uploads.enqueue_cleanup()
             worked = process_one()
-        except Exception:
+        except Exception as exc:
             logger.warning(
-                "Private upload worker unavailable; durable jobs remain queued."
+                "Private upload worker unavailable (%s); durable jobs remain queued.",
+                type(exc).__name__,
             )
             worked = False
         stop.wait(1 if worked else 10)

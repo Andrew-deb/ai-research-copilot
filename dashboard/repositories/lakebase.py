@@ -68,6 +68,18 @@ _IDLE_PROBE_SECONDS = float(os.getenv("DB_IDLE_PROBE_SECONDS", "60"))
 _last_activity = 0.0
 
 
+def _after_fork():
+    # Never acquire an inherited mutex or use a parent's libpq connection.
+    global _POOL, _POOL_LOCK, _last_activity
+    _POOL = None
+    _POOL_LOCK = threading.Lock()
+    _last_activity = 0.0
+
+
+if hasattr(os, "register_at_fork"):
+    os.register_at_fork(after_in_child=_after_fork)
+
+
 def _get_pool() -> psycopg2.pool.ThreadedConnectionPool:
     global _POOL
     if _POOL is None:
@@ -77,6 +89,9 @@ def _get_pool() -> psycopg2.pool.ThreadedConnectionPool:
                     raise RuntimeError("DATABASE_URL is not configured.")
                 _POOL = psycopg2.pool.ThreadedConnectionPool(
                     _POOL_MIN, _POOL_MAX, dsn=DATABASE_URL,
+                    connect_timeout=int(os.getenv("DB_CONNECT_TIMEOUT_SECONDS", "10")),
+                    options="-c statement_timeout=" + os.getenv("DB_STATEMENT_TIMEOUT_MS", "30000")
+                            + " -c lock_timeout=" + os.getenv("DB_LOCK_TIMEOUT_MS", "5000"),
                     # Keep pooled connections alive through Lakebase / proxy idle timeouts.
                     keepalives=1, keepalives_idle=30, keepalives_interval=10, keepalives_count=3,
                 )
