@@ -150,3 +150,31 @@ to the Azure data-protection policy configured above.
 
 Cloud credentials, actual permissions, latency, migrations and cleanup need live
 acceptance after setup. Mocked/local tests do not prove Azure authorization.
+
+## Worker startup and recovery
+
+Background tasks now start in Gunicorn's `post_worker_init` hook, after the
+serving process is forked. The built Render root includes `gunicorn.conf.py`,
+which Gunicorn automatically loads from that directory; preserve it when using
+custom deployment commands. Flask CLI/local serving starts tasks on the first
+request. Application creation starts no background threads. Upload work,
+embedding warmup and database keep-warm are initialized once per serving process.
+Database pool state and locks are reset in forked children.
+
+Database connections default to a 10-second connect timeout, a 30-second SQL
+statement timeout and a 5-second SQL lock timeout. Operators can override these
+with `DB_CONNECT_TIMEOUT_SECONDS`, `DB_STATEMENT_TIMEOUT_MS`, and
+`DB_LOCK_TIMEOUT_MS`. These bound individual database operations, not total page
+rendering time. Upload worker failures log the exception class without private
+file contents or credentials; durable leases allow recovery.
+
+After deploying the startup fix on Render, restore `UPLOADS_ENABLED=true` and
+`UPLOAD_WORKER_ENABLED=true`. Verify a `Background tasks started in serving
+process pid=... uploads=True` log line after worker boot. Open a database-backed
+page, upload a small TXT file, confirm it reaches Ready, then delete it and verify
+cleanup. Keep embedding troubleshooting separate. No migration or Databricks
+redeployment is required for this lifecycle fix.
+
+For temporary diagnosis, `UPLOAD_WORKER_ENABLED=false` leaves upload UI/storage
+operations enabled but pauses extraction and physical cleanup. Do not treat that
+setting as a completed rollout: queued uploads and deletions require a worker.

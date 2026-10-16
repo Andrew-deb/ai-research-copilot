@@ -170,3 +170,9 @@ assert assistant.server.mcp.name == 'wick-workspace'
     result = subprocess.run([sys.executable, "-c", script], cwd=ROOT, env=env,
                             capture_output=True, text=True, timeout=30)
     assert result.returncode == 0, result.stderr
+
+
+def test_render_ships_serving_process_lifecycle_hooks(release):
+    assert (release["render"] / "gunicorn.conf.py").read_bytes() == (
+        ROOT / "dashboard/gunicorn.conf.py").read_bytes()
+    assert (release["render"] / "services/background_tasks.py").is_file()

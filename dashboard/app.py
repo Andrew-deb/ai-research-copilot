@@ -13,11 +13,9 @@ flattens dashboard/'s *contents* to /app/python/source_code/ — there is no
 `dashboard` package at runtime.
 """
 
-import atexit
 import logging
 import os
 import sys
-import threading
 
 # This directory is the import root in both layouts (repo `dashboard/` and the
 # flattened Databricks source root), so flat imports below always resolve.
@@ -37,7 +35,6 @@ from routes.uploads import register_upload_context
 import embedding
 from config import (
     DEBUG,
-    DB_KEEPWARM_SECONDS,
     EMBEDDING_PRELOAD,
     SECRET_KEY,
     SESSION_COOKIE_HTTPONLY,
@@ -111,6 +108,10 @@ def create_app() -> Flask:
         x_prefix=0,
     )
 
+    # Gunicorn starts these via post_worker_init; this also supports Flask CLI.
+    from services import background_tasks
+    app.before_request(background_tasks.start)
+
     init_oauth(app)
     register_auth(app)
 
@@ -125,9 +126,6 @@ def create_app() -> Flask:
         upload_config.validate()
         from services import upload_storage
         upload_storage.for_location(upload_config.LOCATION_ID)
-        if upload_config.WORKER_ENABLED:
-            from services import upload_worker
-            atexit.register(upload_worker.start().set)
     register_error_handlers(app)
 
     @app.get("/healthz")
@@ -160,25 +158,6 @@ def create_app() -> Flask:
         ok, detail = lakebase.ping()
         return ({"status": "ok" if ok else "degraded", "database": detail},
                 200 if ok else 503)
-
-    if EMBEDDING_PRELOAD:
-        threading.Thread(target=embedding.warmup, name="embedding-warmup", daemon=True).start()
-
-    # Keeps the database warm while the service is awake.
-    #
-    # The external pinger keeps RENDER awake; nothing was keeping LAKEBASE
-    # awake, and its free tier suspends compute after inactivity. Pinging
-    # /healthz more often would not have helped — it never touches the database,
-    # for the reasons above.
-    #
-    # In-process rather than a second external schedule: it runs only while the
-    # service is up, which is exactly when a warm pool is worth having, and it
-    # needs nothing configured outside the deployment.
-    if DB_KEEPWARM_SECONDS > 0:
-        threading.Thread(target=lakebase.keep_warm, args=(DB_KEEPWARM_SECONDS,),
-                         name="db-keepwarm", daemon=True).start()
-
-    atexit.register(lakebase.close_pool)
 
     logger.info("Dashboard app initialised (debug=%s, preload=%s)", DEBUG, EMBEDDING_PRELOAD)
     return app

@@ -144,7 +144,7 @@ def test_it_is_in_process_rather_than_a_second_external_schedule():
     It runs only while the service is up, which is exactly when a warm pool is
     worth having, and it needs nothing configured outside the deployment.
     """
-    source = (ROOT / "dashboard" / "app.py").read_text(encoding="utf-8")
+    source = (ROOT / "dashboard" / "services" / "background_tasks.py").read_text(encoding="utf-8")
     assert "lakebase.keep_warm" in source
     assert "daemon=True" in source.split("keep_warm")[1][:200]
 
@@ -155,7 +155,7 @@ def test_the_interval_is_configurable_and_can_be_switched_off():
     source = (ROOT / "dashboard" / "config.py").read_text(encoding="utf-8")
     assert 'os.getenv("DB_KEEPWARM_SECONDS"' in source
 
-    app_source = (ROOT / "dashboard" / "app.py").read_text(encoding="utf-8")
+    app_source = (ROOT / "dashboard" / "services" / "background_tasks.py").read_text(encoding="utf-8")
     assert "if DB_KEEPWARM_SECONDS > 0:" in app_source
 
 
