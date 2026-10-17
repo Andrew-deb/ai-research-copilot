@@ -19,7 +19,9 @@
    topbar and the footer, rather than subtracting a guessed number of
    pixels from the viewport height. #}
 {% block content_class %}content-fill{% endblock %}
-{% block body_class %}app-fixed{% endblock %}
+{% block body_class %}app-fixed chat-viewport{% endblock %}
+{% block app_footer %}{% endblock %}
+{% block viewport %}width=device-width, initial-scale=1, interactive-widget=resizes-content{% endblock %}
 
 {% block content %}
 <div class="landing-main">
@@ -62,6 +64,7 @@
           integrity="sha512-BdRNuI8/lsyxkKQVxK1lVtfZshggfXPAwEP+JAOJEKx6Y8SLfcBSRdaWyXQmMxo+wG180uFqXYGjGRL0mh4/Jw=="
           crossorigin="anonymous" referrerpolicy="no-referrer"></script>
   <script src="{{ url_for('static', filename='js/resource_panel.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/chat_viewport.js') }}"></script>
   <script src="{{ url_for('static', filename='js/chat.js') }}"></script>
   <script src="{{ url_for('static', filename='js/uploads.js') }}"></script>
 {% endblock %}

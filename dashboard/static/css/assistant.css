@@ -25,3 +25,9 @@
 }
 .assistant-embedded .chat-rail.is-expanded { display:flex; width:auto; }
 .assistant-embedded .chat-rail.has-file-preview.is-expanded { width:100%; padding:0; }
+@media(max-width:1100px) {
+ .assistant-embedded,.assistant-embedded .chat-page,.assistant-embedded .chat-with-rail,
+ .assistant-embedded .chat-with-rail > .chat-page { height:var(--chat-view-height,100dvh); }
+ .assistant-embedded .chat-stage { flex:none; padding-bottom:max(8px,env(safe-area-inset-bottom)); }
+ .assistant-embedded .chat-thread { flex:1 1 0; min-height:0; overflow-y:auto; overscroll-behavior-y:contain; }
+}

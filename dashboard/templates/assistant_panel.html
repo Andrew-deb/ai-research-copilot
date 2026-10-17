@@ -5,7 +5,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-content">
   <meta name="csrf-token" content="{{ csrf_token() }}">
   <title>Wick — Alfred</title>
   <script>try { document.documentElement.dataset.theme = localStorage.getItem('rc-theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'); } catch (e) {}</script>
@@ -51,6 +51,7 @@
   <script src="{{ url_for('static', filename='js/wick_mentions.js') }}"></script>
   <script src="{{ url_for('static', filename='js/wick_editor.js') }}"></script>
   <script src="{{ url_for('static', filename='js/resource_panel.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/chat_viewport.js') }}"></script>
   <script src="{{ url_for('static', filename='js/chat.js') }}"></script>
   <script src="{{ url_for('static', filename='js/wick_context.js') }}"></script>
   <script src="{{ url_for('static', filename='js/uploads.js') }}"></script>

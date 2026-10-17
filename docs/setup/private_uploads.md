@@ -305,3 +305,24 @@ permanent toolbar/footer rows. The viewer takes the remaining height, and expand
 preview fills the chat viewport on desktop/mobile. PDF URLs request fit-to-width
 and hide native navigation/toolbars where the browser supports those parameters;
 PDF rendering remains browser-provided. No backend or deployment setting changes.
+
+### Mobile chat viewport and tablet drawer correction
+
+A later desktop `position: relative` rule had overridden the mobile resource
+rail's fixed drawer positioning. Relative positioning is now desktop-only; mobile
+and tablet drawers remain fixed and track the visible viewport. Launcher taps
+and keyboard activation share a click path, while a drag suppresses its follow-up
+click. Moved launchers are clamped again when the visible viewport changes.
+
+Chat/landing surfaces omit the application footer, and the daily allowance is
+above the shared composer. Other application pages retain their footer. A focused
+`chat_viewport` module observes VisualViewport resize/scroll events, with an
+innerHeight fallback and native pinch-zoom preservation. On mobile, the chat shell
+uses that visible height/offset, the conversation scrolls independently, and the
+composer stays outside the scrolling thread. Draft upload cards scroll horizontally
+to limit keyboard-space usage. This applies to Research/Wick chat and the embedded
+Wick composer; no request, quota or upload-policy changes are involved.
+
+After Render redeployment, check an actual phone with keyboard open/closed and
+browser chrome changes, a tablet tap/drag, rotation, a long conversation and a
+multi-line draft. Simulated viewport checks do not replace physical-device testing.

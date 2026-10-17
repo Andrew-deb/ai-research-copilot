@@ -120,7 +120,7 @@
       window.parent.postMessage({ source: "alfred-assistant", type: type, value: value }, window.location.origin);
     }
   }
-  var stage = form.closest(".chat-stage") || form;
+  var stage = form.closest(".chat-stage") || form.closest(".chat-composer-dock") || form;
   var thread = document.getElementById("chat-thread");
   var pending = false;
   var approvalRunId = null;
@@ -423,51 +423,41 @@
       var margin = 8;
       return {
         x: Math.max(margin, Math.min(x, window.innerWidth - el.offsetWidth - margin)),
-        y: Math.max(margin, Math.min(y, window.innerHeight - el.offsetHeight - margin)),
+        y: Math.max(margin+(window.visualViewport ? window.visualViewport.offsetTop : 0), Math.min(y, (window.visualViewport ? window.visualViewport.height+window.visualViewport.offsetTop : window.innerHeight) - el.offsetHeight - margin)),
       };
     }
 
+    var activePointer=null, suppressClick=false;
     el.addEventListener("pointerdown", function (e) {
-      var box = el.getBoundingClientRect();
-      startX = e.clientX;
-      startY = e.clientY;
-      originX = box.left;
-      originY = box.top;
-      moved = false;
-      el.setPointerCapture(e.pointerId);
+      if(e.button!==0 || e.isPrimary===false)return;
+      var box=el.getBoundingClientRect();startX=e.clientX;startY=e.clientY;
+      originX=box.left;originY=box.top;moved=false;suppressClick=false;activePointer=e.pointerId;
+      if(el.setPointerCapture)el.setPointerCapture(e.pointerId);
     });
-
     el.addEventListener("pointermove", function (e) {
-      if (!el.hasPointerCapture(e.pointerId)) { return; }
-      var dx = e.clientX - startX;
-      var dy = e.clientY - startY;
-      // A press that has not travelled is still a tap; only past the threshold
-      // does it become a drag, or the button would be impossible to press.
-      if (!moved && Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) {
-        return;
-      }
-      moved = true;
-      var next = clamp(originX + dx, originY + dy);
-      // Switching to left/top once dragged; it starts anchored right/bottom.
-      el.style.left = next.x + "px";
-      el.style.top = next.y + "px";
-      el.style.right = "auto";
-      el.style.bottom = "auto";
+      if(activePointer!==e.pointerId)return;
+      var dx=e.clientX-startX,dy=e.clientY-startY;
+      if(!moved && Math.abs(dx)<DRAG_THRESHOLD && Math.abs(dy)<DRAG_THRESHOLD)return;
+      moved=true;var next=clamp(originX+dx,originY+dy);
+      el.style.left=next.x+"px";el.style.top=next.y+"px";el.style.right="auto";el.style.bottom="auto";
     });
-
-    el.addEventListener("pointerup", function (e) {
-      if (el.hasPointerCapture(e.pointerId)) { el.releasePointerCapture(e.pointerId); }
-      if (!moved) { onTap(); }
+    el.addEventListener("pointerup",function(e){
+      if(activePointer!==e.pointerId)return;
+      suppressClick=moved;activePointer=null;
+      if(el.hasPointerCapture && el.hasPointerCapture(e.pointerId))el.releasePointerCapture(e.pointerId);
     });
+    el.addEventListener("pointercancel",function(){activePointer=null;suppressClick=true;});
+    el.addEventListener("click",function(e){if(suppressClick && e.detail!==0){suppressClick=false;e.preventDefault();return;}suppressClick=false;onTap();});
 
     // A button parked against an edge would be half off-screen after a rotate.
-    window.addEventListener("resize", function () {
-      if (el.style.left === "" || el.hidden) { return; }
-      var box = el.getBoundingClientRect();
-      var next = clamp(box.left, box.top);
-      el.style.left = next.x + "px";
-      el.style.top = next.y + "px";
-    });
+    function repositionLauncher() {
+      if(el.style.left === "" || el.hidden || (window.visualViewport && window.visualViewport.scale!==1))return;
+      var box=el.getBoundingClientRect(),next=clamp(box.left,box.top);
+      el.style.left=next.x+"px";el.style.top=next.y+"px";
+    }
+    window.addEventListener("resize",repositionLauncher);
+    if(window.visualViewport){window.visualViewport.addEventListener("resize",repositionLauncher);window.visualViewport.addEventListener("scroll",repositionLauncher);}
+
   }
 
   function updateLauncher() {
@@ -547,7 +537,6 @@
     launcher.hidden = true;                  // until there is something to show
     launcher.setAttribute("aria-controls", "chat-rail-body");
     launcher.title = "Files and sources — drag to move";
-    launcher.addEventListener("click", function(e) { if(e.detail === 0) setDrawer(true); });
     document.body.appendChild(launcher);
 
     makeDraggable(launcher, function () { setDrawer(true); });
