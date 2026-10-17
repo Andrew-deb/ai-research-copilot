@@ -12,6 +12,7 @@ def test_attachment_tray_precedes_prompt_and_tools_are_outside_form(client, monk
     form_start = html.index('id="chat-composer"')
     form_end = html.index('</form>', form_start)
     assert form_start < html.index('id="upload-list"') < html.index('id="chat-input"') < form_end
-    assert html.index('id="upload-details"') > form_end
+    assert html.index('id="upload-input"') > form_end
+    assert 'id="upload-details"' not in html
     assert html.count('id="upload-list"') == 1
     assert html.count('id="upload-input"') == 1

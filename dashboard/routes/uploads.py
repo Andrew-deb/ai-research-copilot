@@ -70,6 +70,22 @@ def download_file(document_id):
     return response
 
 
+@bp.get("/uploads/<uuid:document_id>/preview")
+@require_capability(UPLOADS_WRITE)
+def preview_original(document_id):
+    """Serve only validated PDFs inline, through the same owned download boundary."""
+    upload_service.require_enabled()
+    row, data = upload_service.download(require_user_id(), str(document_id))
+    if not row["filename"].lower().endswith(".pdf") or not data.startswith(b"%PDF-"):
+        raise ValidationError("Only PDF files support this preview.")
+    response = send_file(io.BytesIO(data), mimetype="application/pdf",
+                         as_attachment=False, download_name=row["filename"], max_age=0)
+    response.headers["Cache-Control"] = "private, no-store"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'self'; sandbox"
+    return response
+
+
 @bp.delete("/uploads/<uuid:document_id>")
 @require_capability(UPLOADS_WRITE)
 def delete_file(document_id):

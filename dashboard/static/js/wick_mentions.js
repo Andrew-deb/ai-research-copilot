@@ -32,6 +32,7 @@
   function render(container, text, attachments) {
     var pattern = /\[([@#▤][^\]\n]{1,102})\]\((\/[^\s)]+)\)/g;
     var match, cursor = 0;
+    var cards=null;
     var safe = new RegExp("^/(?:uploads/" + uuid + "/download|paper/" + uuid + "|collection/" + uuid + "|notes#note-" + uuid + "|goals#goal-" + uuid + "|" + pages.join("|") + ")$");
     while ((match = pattern.exec(text))) {
       if (!safe.test(match[2])) { continue; }
@@ -41,9 +42,18 @@
       var link = document.createElement(unavailable ? "span" : "a");
       if(!unavailable)link.href=match[2];link.textContent=match[1]+(unavailable ? " (unavailable)" : "");
       link.className = "wick-prompt-reference"; link.target = "_blank"; link.rel = "noopener";
-      container.appendChild(link); cursor = pattern.lastIndex;
+      if(referenced && referenced.kind === "attachment") {
+        if(!cards){cards=document.createElement("div");cards.className="message-files";}
+        link.classList.add("message-file-card");link.removeAttribute("target");if(!unavailable)link.dataset.documentId=referenced.id;
+        link.addEventListener("click",function(event){
+          if(window.PrivateUploads && this.dataset.documentId){event.preventDefault();window.PrivateUploads.open(this.dataset.documentId);}
+        });
+        cards.appendChild(link);
+      } else container.appendChild(link);
+      cursor = pattern.lastIndex;
     }
     container.appendChild(document.createTextNode(text.slice(cursor)));
+    if(cards)container.prepend(cards);
   }
   window.WickMentions = { href: href, fromHref: fromHref, token: token, format: format, render: render };
 })();

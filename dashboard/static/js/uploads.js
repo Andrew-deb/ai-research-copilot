@@ -27,8 +27,31 @@
     return creating;
   }
   const labels={uploading:"Uploading",queued:"Waiting to process",processing:"Processing",ready:"Ready",failed:"Failed",deleting:"Deleting",deleted:"Deleted",expired:"Expired"};
-  const dialog=document.getElementById("upload-details");
-  let selected=null, rendered="";
+  let selected=null, rendered="", previewGeneration=0;
+  const resources=window.ChatResources ? window.ChatResources.files(false) : null;
+  const library=element("div","conversation-file-list");
+  if(resources)resources.append(library);
+  const panelButton=element("button","files-panel-button","▤");panelButton.type="button";
+  panelButton.title="Conversation files";panelButton.setAttribute("aria-label","Open conversation files");
+  if(resources){choose.parentNode.insertBefore(panelButton,choose);panelButton.addEventListener("click",()=>openLibrary());}
+  function iconButton(symbol,label,handler) {
+    const button=element("button","file-icon-action");button.type="button";
+    const paths={"←":"M19 12H5m6-6-6 6 6 6","↗":"M7 17 17 7M7 7h10v10","↻":"M20 7v5h-5M20 12a8 8 0 1 0-2 6","×":"M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"};
+    button.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="'+paths[symbol]+'"/></svg>';
+    button.title=label;button.setAttribute("aria-label",label);button.addEventListener("click",handler);return button;
+  }
+  function openLibrary() {selected=null;previewGeneration++;if(resources){window.ChatResources.files(true);renderLibrary();}}
+  function renderLibrary() {
+    if(!resources || selected)return;
+    library.replaceChildren(element("h3","","Conversation files"),element("p","private-files-note","Private attachments · "+tray.dataset.retention+" day retention"));
+    const files=currentFiles.filter(file=>file.status!=="deleted");
+    if(!files.length)library.append(element("p","private-files-note","Upload a file using + to get started."));
+    files.forEach(file=>{
+      const card=element("button","conversation-file");card.type="button";
+      card.append(element("span","private-file-icon",fileType(file)),element("span","private-file-name",file.filename),element("small","private-file-state",labels[file.status] || file.status));
+      card.addEventListener("click",()=>showDetails(file));library.append(card);
+    });
+  }
   function element(tag,className,text) {
     const node=document.createElement(tag);if(className)node.className=className;
     if(text!==undefined)node.textContent=text;return node;
@@ -39,44 +62,37 @@
   function removeFile(file) {
     if(window.confirm("Delete this private file and its extracted text?"))operate(file,"","DELETE");
   }
-  function showDetails(file) {
-    if(!dialog)return;
-    selected=file.document_id;
-    document.getElementById("upload-details-title").textContent=file.filename;
-    const body=document.getElementById("upload-details-body"),actions=document.getElementById("upload-details-actions");
-    body.replaceChildren();actions.replaceChildren();
-    const size=Number.isFinite(file.size_bytes) ? " · "+Math.max(1,Math.ceil(file.size_bytes/1024))+" KB" : "";
-    body.append(element("p","upload-details-meta",fileType(file)+size+" · "+(labels[file.status] || file.status)));
-    if(file.page_count)body.append(element("p","upload-details-meta",file.page_count+" pages processed"));
-    if(file.error)body.append(element("p","upload-details-error",file.error));
-    if(canDownload(file)) {
-      const link=element("a","upload-download","Download original");link.href=downloadUrl(file);actions.append(link);
-      if(["TXT","MD"].includes(fileType(file))) {
-        const preview=element("button","","Preview text");preview.type="button";
-        preview.addEventListener("click",async()=>{
-          preview.disabled=true;
-          const output=element("pre","upload-text-preview","Loading preview…");body.append(output);
-          try {
-            const response=await fetch(downloadUrl(file),{cache:"no-store"});
-            if(!response.ok)throw new Error("The file preview is unavailable.");
-            const text=await response.text();output.textContent=text.slice(0,20000)+(text.length>20000 ? "\n… Preview truncated. Download the original for the full text." : "");
-          }catch(error){output.textContent=error.message;}
-        });actions.append(preview);
+  async function showPanelPreview(file, pageNumber) {
+    selected=file.document_id;const current=++previewGeneration;
+    window.ChatResources.files(true);library.replaceChildren();
+    const header=element("div","file-preview-toolbar");
+    header.append(iconButton("←","Back to files",openLibrary),element("h3","",file.filename));
+    if(file.status==="ready")header.append(iconButton("↗","Reference in prompt",()=>{insertReference(file);prompt.focus();}));
+    if(canDownload(file)){
+      const download=element("a","file-icon-action","↓");download.href=downloadUrl(file);download.title="Download original";download.setAttribute("aria-label","Download original");header.append(download);
+    }
+    if(file.status==="failed")header.append(iconButton("↻","Retry processing",()=>operate(file,"retry","POST")));
+    if(!["deleted","deleting"].includes(file.status))header.append(iconButton("×","Delete file",()=>removeFile(file)));
+    library.append(header,element("p","private-files-note",(labels[file.status] || file.status)+" · "+Math.ceil((file.size_bytes || 0)/1024)+" KB · Expires "+(file.expires_at ? new Date(file.expires_at).toLocaleDateString() : "after retention period")));
+    if(file.status!=="ready"){library.append(element("p","",file.error || "A preview is available after processing finishes."));return;}
+    const output=element("div","file-preview-content","Loading preview…");library.append(output);
+    try {
+      if(fileType(file)==="PDF") {
+        const frame=element("iframe","file-pdf-preview");frame.title="PDF preview: "+file.filename;
+        frame.src="/uploads/"+encodeURIComponent(file.document_id)+"/preview#page="+(pageNumber || 1);
+        output.replaceChildren(frame);
+        const fallback=element("a","","Open extracted text");fallback.href="/uploads/"+encodeURIComponent(file.document_id)+"/pages/1";fallback.target="_blank";fallback.rel="noopener";output.append(fallback);
+      } else {
+        const response=await fetch(downloadUrl(file),{cache:"no-store"});
+        if(!response.ok)throw new Error("Preview unavailable. Try again from Files.");
+        const text=await response.text();if(current!==previewGeneration)return;
+        output.replaceChildren(element("pre","upload-text-preview",text.slice(0,20000)+(text.length>20000 ? "\n… Download the original for the full text." : "")));
       }
-    }
-    if(file.status==="failed") {
-      const retry=element("button","","Retry processing");retry.type="button";retry.disabled=busy;
-      retry.addEventListener("click",()=>operate(file,"retry","POST"));actions.append(retry);
-    }
-    if(!["deleted","deleting"].includes(file.status)) {
-      const remove=element("button","upload-delete","Delete file");remove.type="button";remove.disabled=busy;
-      remove.addEventListener("click",()=>removeFile(file));actions.append(remove);
-    }
-    if(!dialog.open)dialog.showModal();
+    } catch(error){if(current===previewGeneration)output.textContent=error.message;}
   }
-  if(dialog) {
-    document.getElementById("upload-details-close").addEventListener("click",()=>dialog.close());
-    dialog.addEventListener("close",()=>{selected=null;document.getElementById("upload-details-body").replaceChildren();});
+  function showDetails(file, pageNumber) {
+    if(resources){showPanelPreview(file, pageNumber);return;}
+    openLibrary();
   }
   const prompt=document.getElementById("chat-input");
   function selectedIds() {
@@ -84,7 +100,8 @@
     let match;while((match=pattern.exec(prompt.value)))if(!ids.includes(match[1]))ids.push(match[1]);
     return ids;
   }
-  window.PrivateUploads={references:selectedIds};
+  window.PrivateUploads={references:selectedIds,open:function(id,pageNumber){const file=currentFiles.find(item=>item.document_id===id);if(file)showDetails(file,pageNumber);else openLibrary();},
+    assets:function(query){return currentFiles.filter(file=>file.status==="ready" && file.filename.toLowerCase().includes((query || "").toLowerCase())).map(file=>({kind:"attachment",id:file.document_id,label:file.filename}));},insert:insertReference};
   function insertReference(file) {
     const item={kind:"attachment",id:file.document_id,label:file.filename};
     if(window.WickEditor && prompt.hidden)window.WickEditor.insert(item);
@@ -101,7 +118,7 @@
     currentFiles=items;
     const signature=JSON.stringify([items,busy]);if(signature===rendered)return;rendered=signature;
     list.replaceChildren();
-    items.filter(file=>file.status!=="deleted").forEach(file=>{
+    items.filter(file=>file.status!=="deleted" && selectedIds().includes(file.document_id)).forEach(file=>{
       const row=element("div","private-file");row.dataset.documentId=file.document_id;
       const card=element("button","private-file-open");card.type="button";
       card.setAttribute("aria-label",file.filename+", "+(labels[file.status] || file.status)+". Open file details");
@@ -113,20 +130,16 @@
       card.append(info);card.addEventListener("click",()=>showDetails(file));row.append(card);
       if(!["deleted","deleting"].includes(file.status)) {
         const remove=element("button","private-file-remove","×");remove.type="button";remove.disabled=busy;
-        remove.title="Delete file";remove.setAttribute("aria-label","Delete "+file.filename);
-        remove.addEventListener("click",()=>removeFile(file));row.append(remove);
-      }
-      if(file.status==="ready") {
-        const attach=element("button","private-file-attach","Use in prompt");attach.type="button";
-        attach.addEventListener("click",()=>insertReference(file));row.append(attach);
+        remove.title="Remove from prompt";remove.setAttribute("aria-label","Remove from prompt: "+file.filename);
+        remove.addEventListener("click",()=>{prompt.value=prompt.value.replace(/\[▤[^\]\n]+\]\(\/uploads\/([0-9a-f-]{36})\/download\) ?/gi,(text,id)=>id===file.document_id ? "" : text);prompt.dispatchEvent(new Event("input",{bubbles:true}));});row.append(remove);
       }
       list.append(row);
     });
-    if(dialog && dialog.open && selected) {
-      const file=items.find(item=>item.document_id===selected);
-      if(!file || ["deleted","deleting"].includes(file.status))dialog.close();
-      else showDetails(file);
+    if(resources){
+      if(selected && !items.some(file=>file.document_id===selected && file.status==="ready")){selected=null;previewGeneration++;}
+      renderLibrary();
     }
+
   }
   async function refresh() {
     clearTimeout(timer);
@@ -172,13 +185,19 @@
         status.textContent="Uploading "+file.name+"…";
         const form=new FormData();form.append("file",file);form.append("conversation_id",id);
         const body=await request("/uploads",{method:"POST",headers:{"X-CSRFToken":token(),Accept:"application/json"},body:form});
-        render([body,...currentFiles]);
+        insertReference(body);render([body,...currentFiles]);
       }
       status.textContent="Upload complete.";
     } catch(error) { status.dataset.kind="error";status.textContent=error.message+" Earlier successful uploads are kept."; }
     finally {busy=false;choose.disabled=false;refresh();}
   });
-  document.addEventListener("wick:conversation",refresh);
+  prompt.addEventListener("input",()=>{rendered="";render(currentFiles);});
+  document.addEventListener("uploads:sent",()=>{rendered="";render(currentFiles);});
+  document.addEventListener("wick:conversation",()=>{selected=null;previewGeneration++;currentFiles=[];refresh();});
+  document.addEventListener("click",event=>{const link=event.target.closest('a[href^="/uploads/"]');if(!link || !resources || resources.contains(link) || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey)return;
+    const match=/^\/uploads\/([0-9a-f-]{36})\/(download|pages\/\d+)$/.exec(link.getAttribute("href"));
+    if(match && currentFiles.some(file=>file.document_id===match[1])){event.preventDefault();window.PrivateUploads.open(match[1],match[2].startsWith("pages/") ? Number(match[2].split("/")[1]) : 1);}
+  });
   window.addEventListener("pagehide",()=>{clearTimeout(timer);generation++;});
   const picker=document.getElementById("chat-mode");
   function categoryVisibility() {
@@ -186,5 +205,6 @@
   }
   if(picker)picker.addEventListener("change",categoryVisibility);
   categoryVisibility();
+  renderLibrary();
   refresh();
 })();

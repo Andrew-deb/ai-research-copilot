@@ -1054,3 +1054,31 @@
 .upload-details-error { font-size: 13px; }
 
 .private-file-attach { border:0; background:transparent; color:var(--brand); padding:5px 8px; font:inherit; font-size:11px; cursor:pointer; }
+
+/* A single resource rail serves sources and private conversation files. */
+.resource-tabs { display:flex; gap:8px; padding:12px 0; border-bottom:1px solid var(--border); }
+.resource-tabs button { flex:1; padding:9px; border:0; border-radius:8px; background:transparent; color:var(--text-muted); font:inherit; cursor:pointer; }
+.resource-tabs button[aria-selected="true"] { background:var(--surface-2); color:var(--text); }
+.chat-files-body { overflow:auto; min-height:0; flex:1; padding:16px 0; }
+.chat-rail.is-collapsed .resource-tabs,.chat-rail.is-collapsed .chat-files-body { display:none; }
+.chat-rail [hidden] { display:none !important; }
+.conversation-file-list h3 { font-size:14px; overflow-wrap:anywhere; margin:0; }
+.conversation-file { display:flex; flex-wrap:wrap; align-items:center; gap:10px; width:100%; padding:12px; margin:10px 0; border:1px solid var(--border); border-radius:12px; background:var(--surface); color:var(--text); font:inherit; text-align:left; cursor:pointer; }
+.conversation-file .private-file-name { flex:1; }
+.conversation-file small { width:100%; }
+.file-preview-toolbar { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.file-preview-toolbar h3 { flex:1; min-width:80px; }
+.file-icon-action,.files-panel-button { display:inline-grid; place-items:center; min-width:36px; min-height:36px; padding:7px; border:1px solid var(--border); border-radius:8px; background:transparent; color:var(--text); cursor:pointer; text-decoration:none; }
+.file-icon-action svg { width:18px; height:18px; }
+.file-pdf-preview { width:100%; height: min(64vh,700px); border:1px solid var(--border); border-radius:10px; background:white; }
+.message-files { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
+.message-files:empty { display:none; }
+.message-file-card { display:block; max-width:100%; padding:12px 16px; border:1px solid var(--border-strong); border-radius:12px; background:var(--surface); overflow-wrap:anywhere; text-decoration:none; font-size:13px; }
+@media(max-width:1100px) {
+  .chat-rail.is-collapsed .resource-tabs { display:flex; }
+  .chat-rail.is-collapsed .chat-files-body:not([hidden]) { display:block; }
+  .chat-rail { max-width:100vw; }
+}
+/* Upload references are represented by draft file cards, not duplicate text. */
+.composer:has(#private-files) .wick-inline-reference[data-reference-kind="attachment"] { display:none; }
+.resource-tabs button:focus-visible,.file-icon-action:focus-visible,.conversation-file:focus-visible { outline:2px solid var(--brand); outline-offset:2px; }

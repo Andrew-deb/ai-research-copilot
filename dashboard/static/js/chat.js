@@ -471,8 +471,8 @@
 
   function updateLauncher() {
     if (!railLauncher) { return; }
-    railLauncher.hidden = sourceCount === 0;
-    railLauncher.textContent = "Sources" + (sourceCount ? " (" + sourceCount + ")" : "");
+    railLauncher.hidden = sourceCount === 0 && !rail.dataset.hasFiles;
+    railLauncher.textContent = rail.dataset.hasFiles ? "Files & Sources" : "Sources" + (sourceCount ? " (" + sourceCount + ")" : "");
   }
 
   function ensureRail() {
@@ -498,7 +498,7 @@
 
     var label = document.createElement("span");
     label.className = "chat-rail-label";
-    label.textContent = "Sources";
+    label.textContent = "Resources";
     toggle.appendChild(label);
 
     function setCollapsed(collapsed) {
@@ -545,7 +545,8 @@
     launcher.className = "chat-rail-launcher";
     launcher.hidden = true;                  // until there is something to show
     launcher.setAttribute("aria-controls", "chat-rail-body");
-    launcher.title = "Sources — drag to move";
+    launcher.title = "Files and sources — drag to move";
+    launcher.addEventListener("click", function(e) { if(e.detail === 0) setDrawer(true); });
     document.body.appendChild(launcher);
 
     makeDraggable(launcher, function () { setDrawer(true); });
@@ -563,6 +564,46 @@
     setCollapsed(remembered === "1");
     return rail;
   }
+
+  var filesBody = null, sourceTab = null, filesTab = null;
+  function selectResource(kind, open) {
+    ensureResources();
+    rail.querySelector(".chat-rail-body").hidden = kind !== "sources";
+    filesBody.hidden = kind !== "files";
+    sourceTab.setAttribute("aria-selected", String(kind === "sources"));
+    filesTab.setAttribute("aria-selected", String(kind === "files"));
+    if(open) {
+      if(window.matchMedia("(max-width: 1100px)").matches) setDrawer(true);
+      else expandRail();
+    }
+  }
+  function ensureResources() {
+    ensureRail();
+    if(filesBody) return;
+    var tabs = document.createElement("div"); tabs.className="resource-tabs"; tabs.setAttribute("role","tablist");
+    sourceTab=document.createElement("button"); filesTab=document.createElement("button");
+    [[sourceTab,"Sources","sources"],[filesTab,"Files","files"]].forEach(function(entry) {
+      var button=entry[0]; button.type="button"; button.textContent=entry[1]; button.setAttribute("role","tab");
+      button.id="resource-tab-"+entry[2]; button.setAttribute("aria-controls","resource-"+entry[2]);
+      button.addEventListener("click",function(){selectResource(entry[2],false);}); tabs.append(button);
+    });
+    filesBody=document.createElement("div"); filesBody.className="chat-files-body"; filesBody.id="resource-files";
+    filesBody.setAttribute("role","tabpanel"); filesBody.setAttribute("aria-labelledby",filesTab.id);
+    var sources=rail.querySelector(".chat-rail-body"); sources.id="resource-sources";
+    sources.setAttribute("role","tabpanel"); sources.setAttribute("aria-labelledby",sourceTab.id);
+    rail.querySelector(".chat-rail-toggle").setAttribute("aria-controls","resource-sources resource-files");
+    rail.insertBefore(tabs,sources); rail.append(filesBody);
+    filesBody.hidden=true; sourceTab.setAttribute("aria-selected","true"); filesTab.setAttribute("aria-selected","false");
+    tabs.addEventListener("keydown",function(e){
+      if(e.key !== "ArrowLeft" && e.key !== "ArrowRight")return;
+      e.preventDefault(); var next=document.activeElement===sourceTab ? filesTab : sourceTab;
+      next.click(); next.focus();
+    });
+  }
+  window.ChatResources={
+    files:function(open){ensureResources();rail.dataset.hasFiles="true";rail.classList.remove("is-empty");updateLauncher();if(open)selectResource("files",true);return filesBody;},
+    sources:function(){selectResource("sources",true);}
+  };
 
   function railBody() {
     return ensureRail().querySelector(".chat-rail-body");
@@ -698,6 +739,7 @@
   function showSource(group, number) {
     dismissPreview();
     if (!group) { return; }
+    selectResource("sources", false);
     if (window.matchMedia("(max-width: 1100px)").matches) { setDrawer(true); }
     else if (expandRail) { expandRail(); }
     var item = group.querySelector('[data-citation-number="' + number + '"]');
@@ -1146,7 +1188,7 @@
     stopRequested = false;
     setPending(true);
     if (options.action !== "regenerate") { addUserMessage(question); }
-    if (!options.action) { input.value = ""; }
+    if (!options.action) { input.value = ""; document.dispatchEvent(new Event("uploads:sent")); }
     if (embedded && !options.action) {
       try { sessionStorage.removeItem(draftKey); } catch (e) { /* private mode */ }
     }
@@ -1249,7 +1291,7 @@
         var save = document.createElement("button");
         save.type = "button";
         save.className = "chat-prompt-save";
-        save.textContent = "Send";
+        save.textContent = "↑";save.title="Send edited prompt";save.setAttribute("aria-label","Send edited prompt");
         save.addEventListener("click", function () {
           var changed = field.value.trim();
           if (changed) {
@@ -1259,7 +1301,7 @@
         });
         var cancel = document.createElement("button");
         cancel.type = "button";
-        cancel.textContent = "Cancel";
+        cancel.textContent = "×";cancel.title="Cancel editing";cancel.setAttribute("aria-label","Cancel editing");
         function closeEditor() {
           formEdit.remove();
           bubble.hidden = false;
