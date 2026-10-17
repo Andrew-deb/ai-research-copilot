@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}{{ document.filename }} · page {{ page }}{% endblock %}
+{% block content %}
+<article class="page-content">
+  <h1>{{ document.filename }}</h1><p>Extracted page {{ page }} · bounded source preview</p>
+  {% for passage in document.passages %}<pre style="white-space:pre-wrap;overflow-wrap:anywhere">{{ passage.text }}</pre>{% endfor %}
+  <p>This is extracted text, not a guarantee that every figure, table or passage was captured.</p>
+  <a href="{{ url_for('uploads.download_file', document_id=document.document_id) }}">Download original</a>
+</article>
+{% endblock %}

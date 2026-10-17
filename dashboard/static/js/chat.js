@@ -229,12 +229,12 @@
     }
   }
 
-  function addUserMessage(text) {
+  function addUserMessage(text, attachments) {
     var el = document.createElement("article");
     el.className = "chat-msg chat-msg-user";
     var bubble = document.createElement("div");
     bubble.className = "chat-prompt-text";
-    if (window.WickMentions) { window.WickMentions.render(bubble, text); }
+    if (window.WickMentions) { window.WickMentions.render(bubble, text, attachments); }
     else { bubble.textContent = text; }
     el.appendChild(bubble);
     ensureThread().appendChild(el);
@@ -363,6 +363,7 @@
 
   function prettyTool(name) {
     return {
+      read_attached_document: "Reading an attached file",
       find_workspace_resources: "Finding workspace assets",
       get_workspace_resource: "Reading workspace context",
       get_workspace_paper: "Reading a saved paper",
@@ -567,6 +568,10 @@
     return ensureRail().querySelector(".chat-rail-body");
   }
 
+  function sourceId(source) {return source.source_id || source.paper_id;}
+  function sourceHref(source) {
+    return source.source_kind === "document" ? "/uploads/"+encodeURIComponent(source.document_id)+"/pages/"+Number(source.page) : "/paper/"+encodeURIComponent(source.paper_id);
+  }
   function sourceList(items, numbered) {
     var ol = document.createElement("ol");
     ol.className = "chat-citations" + (numbered ? "" : " is-plain");
@@ -578,7 +583,7 @@
       }
 
       var a = document.createElement("a");
-      a.href = "/paper/" + encodeURIComponent(c.paper_id);
+      a.href = sourceHref(c);
       a.textContent = c.title;
       li.appendChild(a);
 
@@ -621,10 +626,10 @@
   function addSources(result, question) {
     var cited = result.citations || [];
     var citedIds = {};
-    cited.forEach(function (c) { citedIds[c.paper_id] = true; });
+    cited.forEach(function (c) { citedIds[sourceId(c)] = true; });
 
     var consulted = (result.sources || []).filter(function (s) {
-      return !citedIds[s.paper_id];
+      return !citedIds[sourceId(s)];
     });
     if (!cited.length && !consulted.length) { return; }
 
@@ -714,7 +719,7 @@
     var box = document.createElement("div");
     box.className = "chat-citation-preview";
     box.setAttribute("role", "dialog");
-    box.setAttribute("aria-label", "Paper preview");
+    box.setAttribute("aria-label", citation.source_kind === "document" ? "Uploaded source preview" : "Paper preview");
 
     var title = document.createElement("strong");
     title.className = "chat-preview-title";
@@ -722,6 +727,7 @@
     box.appendChild(title);
 
     var details = [];
+    if(citation.source_kind === "document")details.push("Extracted page "+citation.page+(citation.available===false ? " · unavailable" : ""));
     if (Array.isArray(citation.authors) && citation.authors.length) {
       details.push(citation.authors.slice(0, 3).map(function (author) {
         return typeof author === "string" ? author : author.display_name || author.name || "";
@@ -738,7 +744,7 @@
     var excerpt = document.createElement("p");
     excerpt.className = "chat-preview-excerpt";
     var summary = citation.tldr || citation.abstract_excerpt;
-    excerpt.textContent = summary ? String(summary) : "No summary available for this paper.";
+    excerpt.textContent = summary ? String(summary) : (citation.source_kind === "document" ? "Open the source page to view the extracted passages. Expired or deleted files are unavailable." : "No summary available for this paper.");
     box.appendChild(excerpt);
     if (summary) {
       var kind = document.createElement("span");
@@ -753,7 +759,7 @@
     open.href = anchor.href;
     open.target = "_blank";
     open.rel = "noopener noreferrer";
-    open.textContent = "Open paper";
+    open.textContent = citation.source_kind === "document" ? "Open source page" : "Open paper";
     actions.appendChild(open);
     if (group) {
       var reveal = document.createElement("button");
@@ -789,7 +795,7 @@
     var mapped = Object.create(null);
     citations.forEach(function (c) {
       if (Number.isSafeInteger(Number(c.number)) && Number(c.number) > 0 &&
-          c.paper_id && c.title) { mapped[String(c.number)] = c; }
+          sourceId(c) && c.title) { mapped[String(c.number)] = c; }
     });
     var walker = document.createTreeWalker(answer, NodeFilter.SHOW_TEXT, {
       acceptNode: function (node) {
@@ -811,11 +817,11 @@
         fragment.appendChild(document.createTextNode(text.slice(start, match.index)));
         let link = document.createElement("a");
         link.className = "chat-inline-citation";
-        link.href = "/paper/" + encodeURIComponent(citation.paper_id);
+        link.href = sourceHref(citation);
         link.target = "_blank";
         link.rel = "noopener noreferrer";
         link.textContent = match[0];
-        link.setAttribute("aria-label", "Paper " + citation.number + ": " + citation.title);
+        link.setAttribute("aria-label", "Source " + citation.number + ": " + citation.title);
         link.addEventListener("mouseenter", function () { openPreview(link, citation, group); });
         link.addEventListener("mouseleave", schedulePreviewDismissal);
         link.addEventListener("focus", function () { openPreview(link, citation, group); });
@@ -939,6 +945,7 @@
         surface: embedded ? "assistant" : "agent",
         chat_mode: embedded ? "wick" : (modePicker ? modePicker.value : "research"),
         approval_mode: (embedded || (modePicker && modePicker.value === "wick")) && permissionButton ? permissionButton.value : "ask",
+        attachment_ids: options.action ? undefined : (options.attachment_ids || []),
         context_references: window.WickContext ? window.WickContext.references() : undefined,
         context_kind: (embedded || (page && page.dataset.chatMode === "wick")) ? page.dataset.contextKind : "",
         context_id: (embedded || (page && page.dataset.chatMode === "wick")) ? page.dataset.contextId : "" }),
@@ -1133,6 +1140,7 @@
       question = window.WickContext.formatPrompt(question);
       if (question.length > 2000) { addNotice("Shorten your prompt or remove a reference (2,000 characters including references)."); return; }
     }
+    if(!options.action && window.PrivateUploads) options.attachment_ids=window.PrivateUploads.references();
     completedWrites = [];
     activeRunId = null;
     stopRequested = false;
@@ -1384,7 +1392,7 @@
     var previousPrompt = null;
     history.forEach(function (message) {
       if (message.role === "user") {
-        var promptEl = addUserMessage(message.content || "");
+        var promptEl = addUserMessage(message.content || "", (message.usage || {}).attachment_references);
         versionControls(promptEl, message, null);
         previousPrompt = message;
       } else if (message.role === "assistant") {

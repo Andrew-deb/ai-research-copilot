@@ -716,7 +716,7 @@ def db(monkeypatch):
                 return None
             parent = source_id if mode == "regenerate" else source["parent_message_id"]
         if mode != "regenerate":
-            prompt = fake.append_message(cid, "user", question)
+            prompt = fake.append_message(cid, "user", question, usage={"attachment_references": result.get("attachment_references") or []})
             thread = fake.conversation_messages[str(cid)]
             thread[-1]["parent_message_id"] = parent
             parent = prompt["message_id"]

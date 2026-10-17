@@ -58,7 +58,7 @@ def receipt(row):
         "expires_at": row["expires_at"].isoformat(),
         "page_count": row.get("page_count"),
         "error": ERRORS.get(row.get("error_code")),
-        "agent_access": False,
+        "agent_access": row["status"] == "ready" and not expired,
     }
 
 

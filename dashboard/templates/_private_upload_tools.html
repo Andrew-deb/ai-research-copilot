@@ -6,7 +6,7 @@
       <button type="button" id="upload-details-close" aria-label="Close file details">×</button>
     </header>
     <div id="upload-details-body"></div>
-    <p class="private-files-note">Private files expire after {{ upload_retention_days }} days. Agent reading is coming next; messages currently use your prompt text only.</p>
+    <p class="private-files-note">Private files expire after {{ upload_retention_days }} days. Use “Use in prompt” to reference a Ready file. Agents read only selected passages; adding a file grants no write permission.</p>
     <div id="upload-details-actions" class="upload-details-actions"></div>
   </dialog>
 {% endif %}
