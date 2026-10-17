@@ -178,3 +178,21 @@ redeployment is required for this lifecycle fix.
 For temporary diagnosis, `UPLOAD_WORKER_ENABLED=false` leaves upload UI/storage
 operations enabled but pauses extraction and physical cleanup. Do not treat that
 setting as a completed rollout: queued uploads and deletions require a worker.
+
+## Composer file cards
+
+Uploaded files appear as compact type/name/status cards above the prompt inside
+the shared composer (Research, Wick and the compact Wick panel). Long names are
+ellipsized; full names are available on hover and in the file-details dialog.
+The delete control appears on hover/focus and remains visible on touch devices.
+Deletion retains the existing confirmation and durable cleanup semantics.
+
+Click a card for original download, processing retry when failed, deletion, and
+a bounded plain-text preview for TXT/Markdown. Preview text is rendered as text,
+never HTML. The dialog retains the retention and agent-access notice without
+placing a permanent explanatory paragraph beneath the composer. PDF editing,
+image editing, and writing modified contents back to storage are not implemented
+by these controls. File-content editing needs its own supported mutation contract.
+The UI clears completed upload notifications so Ready cards do not retain a
+contradictory queued message. This is a frontend-only change; redeploy Render,
+with no migration or Databricks redeployment.
