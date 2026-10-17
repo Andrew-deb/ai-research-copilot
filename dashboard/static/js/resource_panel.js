@@ -1,8 +1,8 @@
 /* Resource rail geometry only; file state and transport live in uploads.js. */
 (function () {
   "use strict";
-  window.ResourcePanel = {mount:function(rail) {
-    var wrapper=rail.parentElement, dragging=false, width=360;
+  window.ResourcePanel = {mount:function(rail, layout) {
+    var wrapper=layout || rail.parentElement, dragging=false, width=360;
     var handle=document.createElement("div");handle.className="resource-resize";handle.tabIndex=0;
     handle.setAttribute("role","separator");handle.setAttribute("aria-orientation","vertical");
     handle.setAttribute("aria-label","Resize sources and files panel");handle.title="Drag to resize; use arrow keys when focused";
