@@ -326,3 +326,19 @@ Wick composer; no request, quota or upload-policy changes are involved.
 After Render redeployment, check an actual phone with keyboard open/closed and
 browser chrome changes, a tablet tap/drag, rotation, a long conversation and a
 multi-line draft. Simulated viewport checks do not replace physical-device testing.
+
+### Mobile drawer hit-testing and preview-first cards
+
+Mobile/tablet resource rails now move to the document body alongside their
+backdrop and launcher. This avoids the fixed chat shell's stacking context placing
+the body-level backdrop over the nested drawer. On desktop the same rail returns
+to its original layout column; its resize calculations keep the original chat
+wrapper. The launcher is hidden while the drawer is open and restored on close.
+
+Message file-card links use the authorized extracted-page preview as a fallback,
+not the original download URL. When the upload UI is available they open the
+in-panel preview; missing cached metadata triggers a conversation-file refresh
+before selecting the file. Expired/deleted items show an unavailable state rather
+than falling through to a download. Explicit Download original/Download all
+controls retain their download behaviour. Render-only rollout, with no backend,
+permission, schema or MCP changes.

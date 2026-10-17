@@ -77,6 +77,10 @@ const settle=()=>new Promise(resolve=>setTimeout(resolve,0));
  const deletion=requests.find(([url,options])=>options && options.method==='DELETE');
  assert.ok(deletion);assert.equal(deletion[1].headers['X-CSRFToken'],'token');
  assert.equal(d.getElementById('chat-input').value,'');
+ // A card clicked while conversation metadata is loading waits for the list.
+ d.dispatchEvent(new w.Event('wick:conversation'));
+ const preview=w.PrivateUploads.open(file.document_id);await preview;await settle();
+ assert.ok(resources.querySelector('iframe'));
  w.dispatchEvent(new w.Event('pagehide'));dom.window.close();
  console.log('Private upload DOM: prompt preserved, conversation bound, filename safe, invalid file refused.');
 })().catch(error=>{console.error(error);dom.window.close();process.exitCode=1;});

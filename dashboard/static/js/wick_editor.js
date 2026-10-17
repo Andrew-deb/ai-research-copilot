@@ -72,7 +72,7 @@
     writeValue();
   }
   function setText(text) {
-    editor.replaceChildren(); window.WickMentions.render(editor, text);
+    editor.replaceChildren(); window.WickMentions.render(editor, text, undefined, {inline:true});
     editor.querySelectorAll("a").forEach(function (node) {
       var item = window.WickMentions.fromHref(node.getAttribute("href"), node.textContent.slice(1).trim());
       if (item) { node.replaceWith(referenceNode(item)); }

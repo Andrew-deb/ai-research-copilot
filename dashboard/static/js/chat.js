@@ -406,6 +406,8 @@
     if (!rail) { return; }
     rail.classList.toggle("is-open", open);
     if (railScrim) { railScrim.hidden = !open; }
+    updateLauncher();
+    if(railLauncher)railLauncher.setAttribute("aria-expanded",String(open));
     // Only while the drawer covers the page — a scroll lock left on would
     // freeze the conversation behind it.
     document.body.classList.toggle("rail-open", open);
@@ -462,7 +464,7 @@
 
   function updateLauncher() {
     if (!railLauncher) { return; }
-    railLauncher.hidden = sourceCount === 0 && !rail.dataset.hasFiles;
+    railLauncher.hidden = rail.classList.contains("is-open") || (sourceCount === 0 && !rail.dataset.hasFiles);
     railLauncher.textContent = rail.dataset.hasFiles ? "Files & Sources" : "Sources" + (sourceCount ? " (" + sourceCount + ")" : "");
   }
 
@@ -543,6 +545,16 @@
 
     railLauncher = launcher;
     railScrim = scrim;
+    // A fixed mobile shell is its own stacking context. Keep drawer and
+    // backdrop as siblings at the page level so the backdrop cannot cover it.
+    function placeDrawer() {
+      var mobile=window.matchMedia("(max-width: 1100px)").matches;
+      var parent=mobile ? document.body : wrapper;
+      if(rail.parentNode!==parent)parent.appendChild(rail);
+      if(!mobile && rail.classList.contains("is-open"))setDrawer(false);
+    }
+    placeDrawer();window.addEventListener("resize",placeDrawer);
+
 
     scrim.addEventListener("click", function () { setDrawer(false); });
     document.addEventListener("keydown", function (e) {
@@ -585,7 +597,7 @@
     sources.setAttribute("role","tabpanel"); sources.setAttribute("aria-labelledby",sourceTab.id);
     rail.querySelector(".chat-rail-toggle").setAttribute("aria-controls","resource-sources resource-files");
     rail.insertBefore(tabs,sources); rail.append(filesBody);
-    if(window.ResourcePanel)resourceGeometry=window.ResourcePanel.mount(rail);
+    if(window.ResourcePanel)resourceGeometry=window.ResourcePanel.mount(rail, page.parentNode);
     filesBody.hidden=true; sourceTab.setAttribute("aria-selected","true"); filesTab.setAttribute("aria-selected","false");
     tabs.addEventListener("keydown",function(e){
       if(e.key !== "ArrowLeft" && e.key !== "ArrowRight")return;

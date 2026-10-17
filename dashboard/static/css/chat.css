@@ -1140,3 +1140,6 @@ body.chat-viewport .app-footer { display:none; }
  .chat-page.is-empty .chat-composer-dock > .chat-note { order:1; margin:0 0 6px; }
  .chat-page.is-empty .chat-composer-dock > .composer { order:2; }
 }
+/* The portalled mobile drawer and its backdrop share the page stacking context. */
+body.rail-open .chat-rail-launcher { display:none !important; }
+.message-file-card:hover { text-decoration:none; }

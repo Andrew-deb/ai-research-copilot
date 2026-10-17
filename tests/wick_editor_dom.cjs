@@ -121,6 +121,7 @@ function type(text) {
   assert.equal(editor.hidden,false);assert.equal(input.hidden,true);
   assert.ok(editor.querySelector('[data-reference-kind="attachment"]'));
   assert.equal(w.WickEditor.shortcut(),null);
+  assert.equal(editor.querySelector('[data-reference-kind="attachment"]').dataset.referenceLabel,'Private notes.md');
   d.getElementById('chat-mode').value='wick';d.getElementById('chat-mode').dispatchEvent(new w.Event('change'));
   assert.ok(editor.querySelector('[data-reference-kind="attachment"]'));
   const historical=d.createElement('div');
