@@ -194,7 +194,7 @@
   prompt.addEventListener("input",()=>{rendered="";render(currentFiles);});
   document.addEventListener("uploads:sent",()=>{rendered="";render(currentFiles);});
   document.addEventListener("wick:conversation",()=>{selected=null;previewGeneration++;currentFiles=[];refresh();});
-  document.addEventListener("click",event=>{const link=event.target.closest('a[href^="/uploads/"]');if(!link || !resources || resources.contains(link) || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey)return;
+  document.addEventListener("click",event=>{const link=event.target.closest('a[href^="/uploads/"]');if(event.defaultPrevented || !link || !resources || resources.contains(link) || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey)return;
     const match=/^\/uploads\/([0-9a-f-]{36})\/(download|pages\/\d+)$/.exec(link.getAttribute("href"));
     if(match && currentFiles.some(file=>file.document_id===match[1])){event.preventDefault();window.PrivateUploads.open(match[1],match[2].startsWith("pages/") ? Number(match[2].split("/")[1]) : 1);}
   });
