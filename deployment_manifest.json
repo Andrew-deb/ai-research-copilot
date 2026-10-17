@@ -36,6 +36,7 @@
     "shared_resource/repositories/workspace_repository.py": "fc66c39fe1926887c0a96f8a250a0c971063b9d3ccd1cd6a18252c585eeca295",
     "shared_resource/services/__init__.py": "0f74aea2d87e1efacbe8041d7b193e36e7a9cee49e69d3cb546aa14a6e280f5d",
     "shared_resource/services/collection_service.py": "fa8b769990af8ae4703d55877aa3bbefb06d8be9acacf6a42d6e28ff3e5d78ff",
+    "shared_resource/services/document_passages.py": "cc5476bbd63767b1c7a69b63f491678ad4e1bc6bd2a75c33fbcc3822725d9c65",
     "shared_resource/services/goal_service.py": "ca223f1f633e49fbbd9df805b3fb00bb3d57d4d19562682fc039a7de7c493989",
     "shared_resource/services/note_service.py": "792611c292aced70bdaf3b97cceaba24ed7cb357465382562bc49c0a21ffa8c7",
     "shared_resource/services/paper_discovery_service.py": "4814eccf975b3065a0bb31abd44ea1f1846ac474ff000faebea24405cccb32d2",
@@ -48,7 +49,7 @@
     "shared_resource/storage/azure_blob.py": "539ae4b4e1de472566a36f047eef3fe317d776beb1237aa0e7eb40358d2b83c2",
     "shared_resource/storage/contract.py": "2163eacf66d996ff92f1957b91a90a300ac56c07c5438ff4f591ccb8f8fc3891"
   },
-  "source_revision": "f861653a645231b85955f26b0411c1967d8dadeb",
+  "source_revision": "aef41f3dd6a1506866e0b1646a870e4d8d2df7e1",
   "target": "research",
   "tools": [
     "add_paper_to_collection",
