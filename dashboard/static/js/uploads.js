@@ -36,11 +36,11 @@
   if(resources){choose.parentNode.insertBefore(panelButton,choose);panelButton.addEventListener("click",()=>openLibrary());}
   function iconButton(symbol,label,handler) {
     const button=element("button","file-icon-action");button.type="button";
-    const paths={"expand":"M15 3h6v6M10 14 21 3M9 21H3v-6M14 10 3 21","←":"M19 12H5m6-6-6 6 6 6","↗":"M7 17 17 7M7 7h10v10","↻":"M20 7v5h-5M20 12a8 8 0 1 0-2 6","×":"M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"};
+    const paths={"close":"M18 6 6 18M6 6l12 12","expand":"M15 3h6v6M10 14 21 3M9 21H3v-6M14 10 3 21","←":"M19 12H5m6-6-6 6 6 6","↗":"M7 17 17 7M7 7h10v10","↻":"M20 7v5h-5M20 12a8 8 0 1 0-2 6","×":"M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"};
     button.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="'+paths[symbol]+'"/></svg>';
     button.title=label;button.setAttribute("aria-label",label);button.addEventListener("click",handler);return button;
   }
-  function openLibrary() {if(window.ChatResources.preview)window.ChatResources.preview(false);selected=null;previewGeneration++;if(resources){window.ChatResources.files(true);renderLibrary();}}
+  function openLibrary() {if(window.ChatResources.preview)window.ChatResources.preview(false);selected=null;previewGeneration++;if(resources){window.ChatResources.files(true);renderLibrary();if(window.ChatResources.preview)window.ChatResources.preview(false);}}
   function renderLibrary() {
     if(!resources || selected)return;
     const heading=element("div","file-menu-heading");heading.append(element("h3","","Files"));
@@ -73,26 +73,30 @@
     selected=file.document_id;const current=++previewGeneration;
     window.ChatResources.files(true);if(window.ChatResources.preview)window.ChatResources.preview(true);library.replaceChildren();
     const header=element("div","file-preview-toolbar");
-    header.append(iconButton("←","Back to files",openLibrary));
     const title=element("h3","file-preview-title",file.filename);title.title=file.filename;header.append(title);
-    let expanded=false;
-    const expand=iconButton("expand","Expand preview",()=>{expanded=!expanded;if(window.ChatResources.expand)window.ChatResources.expand(expanded);expand.title=expanded ? "Restore preview" : "Expand preview";expand.setAttribute("aria-label",expand.title);expand.setAttribute("aria-pressed",String(expanded));});
-    expand.setAttribute("aria-pressed","false");header.append(expand);
-    if(file.status==="ready")header.append(iconButton("↗","Reference in prompt",()=>{insertReference(file);prompt.focus();}));
+    const actions=element("details","file-preview-more");
+    const summary=element("summary","file-icon-action","⋯");summary.title="More file actions";summary.setAttribute("aria-label","More file actions");actions.append(summary);
+    const menu=element("div","file-preview-menu");actions.append(menu);
+    menu.append(element("p","private-files-note",(labels[file.status] || file.status)+" · "+Math.ceil((file.size_bytes || 0)/1024)+" KB · Expires "+(file.expires_at ? new Date(file.expires_at).toLocaleDateString() : "after retention period")));
+    if(file.status==="ready")menu.append(iconButton("↗","Reference in prompt",()=>{actions.open=false;insertReference(file);prompt.focus();}));
+    if(file.status==="failed")menu.append(iconButton("↻","Retry processing",()=>operate(file,"retry","POST")));
+    if(!["deleted","deleting"].includes(file.status))menu.append(iconButton("×","Delete file",()=>removeFile(file)));
     if(canDownload(file)){
       const download=element("a","file-icon-action","↓");download.href=downloadUrl(file);download.title="Download original";download.setAttribute("aria-label","Download original");header.append(download);
     }
-    if(file.status==="failed")header.append(iconButton("↻","Retry processing",()=>operate(file,"retry","POST")));
-    if(!["deleted","deleting"].includes(file.status))header.append(iconButton("×","Delete file",()=>removeFile(file)));
-    library.append(header,element("p","private-files-note",(labels[file.status] || file.status)+" · "+Math.ceil((file.size_bytes || 0)/1024)+" KB · Expires "+(file.expires_at ? new Date(file.expires_at).toLocaleDateString() : "after retention period")));
-    if(file.status!=="ready"){library.append(element("p","",file.error || "A preview is available after processing finishes."));return;}
+    let expanded=false;
+    const expand=iconButton("expand","Expand preview",()=>{expanded=!expanded;if(window.ChatResources.expand)window.ChatResources.expand(expanded);expand.title=expanded ? "Restore preview" : "Expand preview";expand.setAttribute("aria-label",expand.title);expand.setAttribute("aria-pressed",String(expanded));});
+    expand.setAttribute("aria-pressed","false");header.append(expand,actions,iconButton("close","Back to files",openLibrary));
+    header.addEventListener("keydown",event=>{if(event.key==="Escape" && actions.open){event.preventDefault();event.stopPropagation();actions.open=false;summary.focus();}});
+    library.append(header);
+    if(file.status!=="ready"){library.append(element("p","upload-preview-message",file.error || "A preview is available after processing finishes."));return;}
     const output=element("div","file-preview-content","Loading preview…");library.append(output);
     try {
       if(fileType(file)==="PDF") {
         const frame=element("iframe","file-pdf-preview");frame.title="PDF preview: "+file.filename;
-        frame.src="/uploads/"+encodeURIComponent(file.document_id)+"/preview#page="+(pageNumber || 1);
+        frame.src="/uploads/"+encodeURIComponent(file.document_id)+"/preview#page="+(pageNumber || 1)+"&view=FitH&zoom=page-width&toolbar=0&navpanes=0";
         output.replaceChildren(frame);
-        const fallback=element("a","","Open extracted text");fallback.href="/uploads/"+encodeURIComponent(file.document_id)+"/pages/1";fallback.target="_blank";fallback.rel="noopener";output.append(fallback);
+        const fallback=element("a","","Open extracted text");fallback.href="/uploads/"+encodeURIComponent(file.document_id)+"/pages/"+(pageNumber || 1);fallback.target="_blank";fallback.rel="noopener";menu.append(fallback);
       } else {
         const response=await fetch(downloadUrl(file),{cache:"no-store"});
         if(!response.ok)throw new Error("Preview unavailable. Try again from Files.");

@@ -570,6 +570,7 @@
   function selectResource(kind, open) {
     ensureResources();
     if(kind === "sources") {var restore=rail.querySelector('[aria-label="Restore preview"]');if(restore)restore.click();}
+    if(resourceGeometry)resourceGeometry.preview(kind === "files" && !!filesBody.querySelector(".file-preview-toolbar"));
     rail.querySelector(".chat-rail-body").hidden = kind !== "sources";
     filesBody.hidden = kind !== "files";
     sourceTab.setAttribute("aria-selected", String(kind === "sources"));
