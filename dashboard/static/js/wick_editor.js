@@ -13,7 +13,7 @@
   function serialize(node, plain) {
     if (node.nodeType === 3) { return node.textContent; }
     if (node.dataset && node.dataset.referenceKind) {
-      return plain ? "" : window.WickMentions.token(itemFromNode(node));
+      return plain && node.dataset.referenceKind !== "attachment" ? "" : window.WickMentions.token(itemFromNode(node));
     }
     if (node.nodeName === "BR") { return "\n"; }
     var text = "", previousBlock = false;
@@ -29,7 +29,7 @@
       available: node.dataset.unavailable !== "true"};
   }
   function atoms() { return Array.from(editor.querySelectorAll("[data-reference-kind]")); }
-  function references() { return atoms().map(itemFromNode); }
+  function references() { return atoms().filter(function(node){return node.dataset.referenceKind !== "attachment";}).map(itemFromNode); }
   function writeValue() { nativeValue.set.call(input, serialize(editor)); editor.dataset.empty = String(!serialize(editor, true).trim() && !atoms().length); }
   function notify() { writeValue(); input.dispatchEvent(new Event("input", { bubbles: true })); }
   function referenceNode(item) {
@@ -37,7 +37,7 @@
     link.className = "wick-inline-reference"; link.setAttribute("contenteditable", "false");
     link.dataset.referenceKind = item.kind; link.dataset.referenceId = item.id; link.dataset.referenceLabel = item.label;
     link.dataset.unavailable = String(item.available === false);
-    link.textContent = (item.kind === "page" ? "#" : "@") + item.label + (item.available === false ? " (unavailable)" : "");
+    link.textContent = (item.kind === "page" ? "#" : item.kind === "attachment" ? "▤" : "@") + item.label + (item.available === false ? " (unavailable)" : "");
     if (destination) { link.href = destination; link.target = "_blank"; link.rel = "noopener"; }
     link.title = item.available === false ? "Unavailable context; delete to remove" : "Open " + item.label;
     return link;
@@ -59,6 +59,7 @@
   function sync(items) {
     contextItems = items.slice();
     atoms().forEach(function (node) {
+      if(node.dataset.referenceKind === "attachment") { return; }
       var item = items.find(function (value) { return value.kind === node.dataset.referenceKind && value.id === node.dataset.referenceId; });
       if (!item) { node.remove(); }
       else {
@@ -81,6 +82,7 @@
     document.dispatchEvent(new Event("wick:editor-reset"));
   }
   function shortcut() {
+    if(mode && mode.value !== "wick") { return null; }
     var selection = window.getSelection();
     if (!selection.rangeCount || !selection.isCollapsed || !editor.contains(selection.anchorNode) || selection.anchorNode.nodeType !== 3) { return null; }
     var node = selection.anchorNode;
@@ -90,8 +92,10 @@
     var range = document.createRange(); range.setStart(node, prefix.length - match[2].length - 1); range.setEnd(node, prefix.length);
     return { category: match[1] === "@" ? "assets" : "pages", query: match[2], range: range };
   }
-  function enabled() { return !mode || mode.value === "wick"; }
+  function enabled() { return !mode || mode.value === "wick" || !!document.getElementById("private-files"); }
   function updateMode() {
+    editor.dataset.placeholder = !mode || mode.value === "wick" ? "Type @ to include an asset and # for pages" : "Ask a research question…";
+    editor.setAttribute("aria-label", !mode || mode.value === "wick" ? "Ask Wick" : "Ask a research question");
     editor.hidden = !enabled(); input.hidden = enabled();
     editor.setAttribute("contenteditable", String(!input.disabled)); editor.setAttribute("aria-disabled", String(input.disabled));
   }
@@ -131,7 +135,8 @@
   editor.addEventListener("drop", function (event) { event.preventDefault(); });
   document.addEventListener("selectionchange", remember);
   new MutationObserver(updateMode).observe(input, { attributes: true, attributeFilter: ["disabled"] });
-  if (mode) { mode.addEventListener("change", function () { if (enabled()) { setText(nativeValue.get.call(input)); } else { nativeValue.set.call(input, serialize(editor, true)); } updateMode(); }); }
+  if (mode) { mode.addEventListener("change", function () { if(mode.value !== "wick") { nativeValue.set.call(input, serialize(editor, true)); }
+    if (enabled()) { setText(nativeValue.get.call(input)); } updateMode(); }); }
   setText(initialText); updateMode();
   window.WickEditor = { element: editor, references: references, sync: sync, insert: insert, remember: remember, shortcut: shortcut, composing: function () { return composing; } };
 })();

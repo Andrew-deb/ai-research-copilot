@@ -78,6 +78,25 @@
     document.getElementById("upload-details-close").addEventListener("click",()=>dialog.close());
     dialog.addEventListener("close",()=>{selected=null;document.getElementById("upload-details-body").replaceChildren();});
   }
+  const prompt=document.getElementById("chat-input");
+  function selectedIds() {
+    const ids=[], pattern=/\[▤[^\]\n]+\]\(\/uploads\/([0-9a-f-]{36})\/download\)/gi;
+    let match;while((match=pattern.exec(prompt.value)))if(!ids.includes(match[1]))ids.push(match[1]);
+    return ids;
+  }
+  window.PrivateUploads={references:selectedIds};
+  function insertReference(file) {
+    const item={kind:"attachment",id:file.document_id,label:file.filename};
+    if(window.WickEditor && prompt.hidden)window.WickEditor.insert(item);
+    else {
+      const label=file.filename.replace(/[\[\]\\\r\n]/g," ").slice(0,100);
+      const token="[▤"+label+"]("+downloadUrl(file)+") ";
+      const start=prompt.selectionStart || 0,end=prompt.selectionEnd || start;
+      prompt.value=prompt.value.slice(0,start)+token+prompt.value.slice(end);
+      prompt.focus();prompt.setSelectionRange(start+token.length,start+token.length);
+      prompt.dispatchEvent(new Event("input",{bubbles:true}));
+    }
+  }
   function render(items) {
     currentFiles=items;
     const signature=JSON.stringify([items,busy]);if(signature===rendered)return;rendered=signature;
@@ -96,6 +115,10 @@
         const remove=element("button","private-file-remove","×");remove.type="button";remove.disabled=busy;
         remove.title="Delete file";remove.setAttribute("aria-label","Delete "+file.filename);
         remove.addEventListener("click",()=>removeFile(file));row.append(remove);
+      }
+      if(file.status==="ready") {
+        const attach=element("button","private-file-attach","Use in prompt");attach.type="button";
+        attach.addEventListener("click",()=>insertReference(file));row.append(attach);
       }
       list.append(row);
     });
@@ -123,6 +146,10 @@
     busy=true;choose.disabled=true;status.dataset.kind="progress";
     try {
       await request("/uploads/"+encodeURIComponent(file.document_id)+(suffix ? "/"+suffix : ""),{method:method,headers:{"X-CSRFToken":token(),Accept:"application/json"}});
+      if(!suffix && method==="DELETE") {
+        prompt.value=prompt.value.replace(/\[▤[^\]\n]+\]\(\/uploads\/([0-9a-f-]{36})\/download\) ?/gi,(token,id)=>id===file.document_id ? "" : token);
+        prompt.dispatchEvent(new Event("input",{bubbles:true}));
+      }
       status.textContent=suffix ? "Retry queued." : "Deletion queued. The file is unavailable immediately.";
     } catch (error) { status.dataset.kind="error";status.textContent=error.message; }
     finally {busy=false;choose.disabled=false;refresh();}

@@ -1052,3 +1052,5 @@
 .upload-details-meta, .private-files-note { color: var(--text-muted); font-size: 12px; line-height: 1.6; }
 .upload-text-preview { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 40vh; overflow: auto; font-size: 12px; }
 .upload-details-error { font-size: 13px; }
+
+.private-file-attach { border:0; background:transparent; color:var(--brand); padding:5px 8px; font:inherit; font-size:11px; cursor:pointer; }

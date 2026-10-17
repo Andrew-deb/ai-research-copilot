@@ -210,7 +210,7 @@ def test_the_panel_separates_citations_from_sources_consulted():
     assert '"Citations"' in js
     assert '"Sources consulted"' in js
     # Consulted excludes anything cited, so a paper never appears twice.
-    assert "citedIds[s.paper_id]" in js
+    assert "citedIds[sourceId(s)]" in js
 
 
 def test_only_citations_are_numbered():
