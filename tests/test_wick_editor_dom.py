@@ -38,3 +38,11 @@ def test_private_upload_controls_preserve_prompt_and_bind_conversation():
         pytest.skip('Optional jsdom test runtime is unavailable')
     subprocess.run(['node', str(Path(__file__).with_name('private_uploads_dom.cjs'))],
                    check=True, capture_output=True, text=True)
+
+
+@pytest.mark.parametrize('script', ['chat_resources_dom.cjs', 'chat_viewport_dom.cjs'])
+def test_mobile_drawer_and_visual_viewport(script):
+    if subprocess.run(['node', '-e', "require.resolve('jsdom')"], capture_output=True).returncode:
+        pytest.skip('Optional jsdom test runtime is unavailable')
+    subprocess.run(['node', str(Path(__file__).with_name(script))],
+                   check=True, capture_output=True, text=True)

@@ -38,6 +38,16 @@ d.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Escape'}));
 assert.equal(d.querySelector('.chat-rail').classList.contains('is-open'),false);
 d.querySelector('.chat-rail-launcher').click(); // keyboard-equivalent click, not pointer drag
 assert.equal(d.querySelector('.chat-rail').classList.contains('is-open'),true);
+// Tablet taps must work through the click path, including after pointer events.
+const launcher=d.querySelector('.chat-rail-launcher');
+d.querySelector('.chat-rail-scrim').click();
+function pointer(type,x,y){const e=new w.MouseEvent(type,{button:0,clientX:x,clientY:y,bubbles:true});Object.defineProperty(e,'pointerId',{value:1});return e;}
+launcher.dispatchEvent(pointer('pointerdown',10,10));launcher.dispatchEvent(pointer('pointerup',10,10));launcher.dispatchEvent(new w.MouseEvent('click',{detail:1,bubbles:true}));
+assert.equal(rail.classList.contains('is-open'),true);
+d.querySelector('.chat-rail-scrim').click();
+launcher.dispatchEvent(pointer('pointerdown',10,10));launcher.dispatchEvent(pointer('pointermove',40,40));launcher.dispatchEvent(pointer('pointerup',40,40));launcher.dispatchEvent(new w.MouseEvent('click',{detail:1,bubbles:true}));
+assert.equal(rail.classList.contains('is-open'),false);
+launcher.click();assert.equal(rail.classList.contains('is-open'),true);
 const ids=['00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000002'];
 const bubble=d.createElement('div');let opened=[];w.PrivateUploads={open:id=>opened.push(id)};
 w.WickMentions.render(bubble,`Compare [▤one.pdf](/uploads/${ids[0]}/download) with [▤two.txt](/uploads/${ids[1]}/download)`);

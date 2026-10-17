@@ -531,38 +531,30 @@ def _mobile_css() -> str:
     return css.split("@media (max-width: 1100px)")[1].split("@media (min-width: 1101px)")[0]
 
 
-def test_the_composer_is_pinned_while_the_conversation_scrolls():
-    """
-    Otherwise a long answer carries the composer off the bottom of the screen
-    and you have to scroll back down to ask the next question.
-    """
-    mobile = _mobile_css()
-    stage = mobile.split(".chat-page.has-conversation .chat-stage,")[1].split("}")[0]
-    assert "position: sticky" in stage
-    assert "bottom: 0" in stage
-    # Opaque, or the thread shows through the box being typed into.
-    assert "background: var(--bg)" in stage
+def test_the_composer_is_outside_the_mobile_scroll_container():
+    css = _chat_css()
+    assert 'body.chat-viewport .chat-thread' in css
+    assert 'overflow-y:auto; overscroll-behavior-y:contain' in css
+    assert 'body.chat-viewport .chat-page.has-conversation .chat-stage' in css
+    assert 'position:static; flex:none' in css
 
 
-def test_the_pinned_composer_avoids_viewport_height_maths():
-    """
-    Mobile viewport height moves as the browser chrome hides and shows, so a
-    calc() against it is wrong for part of every scroll. Sticky needs no height.
-    """
-    mobile = _mobile_css()
-    stage = mobile.split(".chat-page.has-conversation .chat-stage,")[1].split("}")[0]
-    assert "100vh" not in stage and "calc(" not in stage
+def test_mobile_shell_tracks_the_visible_viewport():
+    css = _chat_css()
+    assert 'height:var(--chat-view-height,100dvh)' in css
+    js = (pathlib.Path(__file__).resolve().parents[1] / 'dashboard/static/js/chat_viewport.js').read_text()
+    assert 'window.visualViewport' in js
+    assert 'viewport.addEventListener("resize"' in js
 
 
-def test_the_landing_composer_is_pinned_too():
-    """It has no .chat-stage wrapper — its composer is a direct child."""
-    assert ".landing-main.has-conversation > .composer" in _mobile_css()
+def test_the_landing_composer_uses_the_same_dock():
+    assert '.landing-main.has-conversation > .chat-composer-dock' in _chat_css()
 
 
 def test_the_sources_button_can_be_dragged_out_of_the_way():
     js = _chat_js()
     assert "makeDraggable" in js
-    drag = js.split("function makeDraggable")[1][:1800]
+    drag = js.split("function makeDraggable")[1].split("function updateLauncher")[0]
     assert "pointerdown" in drag and "pointermove" in drag and "pointerup" in drag
     assert "setPointerCapture" in drag
 
@@ -571,16 +563,17 @@ def test_a_tap_still_opens_the_drawer():
     """Past a threshold a press is a drag; below it, it is still a tap — or the
     button would be impossible to press."""
     js = _chat_js()
-    drag = js.split("function makeDraggable")[1][:1800]
+    drag = js.split("function makeDraggable")[1].split("function updateLauncher")[0]
     assert "DRAG_THRESHOLD" in drag
-    assert "if (!moved) { onTap(); }" in drag
+    assert 'el.addEventListener("click"' in drag
+    assert "suppressClick" in drag
 
 
 def test_the_dragged_button_is_kept_on_screen():
     """A button parked against an edge would be half off-screen after a
     rotate."""
     js = _chat_js()
-    drag = js.split("function makeDraggable")[1][:1800]
+    drag = js.split("function makeDraggable")[1].split("function updateLauncher")[0]
     assert "function clamp(" in drag
     assert "window.innerWidth" in drag and "window.innerHeight" in drag
     assert 'window.addEventListener("resize"' in drag
@@ -593,7 +586,7 @@ def test_the_position_is_not_remembered_between_visits():
     today.
     """
     js = _chat_js()
-    drag = js.split("function makeDraggable")[1][:1800]
+    drag = js.split("function makeDraggable")[1].split("function updateLauncher")[0]
     assert "localStorage" not in drag
 
 
