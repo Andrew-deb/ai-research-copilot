@@ -5,7 +5,7 @@ from flask import Blueprint, jsonify, request, send_file
 from exceptions import ValidationError
 from middleware.auth import require_user_id
 from middleware.capabilities import require_capability, UPLOADS_WRITE
-from services import upload_service, conversation_service
+from services import upload_service, conversation_service, attachment_context
 import upload_config
 
 bp = Blueprint("uploads", __name__)
@@ -92,3 +92,15 @@ def register_upload_context(app):
             "upload_max_mib": upload_config.LIMITS.max_file_bytes // (1024 * 1024),
             "upload_retention_days": upload_config.LIMITS.retention_days,
         }
+
+
+@bp.get("/uploads/<uuid:document_id>/pages/<int:page>")
+@require_capability(UPLOADS_WRITE)
+def preview_page(document_id, page):
+    from flask import render_template
+    owner = require_user_id()
+    row = upload_service.owned(owner, str(document_id))
+    context = attachment_context.references(owner, row['conversation_id'], [str(document_id)])
+    result = attachment_context.read(owner, context, str(document_id), page=page)
+    response = render_template('upload_page.html', document=result, page=page)
+    return response, 200, {'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff'}

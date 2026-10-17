@@ -270,6 +270,26 @@ def load(user_id: str | None, conversation_id: str) -> dict | None:
             "usage": row.get("usage") or {},
         })
 
+    # Reopening history must label expired/deleted attachments without reading blobs.
+    from services import upload_service
+    availability = {}
+    def available(doc):
+        if doc not in availability:
+            try:
+                row = upload_service.owned(owner, doc)
+                availability[doc] = row['status'] == 'ready' and not row.get('expired')
+            except Exception:
+                availability[doc] = False
+        return availability[doc]
+    for message in messages:
+        refs = (message.get('usage') or {}).get('attachment_references') or []
+        if refs:
+            message['usage'] = dict(message['usage'], attachment_references=[dict(ref, available=available(ref['document_id'])) for ref in refs])
+        for field in ('citations', 'sources'):
+            message[field] = [dict(item, available=available(item['document_id']))
+                              if item.get('source_kind') == 'document' else item
+                              for item in message[field]]
+
     return {
         "conversation_id": str(conversation["conversation_id"]),
         "title": conversation["title"],
@@ -305,6 +325,7 @@ def prepare_turn(user_id: str | None, conversation_id: str | None,
     rows = conversation_versions.messages(user_id, conversation_id) or []
     path = _path(rows, conversation.get("selected_message_id"))
     original_question = None
+    attachment_ids = []
     if mode != "new":
         if mode not in ("edit", "regenerate"):
             raise ValidationError("Unknown conversation action.")
@@ -313,6 +334,7 @@ def prepare_turn(user_id: str | None, conversation_id: str | None,
         if index is None:
             raise ValidationError("Select a prompt on the current version.")
         original_question = path[index]["content"]
+        attachment_ids = [item["document_id"] for item in (path[index].get("usage") or {}).get("attachment_references", [])]
         if mode == "regenerate":
             # A completed write is not a safe instruction to repeat by accident.
             from services.agent_service import WRITE_TOOLS
@@ -323,6 +345,7 @@ def prepare_turn(user_id: str | None, conversation_id: str | None,
         path = path[:index]
     return {"history": _limit_context(path),
             "original_question": original_question,
+            "attachment_ids": attachment_ids,
             "expected_head": str(conversation["selected_message_id"])
                              if conversation.get("selected_message_id") else None}
 
