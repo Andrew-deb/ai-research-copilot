@@ -1,0 +1,12 @@
+{% if private_uploads_enabled and is_authenticated %}
+  <input type="file" id="upload-input" accept=".pdf,.txt,.md" multiple hidden>
+  <dialog id="upload-details" class="upload-details" aria-labelledby="upload-details-title">
+    <header class="upload-details-header">
+      <h2 id="upload-details-title">File details</h2>
+      <button type="button" id="upload-details-close" aria-label="Close file details">×</button>
+    </header>
+    <div id="upload-details-body"></div>
+    <p class="private-files-note">Private files expire after {{ upload_retention_days }} days. Agent reading is coming next; messages currently use your prompt text only.</p>
+    <div id="upload-details-actions" class="upload-details-actions"></div>
+  </dialog>
+{% endif %}

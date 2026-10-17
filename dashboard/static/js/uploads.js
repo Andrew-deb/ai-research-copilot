@@ -27,28 +27,83 @@
     return creating;
   }
   const labels={uploading:"Uploading",queued:"Waiting to process",processing:"Processing",ready:"Ready",failed:"Failed",deleting:"Deleting",deleted:"Deleted",expired:"Expired"};
+  const dialog=document.getElementById("upload-details");
+  let selected=null, rendered="";
+  function element(tag,className,text) {
+    const node=document.createElement(tag);if(className)node.className=className;
+    if(text!==undefined)node.textContent=text;return node;
+  }
+  function downloadUrl(file) {return "/uploads/"+encodeURIComponent(file.document_id)+"/download";}
+  function fileType(file) {return (file.filename.split(".").pop() || "file").toUpperCase();}
+  function canDownload(file) {return ["ready","failed","queued","processing"].includes(file.status);}
+  function removeFile(file) {
+    if(window.confirm("Delete this private file and its extracted text?"))operate(file,"","DELETE");
+  }
+  function showDetails(file) {
+    if(!dialog)return;
+    selected=file.document_id;
+    document.getElementById("upload-details-title").textContent=file.filename;
+    const body=document.getElementById("upload-details-body"),actions=document.getElementById("upload-details-actions");
+    body.replaceChildren();actions.replaceChildren();
+    const size=Number.isFinite(file.size_bytes) ? " · "+Math.max(1,Math.ceil(file.size_bytes/1024))+" KB" : "";
+    body.append(element("p","upload-details-meta",fileType(file)+size+" · "+(labels[file.status] || file.status)));
+    if(file.page_count)body.append(element("p","upload-details-meta",file.page_count+" pages processed"));
+    if(file.error)body.append(element("p","upload-details-error",file.error));
+    if(canDownload(file)) {
+      const link=element("a","upload-download","Download original");link.href=downloadUrl(file);actions.append(link);
+      if(["TXT","MD"].includes(fileType(file))) {
+        const preview=element("button","","Preview text");preview.type="button";
+        preview.addEventListener("click",async()=>{
+          preview.disabled=true;
+          const output=element("pre","upload-text-preview","Loading preview…");body.append(output);
+          try {
+            const response=await fetch(downloadUrl(file),{cache:"no-store"});
+            if(!response.ok)throw new Error("The file preview is unavailable.");
+            const text=await response.text();output.textContent=text.slice(0,20000)+(text.length>20000 ? "\n… Preview truncated. Download the original for the full text." : "");
+          }catch(error){output.textContent=error.message;}
+        });actions.append(preview);
+      }
+    }
+    if(file.status==="failed") {
+      const retry=element("button","","Retry processing");retry.type="button";retry.disabled=busy;
+      retry.addEventListener("click",()=>operate(file,"retry","POST"));actions.append(retry);
+    }
+    if(!["deleted","deleting"].includes(file.status)) {
+      const remove=element("button","upload-delete","Delete file");remove.type="button";remove.disabled=busy;
+      remove.addEventListener("click",()=>removeFile(file));actions.append(remove);
+    }
+    if(!dialog.open)dialog.showModal();
+  }
+  if(dialog) {
+    document.getElementById("upload-details-close").addEventListener("click",()=>dialog.close());
+    dialog.addEventListener("close",()=>{selected=null;document.getElementById("upload-details-body").replaceChildren();});
+  }
   function render(items) {
-    currentFiles=items;list.replaceChildren();
+    currentFiles=items;
+    const signature=JSON.stringify([items,busy]);if(signature===rendered)return;rendered=signature;
+    list.replaceChildren();
     items.filter(file=>file.status!=="deleted").forEach(file=>{
-      const row=document.createElement("div");row.className="private-file";
-      const label=document.createElement("span");label.textContent=file.filename+" · "+(labels[file.status] || file.status);
-      row.append(label);
-      if (["ready","failed","queued","processing"].includes(file.status)) {
-        const link=document.createElement("a");link.href="/uploads/"+encodeURIComponent(file.document_id)+"/download";link.textContent="Download";row.append(link);
-      }
-      if (file.error) {const error=document.createElement("span");error.textContent=file.error;row.append(error);}
-      if (file.status==="failed") {
-        const retry=document.createElement("button");retry.type="button";retry.textContent="Retry";retry.disabled=busy;
-        retry.addEventListener("click",()=>operate(file,"retry","POST"));row.append(retry);
-      }
-      if (!["deleted","deleting"].includes(file.status)) {
-        const remove=document.createElement("button");remove.type="button";remove.textContent="Delete file";remove.disabled=busy;
-        remove.addEventListener("click",()=>{
-          if (window.confirm("Delete this private file and its extracted text?")) operate(file,"","DELETE");
-        });row.append(remove);
+      const row=element("div","private-file");row.dataset.documentId=file.document_id;
+      const card=element("button","private-file-open");card.type="button";
+      card.setAttribute("aria-label",file.filename+", "+(labels[file.status] || file.status)+". Open file details");
+      card.title=file.filename;
+      card.append(element("span","private-file-icon",fileType(file)));
+      const info=element("span","private-file-info");
+      info.append(element("span","private-file-name",file.filename));
+      info.append(element("span","private-file-state",labels[file.status] || file.status));
+      card.append(info);card.addEventListener("click",()=>showDetails(file));row.append(card);
+      if(!["deleted","deleting"].includes(file.status)) {
+        const remove=element("button","private-file-remove","×");remove.type="button";remove.disabled=busy;
+        remove.title="Delete file";remove.setAttribute("aria-label","Delete "+file.filename);
+        remove.addEventListener("click",()=>removeFile(file));row.append(remove);
       }
       list.append(row);
     });
+    if(dialog && dialog.open && selected) {
+      const file=items.find(item=>item.document_id===selected);
+      if(!file || ["deleted","deleting"].includes(file.status))dialog.close();
+      else showDetails(file);
+    }
   }
   async function refresh() {
     clearTimeout(timer);
@@ -59,16 +114,17 @@
       const body=await request("/uploads/conversations/"+encodeURIComponent(id),{headers:{Accept:"application/json"}});
       if (current!==generation) return;
       render(body.items);
+      if(!busy && status.dataset.kind!=="error")status.textContent="";
       if (body.items.some(file=>["uploading","queued","processing","deleting"].includes(file.status))) timer=setTimeout(refresh,3000);
-    } catch (error) { status.textContent=error.message; timer=setTimeout(refresh,15000); }
+    } catch (error) { status.dataset.kind="error";status.textContent=error.message; timer=setTimeout(refresh,15000); }
   }
   async function operate(file,suffix,method) {
     if (busy) return;
-    busy=true;choose.disabled=true;
+    busy=true;choose.disabled=true;status.dataset.kind="progress";
     try {
       await request("/uploads/"+encodeURIComponent(file.document_id)+(suffix ? "/"+suffix : ""),{method:method,headers:{"X-CSRFToken":token(),Accept:"application/json"}});
       status.textContent=suffix ? "Retry queued." : "Deletion queued. The file is unavailable immediately.";
-    } catch (error) { status.textContent=error.message; }
+    } catch (error) { status.dataset.kind="error";status.textContent=error.message; }
     finally {busy=false;choose.disabled=false;refresh();}
   }
   choose.addEventListener("click",()=>{
@@ -80,9 +136,9 @@
     const files=Array.from(input.files);input.value="";
     if(!files.length)return;
     if(files.length>3 || files.some(file=>file.size>Number(tray.dataset.maxMib)*1024*1024 || !/\.(pdf|txt|md)$/i.test(file.name))) {
-      status.textContent="Choose up to three PDF, TXT or Markdown files, each up to "+tray.dataset.maxMib+" MiB.";return;
+      status.dataset.kind="error";status.textContent="Choose up to three PDF, TXT or Markdown files, each up to "+tray.dataset.maxMib+" MiB.";return;
     }
-    busy=true;choose.disabled=true;
+    busy=true;choose.disabled=true;status.dataset.kind="progress";
     try {
       const id=await conversation();
       for (const file of files) {
@@ -91,8 +147,8 @@
         const body=await request("/uploads",{method:"POST",headers:{"X-CSRFToken":token(),Accept:"application/json"},body:form});
         render([body,...currentFiles]);
       }
-      status.textContent="Upload complete. Text processing is queued.";
-    } catch(error) { status.textContent=error.message+" Earlier successful uploads are kept."; }
+      status.textContent="Upload complete.";
+    } catch(error) { status.dataset.kind="error";status.textContent=error.message+" Earlier successful uploads are kept."; }
     finally {busy=false;choose.disabled=false;refresh();}
   });
   document.addEventListener("wick:conversation",refresh);
