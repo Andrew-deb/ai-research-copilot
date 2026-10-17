@@ -236,6 +236,7 @@
     bubble.className = "chat-prompt-text";
     if (window.WickMentions) { window.WickMentions.render(bubble, text, attachments); }
     else { bubble.textContent = text; }
+    var files=bubble.querySelector(".message-files");if(files)el.appendChild(files);
     el.appendChild(bubble);
     ensureThread().appendChild(el);
     scrollToLatest();
@@ -565,9 +566,10 @@
     return rail;
   }
 
-  var filesBody = null, sourceTab = null, filesTab = null;
+  var filesBody = null, sourceTab = null, filesTab = null, resourceGeometry = null;
   function selectResource(kind, open) {
     ensureResources();
+    if(kind === "sources") {var restore=rail.querySelector('[aria-label="Restore preview"]');if(restore)restore.click();}
     rail.querySelector(".chat-rail-body").hidden = kind !== "sources";
     filesBody.hidden = kind !== "files";
     sourceTab.setAttribute("aria-selected", String(kind === "sources"));
@@ -593,6 +595,7 @@
     sources.setAttribute("role","tabpanel"); sources.setAttribute("aria-labelledby",sourceTab.id);
     rail.querySelector(".chat-rail-toggle").setAttribute("aria-controls","resource-sources resource-files");
     rail.insertBefore(tabs,sources); rail.append(filesBody);
+    if(window.ResourcePanel)resourceGeometry=window.ResourcePanel.mount(rail);
     filesBody.hidden=true; sourceTab.setAttribute("aria-selected","true"); filesTab.setAttribute("aria-selected","false");
     tabs.addEventListener("keydown",function(e){
       if(e.key !== "ArrowLeft" && e.key !== "ArrowRight")return;
@@ -602,7 +605,9 @@
   }
   window.ChatResources={
     files:function(open){ensureResources();rail.dataset.hasFiles="true";rail.classList.remove("is-empty");updateLauncher();if(open)selectResource("files",true);return filesBody;},
-    sources:function(){selectResource("sources",true);}
+    sources:function(){selectResource("sources",true);},
+    preview:function(value){ensureResources();if(resourceGeometry)resourceGeometry.preview(value);},
+    expand:function(value){ensureResources();if(resourceGeometry)resourceGeometry.expand(value);}
   };
 
   function railBody() {

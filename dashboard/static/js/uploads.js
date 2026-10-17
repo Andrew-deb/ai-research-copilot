@@ -36,22 +36,29 @@
   if(resources){choose.parentNode.insertBefore(panelButton,choose);panelButton.addEventListener("click",()=>openLibrary());}
   function iconButton(symbol,label,handler) {
     const button=element("button","file-icon-action");button.type="button";
-    const paths={"←":"M19 12H5m6-6-6 6 6 6","↗":"M7 17 17 7M7 7h10v10","↻":"M20 7v5h-5M20 12a8 8 0 1 0-2 6","×":"M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"};
+    const paths={"expand":"M15 3h6v6M10 14 21 3M9 21H3v-6M14 10 3 21","←":"M19 12H5m6-6-6 6 6 6","↗":"M7 17 17 7M7 7h10v10","↻":"M20 7v5h-5M20 12a8 8 0 1 0-2 6","×":"M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"};
     button.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="'+paths[symbol]+'"/></svg>';
     button.title=label;button.setAttribute("aria-label",label);button.addEventListener("click",handler);return button;
   }
-  function openLibrary() {selected=null;previewGeneration++;if(resources){window.ChatResources.files(true);renderLibrary();}}
+  function openLibrary() {if(window.ChatResources.preview)window.ChatResources.preview(false);selected=null;previewGeneration++;if(resources){window.ChatResources.files(true);renderLibrary();}}
   function renderLibrary() {
     if(!resources || selected)return;
-    library.replaceChildren(element("h3","","Conversation files"),element("p","private-files-note","Private attachments · "+tray.dataset.retention+" day retention"));
+    const heading=element("div","file-menu-heading");heading.append(element("h3","","Files"));
     const files=currentFiles.filter(file=>file.status!=="deleted");
+    const available=files.filter(canDownload);
+    if(available.length){const all=element("a","file-download-all","↓ Download all");all.href="/uploads/conversations/"+encodeURIComponent(page.dataset.conversation)+"/download";all.setAttribute("download","");heading.append(all);}
+    library.replaceChildren(heading,element("p","private-files-note","Private attachments · "+tray.dataset.retention+" day retention"));
+    const grid=element("div","conversation-file-grid");library.append(grid);
     if(!files.length)library.append(element("p","private-files-note","Upload a file using + to get started."));
     files.forEach(file=>{
-      const card=element("button","conversation-file");card.type="button";
-      card.append(element("span","private-file-icon",fileType(file)),element("span","private-file-name",file.filename),element("small","private-file-state",labels[file.status] || file.status));
-      card.addEventListener("click",()=>showDetails(file));library.append(card);
+      const tile=element("div","conversation-file-tile"),card=element("button","conversation-file");card.type="button";card.title=file.filename;
+      card.append(element("strong","private-file-name",file.filename),element("span","private-file-icon",fileType(file)),element("small","private-file-state",labels[file.status] || file.status));
+      card.addEventListener("click",()=>showDetails(file));tile.append(card);
+      if(!["deleted","deleting"].includes(file.status)){const remove=iconButton("×","Delete "+file.filename,()=>removeFile(file));remove.classList.add("file-menu-delete");tile.append(remove);}
+      grid.append(tile);
     });
   }
+
   function element(tag,className,text) {
     const node=document.createElement(tag);if(className)node.className=className;
     if(text!==undefined)node.textContent=text;return node;
@@ -64,9 +71,13 @@
   }
   async function showPanelPreview(file, pageNumber) {
     selected=file.document_id;const current=++previewGeneration;
-    window.ChatResources.files(true);library.replaceChildren();
+    window.ChatResources.files(true);if(window.ChatResources.preview)window.ChatResources.preview(true);library.replaceChildren();
     const header=element("div","file-preview-toolbar");
-    header.append(iconButton("←","Back to files",openLibrary),element("h3","",file.filename));
+    header.append(iconButton("←","Back to files",openLibrary));
+    const title=element("h3","file-preview-title",file.filename);title.title=file.filename;header.append(title);
+    let expanded=false;
+    const expand=iconButton("expand","Expand preview",()=>{expanded=!expanded;if(window.ChatResources.expand)window.ChatResources.expand(expanded);expand.title=expanded ? "Restore preview" : "Expand preview";expand.setAttribute("aria-label",expand.title);expand.setAttribute("aria-pressed",String(expanded));});
+    expand.setAttribute("aria-pressed","false");header.append(expand);
     if(file.status==="ready")header.append(iconButton("↗","Reference in prompt",()=>{insertReference(file);prompt.focus();}));
     if(canDownload(file)){
       const download=element("a","file-icon-action","↓");download.href=downloadUrl(file);download.title="Download original";download.setAttribute("aria-label","Download original");header.append(download);
@@ -100,7 +111,7 @@
     let match;while((match=pattern.exec(prompt.value)))if(!ids.includes(match[1]))ids.push(match[1]);
     return ids;
   }
-  window.PrivateUploads={references:selectedIds,open:function(id,pageNumber){const file=currentFiles.find(item=>item.document_id===id);if(file)showDetails(file,pageNumber);else openLibrary();},
+  window.PrivateUploads={label:function(id){const file=currentFiles.find(item=>item.document_id===id);return file ? file.filename : null;},references:selectedIds,open:function(id,pageNumber){const file=currentFiles.find(item=>item.document_id===id);if(file)showDetails(file,pageNumber);else openLibrary();},
     assets:function(query){return currentFiles.filter(file=>file.status==="ready" && file.filename.toLowerCase().includes((query || "").toLowerCase())).map(file=>({kind:"attachment",id:file.document_id,label:file.filename}));},insert:insertReference};
   function insertReference(file) {
     const item={kind:"attachment",id:file.document_id,label:file.filename};
@@ -136,7 +147,7 @@
       list.append(row);
     });
     if(resources){
-      if(selected && !items.some(file=>file.document_id===selected && file.status==="ready")){selected=null;previewGeneration++;}
+      if(selected && !items.some(file=>file.document_id===selected && file.status==="ready")){selected=null;previewGeneration++;if(window.ChatResources.preview)window.ChatResources.preview(false);}
       renderLibrary();
     }
 

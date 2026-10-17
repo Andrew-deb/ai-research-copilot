@@ -48,6 +48,16 @@
         link.addEventListener("click",function(event){
           if(window.PrivateUploads && this.dataset.documentId){event.preventDefault();window.PrivateUploads.open(this.dataset.documentId);}
         });
+        var metadata=Array.isArray(attachments) && attachments.find(function(item){return item.document_id===referenced.id;});
+        var filename=(metadata && metadata.filename) || (window.PrivateUploads && window.PrivateUploads.label && window.PrivateUploads.label(referenced.id)) || match[1].slice(1);
+        var extension=filename.split(".").pop().toUpperCase();
+        link.title=filename+(unavailable ? " (unavailable)" : "");
+        link.replaceChildren();
+        var badge=document.createElement("span");badge.className="message-file-icon";badge.textContent=extension.length<=5 ? extension : "FILE";
+        var info=document.createElement("span");info.className="message-file-info";
+        var title=document.createElement("strong");title.textContent=filename;
+        var type=document.createElement("small");type.textContent=unavailable ? "File unavailable" : "Document · "+badge.textContent;
+        info.append(title,type);link.append(badge,info);
         cards.appendChild(link);
       } else container.appendChild(link);
       cursor = pattern.lastIndex;
