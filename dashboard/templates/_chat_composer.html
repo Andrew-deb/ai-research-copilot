@@ -16,6 +16,16 @@
      initial_prompt     prefill, from ?q= #}
 
 {% if can_ask %}
+<div class="chat-composer-dock">
+  {# Stated up front rather than on refusal. Discovering a limit by hitting it
+     reads as the product breaking; knowing it in advance reads as a free tier. #}
+  {% if agent_daily_limit %}
+    <p class="chat-note">
+      {{ agent_daily_limit }} question{{ '' if agent_daily_limit == 1 else 's' }} a day
+      {%- if not is_authenticated %} — <a href="{{ url_for('auth.signup') }}">sign up</a> for more{% endif %}.
+    </p>
+  {% endif %}
+
   {# The textarea's content is kept on one line deliberately: a textarea
      preserves its own whitespace, so indenting it would arrive as blanks in
      front of the question. #}
@@ -106,14 +116,7 @@
     </ul>
   {% endif %}
 
-  {# Stated up front rather than on refusal. Discovering a limit by hitting it
-     reads as the product breaking; knowing it in advance reads as a free tier. #}
-  {% if agent_daily_limit %}
-    <p class="chat-note">
-      {{ agent_daily_limit }} question{{ '' if agent_daily_limit == 1 else 's' }} a day
-      {%- if not is_authenticated %} — <a href="{{ url_for('auth.signup') }}">sign up</a> for more{% endif %}.
-    </p>
-  {% endif %}
+</div>
 {% else %}
   <p class="chat-note">
     <a href="{{ url_for('auth.login') }}">Log in</a> to ask research questions.

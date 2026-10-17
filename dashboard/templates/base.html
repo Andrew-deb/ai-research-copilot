@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="{% block viewport %}width=device-width, initial-scale=1{% endblock %}">
   <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/alfred/favicon-magnifier.png') }}">
   <title>{% block title %}Alfred{% endblock %}</title>
 
@@ -675,9 +675,9 @@
       {% block content %}{% endblock %}
     </main>
 
-    <footer class="app-footer">
+    {% block app_footer %}<footer class="app-footer">
       Alfred — Your research assistant
-    </footer>
+    </footer>{% endblock %}
   </div>
 </div>
 
