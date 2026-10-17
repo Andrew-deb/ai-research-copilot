@@ -1,0 +1,34 @@
+/* Exercise the shared rail and finite file-card renderer together. */
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
+const {JSDOM}=require('jsdom');
+const dom=new JSDOM(`<main class="chat-page"><div class="chat-stage"><form id="chat-composer"><textarea id="chat-input"></textarea><button class="composer-send"></button><button class="composer-stop"></button></form></div></main>`,{url:'https://alfred.example/chat',runScripts:'outside-only'});
+const w=dom.window,d=w.document;
+w.matchMedia=()=>({matches:true});w.HTMLElement.prototype.scrollIntoView=function(){};
+w.eval(fs.readFileSync(path.join(__dirname,'../dashboard/static/js/chat.js'),'utf8'));
+w.eval(fs.readFileSync(path.join(__dirname,'../dashboard/static/js/wick_mentions.js'),'utf8'));
+const files=w.ChatResources.files(false);
+assert.equal(d.querySelectorAll('.chat-rail').length,1);
+assert.equal(d.querySelectorAll('.chat-rail-launcher').length,1);
+w.ChatResources.files(true);
+assert.equal(files.hidden,false);assert.equal(d.querySelector('.chat-rail-body').hidden,true);
+assert.equal(d.querySelector('.chat-rail').classList.contains('is-open'),true);
+d.querySelector('#resource-tab-sources').click();
+assert.equal(files.hidden,true);assert.equal(d.querySelector('.chat-rail-body').hidden,false);
+d.querySelector('#resource-tab-sources').focus();
+d.querySelector('.resource-tabs').dispatchEvent(new w.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));
+assert.equal(files.hidden,false);assert.equal(d.activeElement.id,'resource-tab-files');
+d.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Escape'}));
+assert.equal(d.querySelector('.chat-rail').classList.contains('is-open'),false);
+d.querySelector('.chat-rail-launcher').click(); // keyboard-equivalent click, not pointer drag
+assert.equal(d.querySelector('.chat-rail').classList.contains('is-open'),true);
+const ids=['00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000002'];
+const bubble=d.createElement('div');let opened=[];w.PrivateUploads={open:id=>opened.push(id)};
+w.WickMentions.render(bubble,`Compare [▤one.pdf](/uploads/${ids[0]}/download) with [▤two.txt](/uploads/${ids[1]}/download)`);
+assert.equal(bubble.firstChild.className,'message-files');assert.equal(bubble.querySelectorAll('.message-file-card').length,2);
+[...bubble.querySelectorAll('.message-file-card')].forEach(card=>card.click());
+assert.deepEqual(opened,ids);
+const unavailable=d.createElement('div');
+w.WickMentions.render(unavailable,`[▤one.pdf](/uploads/${ids[0]}/download)`,[{document_id:ids[0],available:false}]);
+assert.equal(unavailable.querySelector('a'),null);assert.ok(unavailable.textContent.includes('unavailable'));
+assert.equal(d.querySelectorAll('.chat-rail').length,1);
+console.log('Shared resource rail: one drawer, tabs, keyboard launch, distinct file references and unavailable history passed.');w.close();

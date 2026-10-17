@@ -248,3 +248,30 @@ regenerate a read-only response. Ask Wick for a note/goal, decline once and veri
 no asset was created, then approve a fresh task and verify its saved content and
 provenance. Confirm unavailable/foreign files fail without exposing bytes and
 approval continuation does not consume another daily question.
+
+## Conversation Files panel refinement
+
+Uploads now select themselves in the draft. File cards above the composer represent
+only that draft's selected references; sending moves their visible representation
+into the user message and clears the composer. Removing a draft card deselects it;
+it does not delete storage. The conversation's Files tab remains the place to find
+previous uploads, including their processing state and expiry. Ready files also
+appear in Wick's `@` Assets picker within that conversation. These are temporary,
+owner-bound attachments, not global or retained workspace document assets.
+
+Files and Sources share one resource rail. Desktop uses its existing collapsible
+column; mobile uses one drawer and one draggable launcher, with keyboard activation
+and Sources/Files tabs. A file opens a detail/preview view within Files. TXT/Markdown
+are escaped text, bounded to 20,000 preview characters. PDFs use an authenticated
+inline PDF response with private/no-store caching, nosniff and a restrictive CSP;
+the browser's PDF renderer provides viewing controls. An extracted-text link is
+available when the browser cannot render the PDF. Citation page links select the
+corresponding PDF page. Previewing alone grants no model access or write permission.
+Download, retry, reference and confirmed deletion are available as labelled icons.
+
+Rollout: redeploy Render only. No schema, environment, Azure access or MCP catalog
+changes. Check desktop/mobile tabs, upload -> Ready -> send, empty composer after
+sending, file cards after reopening history, `@` reuse, PDF/text preview, expiry,
+original download and confirmed deletion. Native PDF viewing support varies by
+browser; use the extracted-text fallback if unavailable. Existing seven-day expiry
+and three-active-file limit remain unchanged.

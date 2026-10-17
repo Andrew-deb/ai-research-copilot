@@ -538,3 +538,27 @@ def test_upload_lease_is_released_when_provider_write_fails(
             FileStorage(io.BytesIO(b"Private"), "notes.txt"),
         )
     assert release.call_count == 1 and release.call_args.args[0] == owner["user_id"]
+
+
+def test_pdf_preview_reuses_owned_download_boundary(client, monkeypatch, enabled):
+    doc = str(uuid4())
+    download = Mock(return_value=({'filename': 'paper.pdf'}, b'%PDF-1.7\nexample'))
+    monkeypatch.setattr(service, 'download', download)
+    response = client.get('/uploads/' + doc + '/preview')
+    assert response.status_code == 200
+    assert response.mimetype == 'application/pdf'
+    assert response.headers['Content-Disposition'].startswith('inline;')
+    assert response.headers['Cache-Control'] == 'private, no-store'
+    assert response.headers['X-Content-Type-Options'] == 'nosniff'
+    assert "frame-ancestors 'self'" in response.headers['Content-Security-Policy']
+    assert download.call_args.args[1] == doc
+
+
+def test_pdf_preview_refuses_text_disguised_as_pdf(client, monkeypatch, enabled):
+    monkeypatch.setattr(service, 'download', lambda *args: ({'filename': 'bad.pdf'}, b'<script>bad</script>'))
+    assert client.get('/uploads/' + str(uuid4()) + '/preview').status_code == 400
+
+
+def test_pdf_preview_propagates_owner_refusal(client, monkeypatch, enabled):
+    monkeypatch.setattr(service, 'download', Mock(side_effect=UploadNotFoundError('Unavailable')))
+    assert client.get('/uploads/' + str(uuid4()) + '/preview').status_code == 404

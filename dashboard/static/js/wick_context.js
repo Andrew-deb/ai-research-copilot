@@ -71,6 +71,13 @@
       .then(function (response) { if (!response.ok) { throw new Error(); } return response.json(); })
       .then(function (body) {
         if (current !== generation) { return; }
+        if(!append && category === "assets" && !activeKind && window.PrivateUploads){
+          window.PrivateUploads.assets(activeQuery).forEach(function(item){
+            var button=document.createElement("button");button.type="button";button.className="wick-asset-result";
+            button.textContent="▤ "+item.label+" · Chat file";
+            button.addEventListener("click",function(){editor.insert(item,shortcutRange);closePicker();input.focus();});results.append(button);
+          });
+        }
         body.items.forEach(function (item) {
           var button = document.createElement("button"); button.type = "button"; button.className = "wick-asset-result";
           var label = document.createElement("strong"); label.textContent = item.label;
@@ -84,7 +91,7 @@
           }); results.appendChild(button);
         });
         next = body.next_cursor; more.hidden = !next;
-        notice.textContent = body.items.length ? "Select an item to add it." : "No matching accessible assets.";
+        notice.textContent = results.childNodes.length ? "Select an item to add it." : "No matching accessible assets.";
       }).catch(function (error) { if (error.name !== "AbortError") { notice.textContent = "Could not load assets. Try again."; } });
   }
   function closePicker() {

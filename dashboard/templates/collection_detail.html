@@ -53,7 +53,7 @@
           {% if editable %}
             <form method="post" action="{{ url_for('collections.remove_paper', collection_id=collection.collection_id, paper_id=paper.paper_id) }}">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <button type="submit" class="btn btn-ghost btn-danger" title="Remove from collection">Remove</button>
+              <button type="submit" class="btn btn-ghost btn-danger" title="Remove from collection" aria-label="Remove from collection">{{ icon('trash') }}</button>
             </form>
           {% endif %}
         </li>

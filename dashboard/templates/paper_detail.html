@@ -94,7 +94,7 @@
            nothing ever populated it — so the page was describing a feature that did
            not exist. It says what the note actually does instead. #}
         <textarea name="note_text" rows="3" required placeholder="Your annotation — searchable from your notes, and Markdown works."></textarea>
-        <button type="submit" class="btn btn-primary">Save note</button>
+        <button type="submit" class="btn btn-primary" aria-label="Save note" title="Save note">{{ icon('check') }}</button>
       </form>
     {% else %}
       <p class="locked-note">

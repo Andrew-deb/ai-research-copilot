@@ -265,8 +265,8 @@
       <span class="note-words" data-word-count-for="page-pad-body">0 words</span>
       <span style="display: flex; gap: 8px;">
         {# Nothing is written until you choose. #}
-        <button type="button" class="btn btn-ghost btn-sm" id="page-pad-discard">Discard</button>
-        <button type="submit" class="btn btn-primary btn-sm">Save note</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="page-pad-discard" title="Discard changes" aria-label="Discard changes">{{ icon('close') }}</button>
+        <button type="submit" class="btn btn-primary btn-sm" aria-label="Save note" title="Save note">{{ icon('check') }}</button>
       </span>
     </div>
   </form>
