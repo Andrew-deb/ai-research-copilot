@@ -3172,3 +3172,7 @@ kbd {
   border-radius: 2px;
   flex: none;
 }
+
+/* Icon-only actions retain their full accessible names. */
+.sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0; }
+button[aria-label]:focus-visible,a[aria-label]:focus-visible { outline:2px solid var(--brand); outline-offset:3px; }
