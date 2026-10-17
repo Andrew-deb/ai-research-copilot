@@ -115,7 +115,13 @@
     let match;while((match=pattern.exec(prompt.value)))if(!ids.includes(match[1]))ids.push(match[1]);
     return ids;
   }
-  window.PrivateUploads={label:function(id){const file=currentFiles.find(item=>item.document_id===id);return file ? file.filename : null;},references:selectedIds,open:function(id,pageNumber){const file=currentFiles.find(item=>item.document_id===id);if(file)showDetails(file,pageNumber);else openLibrary();},
+  window.PrivateUploads={label:function(id){const file=currentFiles.find(item=>item.document_id===id);return file ? file.filename : null;},references:selectedIds,open:async function(id,pageNumber){
+      if(resources)window.ChatResources.files(true);
+      let file=currentFiles.find(item=>item.document_id===id);
+      if(!file){await refresh();file=currentFiles.find(item=>item.document_id===id);}
+      if(file)showDetails(file,pageNumber);
+      else {openLibrary();library.append(element("p","upload-details-error","This file is unavailable. It may have expired or been deleted."));}
+    },
     assets:function(query){return currentFiles.filter(file=>file.status==="ready" && file.filename.toLowerCase().includes((query || "").toLowerCase())).map(file=>({kind:"attachment",id:file.document_id,label:file.filename}));},insert:insertReference};
   function insertReference(file) {
     const item={kind:"attachment",id:file.document_id,label:file.filename};
@@ -211,7 +217,7 @@
   document.addEventListener("wick:conversation",()=>{selected=null;previewGeneration++;currentFiles=[];refresh();});
   document.addEventListener("click",event=>{const link=event.target.closest('a[href^="/uploads/"]');if(event.defaultPrevented || !link || !resources || resources.contains(link) || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey)return;
     const match=/^\/uploads\/([0-9a-f-]{36})\/(download|pages\/\d+)$/.exec(link.getAttribute("href"));
-    if(match && currentFiles.some(file=>file.document_id===match[1])){event.preventDefault();window.PrivateUploads.open(match[1],match[2].startsWith("pages/") ? Number(match[2].split("/")[1]) : 1);}
+    if(match){event.preventDefault();window.PrivateUploads.open(match[1],match[2].startsWith("pages/") ? Number(match[2].split("/")[1]) : 1);}
   });
   window.addEventListener("pagehide",()=>{clearTimeout(timer);generation++;});
   const picker=document.getElementById("chat-mode");

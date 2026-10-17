@@ -29,7 +29,7 @@
     var tokens = items.map(token).filter(function (value) { return value && text.indexOf(value) < 0; });
     return text + (tokens.length ? "\n\n" + tokens.join(" ") : "");
   }
-  function render(container, text, attachments) {
+  function render(container, text, attachments, options) {
     var pattern = /\[([@#▤][^\]\n]{1,102})\]\((\/[^\s)]+)\)/g;
     var match, cursor = 0;
     var cards=null;
@@ -42,9 +42,9 @@
       var link = document.createElement(unavailable ? "span" : "a");
       if(!unavailable)link.href=match[2];link.textContent=match[1]+(unavailable ? " (unavailable)" : "");
       link.className = "wick-prompt-reference"; link.target = "_blank"; link.rel = "noopener";
-      if(referenced && referenced.kind === "attachment") {
+      if(referenced && referenced.kind === "attachment" && !(options && options.inline)) {
         if(!cards){cards=document.createElement("div");cards.className="message-files";}
-        link.classList.add("message-file-card");link.removeAttribute("target");if(!unavailable)link.dataset.documentId=referenced.id;
+        link.classList.add("message-file-card");link.removeAttribute("target");if(!unavailable){link.dataset.documentId=referenced.id;link.href="/uploads/"+referenced.id+"/pages/1";}
         link.addEventListener("click",function(event){
           if(window.PrivateUploads && this.dataset.documentId){event.preventDefault();window.PrivateUploads.open(this.dataset.documentId);}
         });
