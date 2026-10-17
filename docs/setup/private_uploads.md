@@ -3,7 +3,7 @@
 Increment B implements private PDF, TXT and Markdown files in Research and Wick.
 Original bytes and versioned extracted text live in Azure Blob. Lakebase stores
 ownership, identifiers, hashes, reservation sizes, expiry and durable jobs. Files
-do not enter the global paper corpus. Agent reading and citations are Increment C.
+do not enter the global paper corpus. Agent reading and citations are implemented by Increment C below.
 
 ## Code boundaries
 
@@ -145,8 +145,7 @@ to the Azure data-protection policy configured above.
 7. Delete a file; download becomes unavailable immediately, then cleanup removes
    both objects. Test expiry and interruption recovery in a controlled environment.
 8. Verify Research/Wick text-only chat, mode switching, context mentions and existing
-   permission prompts still work. Files are stored privately but agents cannot read
-   them yet; the UI states that explicitly.
+   permission prompts still work. Files are read by agents only when explicitly referenced in the current prompt.
 
 Cloud credentials, actual permissions, latency, migrations and cleanup need live
 acceptance after setup. Mocked/local tests do not prove Azure authorization.
@@ -196,3 +195,56 @@ by these controls. File-content editing needs its own supported mutation contrac
 The UI clears completed upload notifications so Ready cards do not retain a
 contradictory queued message. This is a frontend-only change; redeploy Render,
 with no migration or Databricks redeployment.
+
+## Increment C: selected-file grounding
+
+After a file reaches Ready, choose **Use in prompt** on its card. A clickable
+reference is inserted at the current caret position in the shared inline editor for Research and Wick. Removing that reference only deselects it; deleting the stored
+file uses the separate confirmed delete action. Sending a message selects only
+the IDs in its inline references, not every file in the conversation. Uploading
+alone does not send document text to the model.
+
+The Render orchestration layer offers `read_attached_document` only for selected
+attachments and signed-in upload-capable users. This is a local model capability,
+not an MCP registration. It reuses the pure shared `document_passages` selector;
+Render retains Azure credentials, ownership checks and bounded storage reads.
+Neither MCP App needs Azure credentials or a catalog change. Research and Wick
+keep separate prompts and their existing deployed tool sets.
+
+Each read verifies owner, conversation association, Ready/unexpired state,
+extraction hash and version; deletion/expiry is checked again after storage I/O.
+Passages use real extracted page numbers and offsets. Lexical selection returns
+at most four 1,800-character windows per tool call; JSON serialization is also
+bounded without cutting an invalid JSON fragment. A page/query can narrow a
+subsequent read. Figures, missing OCR and extraction gaps are not inferred.
+No embeddings, vector migration or paid model calls are needed to process files.
+Normal agent questions still use the configured LLM and existing request/tool
+budgets; live cloud/model acceptance must be performed separately.
+
+Research/Wick citations use document/page source IDs only after successful reads.
+Their authorized links open bounded extracted-page previews with escaped text and
+private/no-store responses. IDs invented by the model are not resolved as sources.
+History retains selected IDs/labels in the user message's existing usage JSON;
+no schema migration is necessary. Regeneration preserves its original selection,
+edits may remove references, and reopened history labels expired/deleted sources
+unavailable. Stored answers and explicitly created notes remain conversation or
+workspace records; source-file expiry does not erase those user-created records.
+
+Wick can create notes or goals through its existing tools. Read-source links are
+included in the proposed note/goal fields before approval and remain in the
+saved content. Selection/read access grants no write approval. The existing
+checkpoint continuation and quota policy are reused; expiry is rechecked before
+resuming and before writes. Uploaded instructions never change identity, mode,
+permissions or tool policy. Uploads cannot be inserted as paper IDs in collections;
+retained document assets, @ document search, collection membership and indexing
+remain Increment D.
+
+Rollout: merge the Increment C PR and redeploy Render only. Keep the existing
+upload flags/configuration and migration 29. No Databricks redeployment, new OAuth
+connection or Azure credential distribution is required. Confirm in both modes:
+Ready file -> Use in prompt -> grounded response -> filename/page citation ->
+source preview; refresh history, remove an attachment during prompt edit, and
+regenerate a read-only response. Ask Wick for a note/goal, decline once and verify
+no asset was created, then approve a fresh task and verify its saved content and
+provenance. Confirm unavailable/foreign files fail without exposing bytes and
+approval continuation does not consume another daily question.
