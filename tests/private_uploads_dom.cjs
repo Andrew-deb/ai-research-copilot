@@ -55,6 +55,18 @@ const settle=()=>new Promise(resolve=>setTimeout(resolve,0));
  assert.equal(resources.querySelector('pre').textContent,'<script>unsafe</script>');
  assert.equal(resources.querySelector('script'),null);
  assert.equal(resources.querySelector('[aria-label="Download original"]').getAttribute('href'),'/uploads/'+file.document_id+'/download');
+ const toolbar=resources.querySelector('.file-preview-toolbar');
+ assert.equal(toolbar.children.length,5); // title + download, expand, more, close
+ assert.equal(toolbar.querySelector('.file-preview-menu .private-files-note').textContent.includes('Ready'),true);
+ assert.equal(resources.querySelector('.file-preview-content > a'),null);
+ assert.equal(resources.querySelector('details').open,false);
+ resources.querySelector('[aria-label="Back to files"]').click();
+ assert.ok(resources.querySelector('.conversation-file'));
+ file.filename='A deliberately long document filename.pdf';
+ w.PrivateUploads.open(file.document_id);
+ assert.match(resources.querySelector('iframe').getAttribute('src'),/view=FitH&zoom=page-width&toolbar=0&navpanes=0/);
+ assert.ok(resources.querySelector('.file-preview-menu a').href.endsWith('/pages/1'));
+ assert.equal(resources.querySelector('.file-preview-content').children.length,1);
  const picker=d.getElementById('chat-mode');picker.value='wick';picker.dispatchEvent(new w.Event('change'));
  assert.equal(d.querySelector('[data-context-category]').hidden,false);
  const before=requests.length;

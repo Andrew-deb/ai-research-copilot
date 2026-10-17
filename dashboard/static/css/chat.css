@@ -1066,8 +1066,6 @@
 .conversation-file { display:flex; flex-wrap:wrap; align-items:center; gap:10px; width:100%; padding:12px; margin:10px 0; border:1px solid var(--border); border-radius:12px; background:var(--surface); color:var(--text); font:inherit; text-align:left; cursor:pointer; }
 .conversation-file .private-file-name { flex:1; }
 .conversation-file small { width:100%; }
-.file-preview-toolbar { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
-.file-preview-toolbar h3 { flex:1; min-width:80px; }
 .file-icon-action,.files-panel-button { display:inline-grid; place-items:center; min-width:36px; min-height:36px; padding:7px; border:1px solid var(--border); border-radius:8px; background:transparent; color:var(--text); cursor:pointer; text-decoration:none; }
 .file-icon-action svg { width:18px; height:18px; }
 .file-pdf-preview { width:100%; height: min(64vh,700px); border:1px solid var(--border); border-radius:10px; background:white; }
@@ -1109,11 +1107,8 @@
 .message-file-info small { color:var(--text-muted); font-size:11px; }
 .has-file-preview .chat-files-body { overflow:hidden; padding-bottom:0; }
 .has-file-preview .conversation-file-list { display:flex; flex-direction:column; overflow:hidden; }
-.file-preview-toolbar { flex:none; flex-wrap:wrap; padding:8px 0; gap:6px; }
-.file-preview-toolbar h3 { min-width:0; flex:1 1 calc(100% - 50px); white-space:nowrap; text-overflow:ellipsis; overflow:hidden; font-weight:500; }
 .file-preview-content { flex:1; min-height:0; display:flex; flex-direction:column; overflow:auto; background:var(--surface-2); border-radius:10px; }
 .file-pdf-preview { display:block; flex:1; min-height:200px; height:100%; border:0; border-radius:0; }
-.file-preview-content > a { padding:8px; flex:none; font-size:11px; }
 .file-preview-content .upload-text-preview { max-height:none; padding:16px; margin:0; line-height:1.7; }
 .resource-resize { position:absolute; left:-7px; top:0; bottom:0; width:12px; cursor:col-resize; touch-action:none; z-index:2; }
 .resource-resize:hover::after,.resource-resize:focus-visible::after { content:""; position:absolute; top:0; bottom:0; left:5px; width:2px; background:var(--brand); }
@@ -1129,4 +1124,30 @@
  .chat-rail { max-width:100vw; }
  .resource-resize { display:none; }
  .chat-rail.is-expanded { inset:0; border:0; border-radius:0; padding: max(8px,env(safe-area-inset-top)) 12px max(8px,env(safe-area-inset-bottom)); }
+}
+
+/* Preview is a document surface: one toolbar, then all remaining space. */
+.chat-rail.has-file-preview { padding:0; overflow:visible; }
+.chat-rail.has-file-preview > .chat-rail-toggle,
+.chat-rail.has-file-preview > .resource-tabs { display:none; }
+.chat-rail.has-file-preview > .chat-files-body { padding:0; overflow:hidden; }
+.has-file-preview .conversation-file-list { height:100%; min-height:0; }
+.has-file-preview .file-preview-toolbar { display:flex; align-items:center; flex-wrap:nowrap; gap:2px; height:46px; min-height:46px; box-sizing:border-box; padding:5px 8px; border-bottom:1px solid var(--border); background:var(--surface); position:relative; z-index:3; }
+.has-file-preview .file-preview-toolbar h3 { flex:1 1 0; min-width:0; margin:0 6px 0 2px; font-size:12px; line-height:1.4; font-weight:400; }
+.file-preview-toolbar > .file-icon-action,.file-preview-more > summary { min-width:30px; min-height:30px; width:30px; height:30px; padding:5px; border:0; border-radius:6px; flex:none; box-sizing:border-box; }
+.file-preview-toolbar .file-icon-action:hover { background:var(--surface-2); }
+.file-preview-more { flex:none; position:relative; }
+.file-preview-more > summary { list-style:none; cursor:pointer; font-size:20px; }
+.file-preview-more > summary::-webkit-details-marker { display:none; }
+.file-preview-menu { position:absolute; right:0; top:calc(100% + 8px); width: min(250px,70vw); padding:12px; background:var(--surface); border:1px solid var(--border-strong); border-radius:10px; box-shadow:var(--shadow); }
+.file-preview-menu .private-files-note { margin:0 0 10px; }
+.file-preview-menu > a { display:block; margin-top:10px; font-size:12px; }
+.has-file-preview .file-preview-content { flex:1 1 0; height:0; min-height:0; border-radius:0; overflow:auto; }
+.has-file-preview .file-pdf-preview { flex:1 1 0; width:100%; height:100%; min-height:0; margin:0; }
+.chat-rail.has-file-preview.is-expanded { inset:0; width:auto; height:100dvh; max-height:100dvh; padding:0; border:0; border-radius:0; }
+.upload-preview-message { padding:16px; font-size:13px; }
+@media(max-width:1100px) {
+ .chat-rail.has-file-preview.is-open { width:min(100vw,520px); max-width:100vw; }
+ .chat-rail.has-file-preview.is-expanded { width:100vw; max-width:100vw; }
+ .chat-rail.has-file-preview .file-preview-toolbar { padding-top:max(5px,env(safe-area-inset-top)); height:calc(46px + env(safe-area-inset-top,0px)); }
 }

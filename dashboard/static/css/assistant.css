@@ -24,3 +24,4 @@
   .assistant-embedded .chat-rail.is-open { display: flex; width: 100%; }
 }
 .assistant-embedded .chat-rail.is-expanded { display:flex; width:auto; }
+.assistant-embedded .chat-rail.has-file-preview.is-expanded { width:100%; padding:0; }

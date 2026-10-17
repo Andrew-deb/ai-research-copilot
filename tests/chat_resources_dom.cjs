@@ -18,6 +18,11 @@ assert.equal(handle.getAttribute('aria-valuenow'),'280');
 w.ChatResources.preview(true);w.ChatResources.expand(true);
 assert.equal(rail.classList.contains('is-expanded'),true);
 w.ChatResources.preview(false);assert.equal(rail.classList.contains('is-expanded'),false);
+const previewHeader=d.createElement('div');previewHeader.className='file-preview-toolbar';files.append(previewHeader);
+w.ChatResources.files(true);assert.equal(rail.classList.contains('has-file-preview'),true);
+w.ChatResources.sources();assert.equal(rail.classList.contains('has-file-preview'),false);
+w.ChatResources.files(true);assert.equal(rail.classList.contains('has-file-preview'),true);
+previewHeader.remove();w.ChatResources.preview(false);
 
 assert.equal(d.querySelectorAll('.chat-rail').length,1);
 assert.equal(d.querySelectorAll('.chat-rail-launcher').length,1);

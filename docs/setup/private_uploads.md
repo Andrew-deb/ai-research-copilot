@@ -294,3 +294,14 @@ archive names. Output spools to temporary disk after 4 MiB and is closed with th
 response. An unavailable file fails the export rather than silently returning a
 partial ZIP. This does not change retention or permit cross-conversation exports.
 Render redeployment only; no migration, new variables or MCP redeployment.
+
+### Compact preview surface
+
+While a document is open, the rail heading and Sources/Files tabs give way to one
+46px toolbar: ellipsized filename, download, expand/restore, more actions and close.
+Closing returns to the file list and restores the tabs. Reference, delete, retry,
+status/expiry and extracted-text fallback live in the more-actions menu instead of
+permanent toolbar/footer rows. The viewer takes the remaining height, and expanded
+preview fills the chat viewport on desktop/mobile. PDF URLs request fit-to-width
+and hide native navigation/toolbars where the browser supports those parameters;
+PDF rendering remains browser-provided. No backend or deployment setting changes.
