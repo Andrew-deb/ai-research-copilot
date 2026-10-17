@@ -275,3 +275,22 @@ sending, file cards after reopening history, `@` reuse, PDF/text preview, expiry
 original download and confirmed deletion. Native PDF viewing support varies by
 browser; use the extracted-text fallback if unavailable. Existing seven-day expiry
 and three-active-file limit remain unchanged.
+
+### File panel layout and archive export
+
+The resource rail now has an intrinsic-width guard, a constrained desktop width
+and a keyboard/pointer resize separator. Long filenames use ellipsis on compact
+message cards outside the prompt bubble and in the preview header. Files uses a
+tile grid, with confirmed delete actions on hover/focus and visible touch controls.
+Preview content fills the remaining panel height; expand/restore works on desktop
+and mobile, and Escape restores an expanded preview. The mobile draggable launcher
+and Sources/Files tabs remain shared.
+
+Download all calls an authenticated conversation ZIP endpoint. A dedicated
+`upload_archive` service checks the owned conversation, excludes expired/deleting
+files, enforces the existing three-file and per-file size bounds, and reuses the
+owned/hash-verified download service for every member. It sanitizes and deduplicates
+archive names. Output spools to temporary disk after 4 MiB and is closed with the
+response. An unavailable file fails the export rather than silently returning a
+partial ZIP. This does not change retention or permit cross-conversation exports.
+Render redeployment only; no migration, new variables or MCP redeployment.

@@ -53,6 +53,23 @@ def list_files(conversation_id):
     )
 
 
+@bp.get("/uploads/conversations/<uuid:conversation_id>/download")
+@require_capability(UPLOADS_WRITE)
+def download_all(conversation_id):
+    from services import upload_archive
+    output = upload_archive.build(require_user_id(), str(conversation_id))
+    try:
+        response = send_file(output, mimetype="application/zip", as_attachment=True,
+                             download_name="conversation-files.zip", max_age=0)
+    except Exception:
+        output.close()
+        raise
+    response.call_on_close(output.close)
+    response.headers["Cache-Control"] = "private, no-store"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
+
+
 @bp.get("/uploads/<uuid:document_id>/download")
 @require_capability(UPLOADS_WRITE)
 def download_file(document_id):
