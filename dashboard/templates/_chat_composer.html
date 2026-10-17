@@ -20,6 +20,7 @@
      preserves its own whitespace, so indenting it would arrive as blanks in
      front of the question. #}
   <form class="composer {{ 'composer-with-mode' if chat_mode or wick_panel }}" id="chat-composer" autocomplete="off">
+    {% include "_private_uploads.html" %}
     <textarea class="composer-input" id="chat-input" rows="1"
               placeholder="{{ composer_placeholder | default('Ask Wick about your workspace…' if chat_mode == 'wick' else 'Ask a research question…') }}"
               aria-label="{{ 'Ask Wick' if chat_mode == 'wick' else 'Ask a research question' }}">{{ initial_prompt | default('') }}</textarea>
@@ -88,7 +89,7 @@
     <button class="composer-stop" type="button" hidden aria-label="Stop agent run">Stop</button>
     {% if chat_mode or wick_panel %}</div>{% endif %}
   </form>
-  {% include "_private_uploads.html" %}
+  {% include "_private_upload_tools.html" %}
 
 
   {# Below the composer, not above it: these are suggestions for an empty input,

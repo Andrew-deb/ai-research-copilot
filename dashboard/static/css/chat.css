@@ -1018,10 +1018,37 @@
 #wick-permission-picker .mode-pick-menu { left: 0; right: auto; max-width: calc(100vw - 48px); }
 
 /* Private file controls remain outside the editable prompt, without another box. */
-.private-files { flex-basis: 100%; min-width: 0; font-size: .8rem; }
+/* File cards sit above the prompt without consuming the composer toolbar. */
+.composer:has(.private-files) { flex-wrap: wrap; }
+.composer-with-mode .private-files { flex-basis: auto; }
+.private-files { flex-basis: 100%; width: 100%; min-width: 0; text-align: left; font-size: .8rem; }
 .private-files:has(#upload-list:empty):has(#upload-status:empty) { display: none; }
-.private-files-note { color: var(--text-muted); margin: .4rem 0; }
-.private-file { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; padding: .25rem 0; }
-.private-file > span:first-child { overflow-wrap: anywhere; }
-.private-file button { border: 0; background: transparent; color: var(--text-muted); cursor: pointer; font: inherit; padding: .2rem; }
-.private-file a { font: inherit; }
+#upload-list { display: flex; flex-wrap: wrap; gap: 10px; padding: 4px 3px 8px; }
+#upload-list:empty, #upload-status:empty { display: none; }
+#upload-status { margin: 4px 0; color: var(--text-muted); overflow-wrap: anywhere; }
+.private-file { position: relative; width: min(230px, 100%); min-width: 0; }
+.private-file-open { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 72px;
+  padding: 12px; border: 1px solid var(--border); border-radius: 14px;
+  background: var(--surface); color: var(--text); text-align: left; cursor: pointer; font: inherit; }
+.private-file-open:hover { border-color: var(--border-strong); }
+.private-file-icon { display: grid; place-items: center; flex: none; width: 40px; height: 46px;
+  border: 1px solid var(--border-strong); border-radius: 6px; color: var(--text-muted); font-size: 10px; font-weight: 600; }
+.private-file-info { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.private-file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.private-file-state { color: var(--text-muted); font-size: 11px; }
+.private-file-remove { position: absolute; top: -5px; right: -5px; display: grid; place-items: center;
+  width: 24px; height: 24px; padding: 0; border: 1px solid var(--border-strong); border-radius: 50%;
+  background: var(--surface); color: var(--text); font-size: 18px; cursor: pointer; opacity: 0; }
+.private-file:hover .private-file-remove, .private-file:focus-within .private-file-remove { opacity: 1; }
+.private-file-open:focus-visible, .private-file-remove:focus-visible { outline: 2px solid var(--brand); outline-offset: 3px; }
+@media (hover: none) { .private-file-remove { opacity: 1; } }
+.upload-details { width: min(560px, calc(100vw - 32px)); max-height: 80vh; overflow: auto;
+  padding: 22px; border: 1px solid var(--border-strong); border-radius: 18px; background: var(--surface); color: var(--text); }
+.upload-details::backdrop { background: rgb(0 0 0 / .55); }
+.upload-details-header { display: flex; align-items: flex-start; gap: 12px; justify-content: space-between; }
+.upload-details-header h2 { margin: 0; font-size: 16px; overflow-wrap: anywhere; }
+.upload-details button { font: inherit; color: var(--text); background: transparent; border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; cursor: pointer; }
+.upload-details-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 18px; }
+.upload-details-meta, .private-files-note { color: var(--text-muted); font-size: 12px; line-height: 1.6; }
+.upload-text-preview { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 40vh; overflow: auto; font-size: 12px; }
+.upload-details-error { font-size: 13px; }
