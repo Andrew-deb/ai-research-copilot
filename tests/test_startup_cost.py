@@ -196,6 +196,7 @@ def test_importing_config_does_not_reach_for_databricks():
     Run in a subprocess because the import is a one-time event: anything that
     already pulled the SDK in would mask the result.
     """
+    import os
     import subprocess
     import sys
     import textwrap
@@ -208,7 +209,21 @@ def test_importing_config_does_not_reach_for_databricks():
         print("LOADED" if "databricks.sdk" in sys.modules else "CLEAN")
         print("DATABASE_URL" if config.DATABASE_URL else "NO_DATABASE_URL")
     """)
+    # A fresh CI runner has no deployment secrets or developer .env file.
+    # Supply the premise of this test explicitly: every secret-backed setting
+    # is already available in the environment. Never use real credentials here.
+    environment = os.environ.copy()
+    environment.update({
+        "DATABASE_URL": "postgresql://test:test@localhost/test",
+        "HF_API_TOKEN": "test-hf-token",
+        "OPENROUTER_API_KEY": "test-openrouter-key",
+        "DATABRICKS_CLIENT_ID": "test-client-id",
+        "DATABRICKS_CLIENT_SECRET": "test-client-secret",
+        "GOOGLE_CLIENT_ID": "test-google-client-id",
+        "GOOGLE_CLIENT_SECRET": "test-google-client-secret",
+    })
     result = subprocess.run([sys.executable, "-I", "-c", probe],
+                            env=environment,
                             capture_output=True, text=True, timeout=180)
 
     assert result.returncode == 0, result.stderr[-800:]
