@@ -612,6 +612,37 @@ def increment_usage(scope: str, scope_id: str, metric: str) -> int:
     return int(row["count"]) if row else 1
 
 
+def spend_today() -> float:
+    """
+    Credits spent on AI operations since midnight, in USD.
+
+    The money half of the quota backstop. `usage_counters` counts allowance
+    consumed, which is a proxy; this reads what was actually charged, which is
+    the thing a runaway has to be bounded in.
+
+    TRAILING BY ONE OPERATION, by construction. Telemetry is written after an
+    operation finishes, because the cost is not known until the provider reports
+    it - so this can stop the next request but never the one that crossed the
+    line. That is the right trade for a backstop: the alternative is estimating
+    a cost before spending it, and an estimate is what the request ceilings
+    already are.
+
+    NULL rather than 0 is deliberate upstream (a free turn is not an unpriced
+    one), and COALESCE here turns the sum of an empty day into 0.0 rather than
+    None.
+
+    This runs on every metered call, so: the predicate is served by
+    idx_ai_operations_occurred, and it sums one day of rows, which the request
+    ceilings bound to a few hundred. It does not grow with the table.
+    """
+    rows = run_query("""
+        SELECT COALESCE(sum(estimated_cost_usd), 0) AS spent
+          FROM ai_operations
+         WHERE occurred_at >= date_trunc('day', now());
+    """)
+    return float(rows[0]["spent"]) if rows else 0.0
+
+
 def record_ai_operation(**fields) -> None:
     """
     Append one row to ai_operations — what a single AI operation cost.
