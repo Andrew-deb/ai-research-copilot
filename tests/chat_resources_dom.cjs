@@ -9,6 +9,9 @@ w.eval(fs.readFileSync(path.join(__dirname,'../dashboard/static/js/chat.js'),'ut
 w.eval(fs.readFileSync(path.join(__dirname,'../dashboard/static/js/wick_mentions.js'),'utf8'));
 const files=w.ChatResources.files(false);
 const rail=d.querySelector('.chat-rail'), handle=d.querySelector('.resource-resize');
+assert.equal(rail.hidden,true);assert.equal(d.querySelector('.chat-rail-launcher').hidden,true);
+w.ChatResources.files(true);assert.equal(rail.classList.contains('is-open'),false);
+w.ChatResources.setFileCount(1);assert.equal(rail.hidden,false);assert.equal(files.hidden,false);
 d.querySelector('.chat-with-rail').getBoundingClientRect=()=>({width:1200});
 assert.equal(rail.parentElement,d.body);
 assert.equal(d.querySelector('.chat-rail-scrim').parentElement,rail.parentElement);
@@ -69,4 +72,23 @@ assert.equal(rail.classList.contains('is-open'),false);
 mobile=true;w.dispatchEvent(new w.Event('resize'));
 assert.equal(rail.parentElement,d.body);
 assert.equal(d.querySelectorAll('.chat-rail').length,1);
+// Removing the last file hides an open drawer and releases its scroll lock.
+w.ChatResources.files(true);w.ChatResources.setFileCount(0);
+assert.equal(rail.hidden,true);assert.equal(rail.classList.contains('is-open'),false);
+assert.equal(d.body.classList.contains('rail-open'),false);
+assert.equal(d.querySelector('.chat-rail-scrim').hidden,true);
+assert.equal(d.querySelector('.chat-rail-launcher').hidden,true);
+w.ChatResources.files(false);assert.equal(rail.hidden,true);
 console.log('Shared resource rail: one drawer, tabs, keyboard launch, distinct file references and unavailable history passed.');w.close();
+
+// Reopening a sourced conversation keeps its rail when the file list is empty.
+const sourced=new JSDOM(`<main class="chat-page"><form id="chat-composer"><textarea id="chat-input"></textarea></form></main><script id="chat-history" type="application/json">[{"role":"assistant","content":"","sources":[{"paper_id":"paper-1","title":"A consulted paper"}]}]</script>`,{url:'https://alfred.example/chat',runScripts:'outside-only'});
+sourced.window.matchMedia=()=>({matches:false});
+sourced.window.HTMLElement.prototype.scrollIntoView=function(){};
+sourced.window.eval(fs.readFileSync(path.join(__dirname,'../dashboard/static/js/chat.js'),'utf8'));
+const api=sourced.window.ChatResources, sourcedRail=sourced.window.document.querySelector('.chat-rail');
+api.files(false);api.setFileCount(0);assert.equal(sourcedRail.hidden,false);
+assert.equal(sourced.window.document.querySelector('.chat-rail-body').hidden,false);
+api.setFileCount(1);api.files(true);api.setFileCount(0);
+assert.equal(sourcedRail.hidden,false);assert.equal(sourced.window.document.querySelector('.chat-rail-body').hidden,false);
+sourced.window.close();

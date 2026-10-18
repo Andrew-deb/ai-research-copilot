@@ -4,12 +4,13 @@ const {JSDOM}=require('jsdom');
 const dom=new JSDOM(`<meta name="csrf-token" content="token"><main class="chat-page" data-conversation=""><form id="chat-composer"><textarea id="chat-input">Keep my prompt</textarea><button id="chat-mode" value="research"></button></form>
 <button id="upload-choose"></button><input type="file" id="upload-input"><div id="private-files" data-max-mib="10"><div id="upload-list"></div><div id="upload-status"></div></div><button data-context-category="assets"></button><dialog id="upload-details"><h2 id="upload-details-title"></h2><button id="upload-details-close"></button><div id="upload-details-body"></div><div id="upload-details-actions"></div></dialog></main>`,{url:'https://alfred.example',runScripts:'outside-only'});
 const w=dom.window,d=w.document,requests=[],created=[];
+let returnedItems=null;
 const file={document_id:'00000000-0000-0000-0000-000000000001',filename:'<img src=x onerror=alert(1)>.txt',status:'ready'};
-const resources=d.createElement('aside');d.body.append(resources);w.ChatResources={files:()=>resources};
+const resources=d.createElement('aside');d.body.append(resources);let fileCount=0;w.ChatResources={files:()=>resources,setFileCount:count=>{fileCount=count;}};
 w.PdfPreview={mount:(host,url,page)=>{host.dataset.pdf=url;host.dataset.startPage=page;}};
 w.fetch=async(url,options)=>{
  requests.push([url,options]);
- return {ok:true,text:async()=>'<script>unsafe</script>',json:async()=>url==='/uploads/conversations'?{conversation_id:'owned-conversation'}:url==='/uploads'?file:{items:[file]}};
+ return {ok:true,text:async()=>'<script>unsafe</script>',json:async()=>url==='/uploads/conversations'?{conversation_id:'owned-conversation'}:url==='/uploads'?file:{items:returnedItems || [file]}};
 };
 w.HTMLDialogElement.prototype.showModal=function(){this.open=true;};
 w.HTMLDialogElement.prototype.close=function(){this.open=false;this.dispatchEvent(new w.Event('close'));};
@@ -19,10 +20,12 @@ w.eval(fs.readFileSync(path.resolve(__dirname,'../dashboard/static/js/uploads.js
 const settle=()=>new Promise(resolve=>setTimeout(resolve,0));
 (async()=>{
  assert.equal(d.querySelector('[data-context-category]').hidden,true);
+ assert.equal(fileCount,0);assert.equal(d.querySelector('.files-panel-button').hidden,true);
  const input=d.getElementById('upload-input');
  Object.defineProperty(input,'files',{value:[new w.File(['notes'],'notes.txt',{type:'text/plain'})],configurable:true});
  input.dispatchEvent(new w.Event('change'));await settle();await settle();
  assert.deepEqual(created,['owned-conversation']);
+ assert.equal(fileCount,1);assert.equal(d.querySelector('.files-panel-button').hidden,false);
  assert.equal(d.querySelector('.chat-page').dataset.conversation,'owned-conversation');
  assert.ok(d.getElementById('chat-input').value.includes('Keep my prompt'));
  assert.equal(requests[1][1].headers['X-CSRFToken'],'token');
@@ -83,6 +86,8 @@ const settle=()=>new Promise(resolve=>setTimeout(resolve,0));
  d.dispatchEvent(new w.Event('wick:conversation'));
  const preview=w.PrivateUploads.open(file.document_id);await preview;await settle();
  assert.ok(resources.querySelector('[data-pdf]'));
+ returnedItems=[];d.dispatchEvent(new w.Event('wick:conversation'));await settle();await settle();
+ assert.equal(fileCount,0);assert.equal(d.querySelector('.files-panel-button').hidden,true);
  w.dispatchEvent(new w.Event('pagehide'));dom.window.close();
  console.log('Private upload DOM: prompt preserved, conversation bound, filename safe, invalid file refused.');
 })().catch(error=>{console.error(error);dom.window.close();process.exitCode=1;});

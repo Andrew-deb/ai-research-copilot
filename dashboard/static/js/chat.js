@@ -468,6 +468,15 @@
     railLauncher.textContent = rail.dataset.hasFiles ? "Files & Sources" : "Sources" + (sourceCount ? " (" + sourceCount + ")" : "");
   }
 
+  // Mounting a tab is not evidence that the conversation contains resources.
+  function updateResourceVisibility() {
+    var empty=sourceCount===0 && !rail.dataset.hasFiles;
+    rail.hidden=empty;
+    rail.classList.toggle("is-empty",empty);
+    if(empty)setDrawer(false);
+    else updateLauncher();
+  }
+
   function ensureRail() {
     if (rail) { return rail; }
 
@@ -521,6 +530,7 @@
     // Hidden until it has something to show. A "Sources" heading over an empty
     // column is a promise the turn has not kept yet.
     rail.classList.add("is-empty");
+    rail.hidden=true;
 
     wrapper.appendChild(rail);
 
@@ -576,7 +586,7 @@
     filesBody.hidden = kind !== "files";
     sourceTab.setAttribute("aria-selected", String(kind === "sources"));
     filesTab.setAttribute("aria-selected", String(kind === "files"));
-    if(open) {
+    if(open && (sourceCount>0 || rail.dataset.hasFiles)) {
       if(window.matchMedia("(max-width: 1100px)").matches) setDrawer(true);
       else expandRail();
     }
@@ -606,7 +616,15 @@
     });
   }
   window.ChatResources={
-    files:function(open){ensureResources();rail.dataset.hasFiles="true";rail.classList.remove("is-empty");updateLauncher();if(open)selectResource("files",true);return filesBody;},
+    files:function(open){ensureResources();if(open)selectResource("files",true);return filesBody;},
+    setFileCount:function(count){
+      ensureResources();
+      if(count>0)rail.dataset.hasFiles="true";
+      else delete rail.dataset.hasFiles;
+      if(count>0 && sourceCount===0)selectResource("files",false);
+      else if(!count && sourceCount>0)selectResource("sources",false);
+      updateResourceVisibility();
+    },
     sources:function(){selectResource("sources",true);},
     preview:function(value){ensureResources();if(resourceGeometry)resourceGeometry.preview(value);},
     expand:function(value){ensureResources();if(resourceGeometry)resourceGeometry.expand(value);}
@@ -702,9 +720,8 @@
 
     var body = railBody();
     body.appendChild(group);
-    rail.classList.remove("is-empty");
-    sourceCount += cited.length || consulted.length;
-    updateLauncher();
+    sourceCount += cited.length + consulted.length;
+    updateResourceVisibility();
     return group;
   }
 
