@@ -70,12 +70,13 @@ def populate_render(destination: Path) -> None:
     for name in ("middleware", "repositories", "routes", "services"):
         copy_package(dashboard / name, destination / name)
     # Only tracked product asset formats, never an arbitrary recursive copy.
-    formats = {".html", ".css", ".js", ".svg", ".png", ".jpg", ".jpeg", ".ico",
+    formats = {".html", ".css", ".js", ".mjs", ".svg", ".png", ".jpg", ".jpeg", ".ico",
                ".webp", ".woff", ".woff2", ".ttf", ".otf", ".map"}
     for name in ("templates", "static"):
         for path in sorted((dashboard / name).rglob("*")):
             if path.is_file() and path.suffix.lower() in formats:
                 copy_file(path, destination / path.relative_to(dashboard))
+    copy_file(dashboard / "static/vendor/pdfjs/LICENSE", destination / "static/vendor/pdfjs/LICENSE")
     for name in ("system_prompt.md", "wick_system_prompt.md"):
         copy_file(REPO_ROOT / "agent" / name, destination / "prompts" / name)
 
