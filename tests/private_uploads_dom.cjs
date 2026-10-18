@@ -20,7 +20,7 @@ d.addEventListener('uploads:conversation',event=>created.push(event.detail.conve
 w.eval(fs.readFileSync(path.resolve(__dirname,'../dashboard/static/js/uploads.js'),'utf8'));
 const settle=()=>new Promise(resolve=>setTimeout(resolve,0));
 (async()=>{
- assert.equal(d.querySelector('[data-context-category]').hidden,true);
+ assert.equal(d.querySelector('[data-context-category]').hidden,false);
  assert.equal(fileCount,0);assert.equal(d.querySelector('.files-panel-button').hidden,true);
  const input=d.getElementById('upload-input');
  Object.defineProperty(input,'files',{value:[new w.File(['notes'],'notes.txt',{type:'text/plain'})],configurable:true});

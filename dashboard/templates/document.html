@@ -9,6 +9,14 @@
   <header class="saved-document-toolbar">
     <a class="icon-btn" href="{{ url_for('uploads.documents_page') }}" aria-label="Back to documents" title="Back to documents">{{ icon('arrow-left') }}</a>
     <h1>{{ document.filename }}</h1>
+    <button class="icon-btn" type="button" data-index-document="{{ document.document_id }}" title="Index document" aria-label="Index document" {% if not document_indexing_enabled %}disabled{% endif %}>{{ icon('search') }}</button>
+    <details class="document-organise"><summary class="icon-btn" aria-label="Organise in collection" title="Organise in collection">{{ icon('folder') }}</summary>
+      <form method="post" action="{{ url_for('uploads.organise_document',document_id=document.document_id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <label>Collection<select name="collection_id" required>{% for collection in collections %}<option value="{{ collection.collection_id }}">{{ collection.name }}</option>{% endfor %}</select></label>
+        <button class="icon-btn" aria-label="Add to collection" title="Add to collection" {% if not collections %}disabled{% endif %}>{{ icon('plus') }}</button>
+      </form>
+    </details>
     <a class="icon-btn" href="{{ url_for('uploads.preview_page', document_id=document.document_id, page=1) }}" title="Open extracted text" aria-label="Open extracted text">{{ icon('note') }}</a>
     <a class="icon-btn" href="{{ url_for('uploads.download_file', document_id=document.document_id) }}" aria-label="Download original" title="Download original">{{ icon('download') }}</a>
     <button class="icon-btn" type="button" data-delete-document="{{ document.document_id }}" title="Delete file" aria-label="Delete file">{{ icon('trash') }}</button>
