@@ -173,7 +173,7 @@ def test_source_preview_is_authorized_and_escapes_uploaded_html(client,monkeypat
     from routes import uploads as routes
     monkeypatch.setattr(routes.attachment_context,'references',lambda *args,**kwargs:[{'document_id':DOC}])
     monkeypatch.setattr(upload_service,'owned',lambda *args:{'conversation_id':CID})
-    monkeypatch.setattr(documents,'read',lambda *args,**kwargs:{'document_id':DOC,'filename':'source.txt','passages':[{'page':1,'text':'<script>alert(1)</script>'}]})
+    monkeypatch.setattr(documents,'preview',lambda *args,**kwargs:{'document_id':DOC,'filename':'source.txt','passages':[{'page':1,'text':'<script>alert(1)</script>'}]})
     response=client.get('/uploads/'+DOC+'/pages/1')
     assert response.status_code==200
     assert '&lt;script&gt;alert(1)&lt;/script&gt;' in response.text
@@ -222,3 +222,22 @@ def test_retired_attachment_blocks_approval_resume_before_model(client,monkeypat
         chat._run_turn('Create note','authenticated','owner',CID,prepared={'history':[]},chat_mode='wick',
                        context={'attachments':[{'document_id':DOC,'conversation_id':CID}]},resume=checkpoint)
     model.assert_not_called()
+
+
+def test_saved_browser_preview_survives_original_chat_deletion(attachment):
+    row,storage,_=attachment
+    row.update(conversation_id=None,retained_at='saved')
+    result=documents.preview('owner',DOC,2)
+    assert result['passages'][0]['page']==2
+    assert result['passages'][0]['source_id']=='doc:'+DOC+':p2'
+
+
+def test_browser_preview_rechecks_deletion_after_storage_read(attachment):
+    row,storage,_=attachment
+    def delete_during_read(*args):
+        row['status']='deleting'
+        return json.dumps({'version':'text-v1','pages':[{'page':1,'text':'private'}]}).encode()
+    import hashlib
+    data=delete_during_read();row['status']='ready';row['artifact_hash']=hashlib.sha256(data).hexdigest()
+    storage.read.side_effect=delete_during_read
+    with pytest.raises(ValidationError):documents.preview('owner',DOC,1)

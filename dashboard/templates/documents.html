@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Documents — Alfred{% endblock %}
+{% block topbar_title %}Documents{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{{ url_for('static', filename='css/documents.css') }}">{% endblock %}
+{% block content %}
+<section class="document-library">
+  <h1 class="page-title">Documents</h1>
+  <p class="page-lead">Your saved private files. Kept until you delete them, even if the original chat is removed. Storage limits still apply.</p>
+  <p id="document-status" role="status" aria-live="polite"></p>
+  <div class="document-grid">
+  {% for file in documents['items'] %}
+    <article class="document-card" data-document-id="{{ file.document_id }}">
+      <a class="document-open" href="{{ url_for('uploads.document_view', document_id=file.document_id) }}">
+        <span class="document-type">{{ file.filename.rsplit('.', 1)[-1]|upper }}</span>
+        <strong>{{ file.filename }}</strong>
+        <small>{{ ((file.size_bytes / 1024)|round(0, 'ceil'))|int }} KB · Saved to workspace</small>
+      </a>
+      <div class="document-actions">
+        <a class="icon-btn" href="{{ url_for('uploads.download_file', document_id=file.document_id) }}" aria-label="Download {{ file.filename }}" title="Download original">{{ icon('download') }}</a>
+        <button type="button" class="icon-btn" data-delete-document="{{ file.document_id }}" aria-label="Delete {{ file.filename }}" title="Delete file">{{ icon('trash') }}</button>
+      </div>
+    </article>
+  {% else %}
+    <p class="document-empty">No saved documents yet. Open an uploaded file in chat, then choose Save to workspace from its more-actions menu.</p>
+  {% endfor %}
+  </div>
+  <nav class="document-pagination" aria-label="Documents pages">
+    {% if documents.page > 1 %}<a href="{{ url_for('uploads.documents_page', page=documents.page - 1) }}">Previous</a>{% endif %}
+    {% if documents.has_more %}<a href="{{ url_for('uploads.documents_page', page=documents.page + 1) }}">Next</a>{% endif %}
+  </nav>
+</section>
+<script src="{{ url_for('static', filename='js/documents.js') }}"></script>
+{% endblock %}

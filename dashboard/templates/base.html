@@ -212,6 +212,11 @@
         <a href="{{ url_for('progress.notes') }}" class="nav-item {{ 'active' if ep == 'progress.notes' }}" aria-label="Notes" data-tooltip="Notes">
           {{ icon('note') }}<span>Notes</span>
         </a>
+        {% if private_uploads_enabled %}
+        <a href="{{ url_for('uploads.documents_page') }}" class="nav-item {{ 'active' if ep in ('uploads.documents_page', 'uploads.document_view') }}" aria-label="Documents" data-tooltip="Documents">
+          {{ icon('note') }}<span>Documents</span>
+        </a>
+        {% endif %}
         {% endif %}
         <a href="{{ url_for('goals.list_goals') }}" class="nav-item {{ 'active' if ep.startswith('goals.') }}" aria-label="Goals" data-tooltip="Goals">
           {{ icon('target') }}<span>Goals</span>

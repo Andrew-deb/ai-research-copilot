@@ -42,7 +42,8 @@ def owned(owner, document_id):
 
 
 def receipt(row):
-    expired = row.get("expired", False)
+    retained = bool(row.get("retained_at"))
+    expired = row.get("expired", False) and not retained
     return {
         "document_id": str(row["document_id"]),
         "conversation_id": (
@@ -55,7 +56,9 @@ def receipt(row):
             if expired and row["status"] not in ("deleted", "deleting")
             else row["status"]
         ),
-        "expires_at": row["expires_at"].isoformat(),
+        "expires_at": None if retained else row["expires_at"].isoformat(),
+        "retained": retained,
+        "retained_at": row["retained_at"].isoformat() if retained else None,
         "page_count": row.get("page_count"),
         "error": ERRORS.get(row.get("error_code")),
         "agent_access": row["status"] == "ready" and not expired,

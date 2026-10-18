@@ -1,11 +1,11 @@
 """Authenticated private files: thin HTTP adapters; no storage or parsing logic."""
 
 import io
-from flask import Blueprint, jsonify, request, send_file
+from flask import Blueprint, jsonify, request, send_file, render_template
 from exceptions import ValidationError
 from middleware.auth import require_user_id
 from middleware.capabilities import require_capability, UPLOADS_WRITE
-from services import upload_service, conversation_service, attachment_context
+from services import upload_service, conversation_service, attachment_context, document_library
 import upload_config
 
 bp = Blueprint("uploads", __name__)
@@ -132,8 +132,33 @@ def register_upload_context(app):
 def preview_page(document_id, page):
     from flask import render_template
     owner = require_user_id()
-    row = upload_service.owned(owner, str(document_id))
-    context = attachment_context.references(owner, row['conversation_id'], [str(document_id)])
-    result = attachment_context.read(owner, context, str(document_id), page=page)
+    result = attachment_context.preview(owner, str(document_id), page)
     response = render_template('upload_page.html', document=result, page=page)
     return response, 200, {'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff'}
+
+
+@bp.post('/uploads/<uuid:document_id>/retain')
+@require_capability(UPLOADS_WRITE)
+def retain_file(document_id):
+    return jsonify(document_library.save(require_user_id(), str(document_id)))
+
+
+@bp.get('/documents')
+@require_capability(UPLOADS_WRITE)
+def documents_page():
+    try:
+        page = int(request.args.get('page', '1'))
+    except ValueError:
+        raise ValidationError('Choose a valid documents page.') from None
+    documents = document_library.list_documents(require_user_id(), page)
+    return render_template('documents.html', documents=documents), 200, {'Cache-Control': 'private, no-store'}
+
+
+@bp.get('/documents/<uuid:document_id>')
+@require_capability(UPLOADS_WRITE)
+def document_view(document_id):
+    upload_service.require_enabled()
+    row = upload_service.owned(require_user_id(), str(document_id))
+    if not row.get('retained_at') or row['status'] != 'ready':
+        raise ValidationError('This saved document is unavailable.')
+    return render_template('document.html', document=upload_service.receipt(row)), 200, {'Cache-Control': 'private, no-store'}

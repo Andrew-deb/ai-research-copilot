@@ -40,7 +40,7 @@ def test_private_upload_controls_preserve_prompt_and_bind_conversation():
                    check=True, capture_output=True, text=True)
 
 
-@pytest.mark.parametrize('script', ['chat_resources_dom.cjs', 'chat_viewport_dom.cjs', 'pdf_preview_dom.cjs'])
+@pytest.mark.parametrize('script', ['chat_resources_dom.cjs', 'chat_viewport_dom.cjs', 'pdf_preview_dom.cjs', 'documents_dom.cjs'])
 def test_mobile_drawer_and_visual_viewport(script):
     if subprocess.run(['node', '-e', "require.resolve('jsdom')"], capture_output=True).returncode:
         pytest.skip('Optional jsdom test runtime is unavailable')
