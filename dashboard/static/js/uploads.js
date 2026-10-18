@@ -32,6 +32,7 @@
   const library=element("div","conversation-file-list");
   if(resources)resources.append(library);
   const panelButton=element("button","files-panel-button","▤");panelButton.type="button";
+  panelButton.hidden=true;
   panelButton.title="Conversation files";panelButton.setAttribute("aria-label","Open conversation files");
   if(resources){choose.parentNode.insertBefore(panelButton,choose);panelButton.addEventListener("click",()=>openLibrary());}
   function iconButton(symbol,label,handler) {
@@ -141,6 +142,9 @@
   }
   function render(items) {
     currentFiles=items;
+    const fileCount=items.filter(file=>file.status!=="deleted").length;
+    panelButton.hidden=fileCount===0;
+    if(resources && window.ChatResources.setFileCount)window.ChatResources.setFileCount(fileCount);
     const signature=JSON.stringify([items,busy]);if(signature===rendered)return;rendered=signature;
     list.replaceChildren();
     items.filter(file=>file.status!=="deleted" && selectedIds().includes(file.document_id)).forEach(file=>{
@@ -168,9 +172,9 @@
   }
   async function refresh() {
     clearTimeout(timer);
-    const id=page.dataset.conversation;
-    if (!id) return;
     const current=++generation;
+    const id=page.dataset.conversation;
+    if (!id) {render([]);return;}
     try {
       const body=await request("/uploads/conversations/"+encodeURIComponent(id),{headers:{Accept:"application/json"}});
       if (current!==generation) return;
@@ -218,7 +222,7 @@
   });
   prompt.addEventListener("input",()=>{rendered="";render(currentFiles);});
   document.addEventListener("uploads:sent",()=>{rendered="";render(currentFiles);});
-  document.addEventListener("wick:conversation",()=>{selected=null;previewGeneration++;currentFiles=[];refresh();});
+  document.addEventListener("wick:conversation",()=>{selected=null;previewGeneration++;currentFiles=[];render([]);refresh();});
   document.addEventListener("click",event=>{const link=event.target.closest('a[href^="/uploads/"]');if(event.defaultPrevented || !link || !resources || resources.contains(link) || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey)return;
     const match=/^\/uploads\/([0-9a-f-]{36})\/(download|pages\/\d+)$/.exec(link.getAttribute("href"));
     if(match){event.preventDefault();window.PrivateUploads.open(match[1],match[2].startsWith("pages/") ? Number(match[2].split("/")[1]) : 1);}
@@ -230,6 +234,6 @@
   }
   if(picker)picker.addEventListener("change",categoryVisibility);
   categoryVisibility();
-  renderLibrary();
+  render([]);
   refresh();
 })();

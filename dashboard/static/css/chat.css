@@ -1152,3 +1152,6 @@ body.rail-open .chat-rail-launcher { display:none !important; }
 }
 .pdf-page { position:relative; width:100%; background:white; margin:0 0 8px; }
 .pdf-page canvas { display:block; width:100%; height:auto; }
+
+/* Empty resources must never reserve a column or display a launcher. */
+.chat-rail[hidden], .files-panel-button[hidden] { display:none !important; }
