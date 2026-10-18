@@ -40,9 +40,13 @@
     button.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="'+paths[symbol]+'"/></svg>';
     button.title=label;button.setAttribute("aria-label",label);button.addEventListener("click",handler);return button;
   }
-  function openLibrary() {if(window.ChatResources.preview)window.ChatResources.preview(false);selected=null;previewGeneration++;if(resources){window.ChatResources.files(true);renderLibrary();if(window.ChatResources.preview)window.ChatResources.preview(false);}}
+  function openLibrary() {
+    const previous=library.querySelector(".file-preview-content");
+    if(previous && previous.disposePreview)previous.disposePreview();if(window.ChatResources.preview)window.ChatResources.preview(false);selected=null;previewGeneration++;if(resources){window.ChatResources.files(true);renderLibrary();if(window.ChatResources.preview)window.ChatResources.preview(false);}}
   function renderLibrary() {
     if(!resources || selected)return;
+    const previous=library.querySelector(".file-preview-content");
+    if(previous && previous.disposePreview)previous.disposePreview();
     const heading=element("div","file-menu-heading");heading.append(element("h3","","Files"));
     const files=currentFiles.filter(file=>file.status!=="deleted");
     const available=files.filter(canDownload);
@@ -70,6 +74,8 @@
     if(window.confirm("Delete this private file and its extracted text?"))operate(file,"","DELETE");
   }
   async function showPanelPreview(file, pageNumber) {
+    const previous=library.querySelector(".file-preview-content");
+    if(previous && previous.disposePreview)previous.disposePreview();
     selected=file.document_id;const current=++previewGeneration;
     window.ChatResources.files(true);if(window.ChatResources.preview)window.ChatResources.preview(true);library.replaceChildren();
     const header=element("div","file-preview-toolbar");
@@ -93,9 +99,7 @@
     const output=element("div","file-preview-content","Loading preview…");library.append(output);
     try {
       if(fileType(file)==="PDF") {
-        const frame=element("iframe","file-pdf-preview");frame.title="PDF preview: "+file.filename;
-        frame.src="/uploads/"+encodeURIComponent(file.document_id)+"/preview#page="+(pageNumber || 1)+"&view=FitH&zoom=page-width&toolbar=0&navpanes=0";
-        output.replaceChildren(frame);
+        window.PdfPreview.mount(output,"/uploads/"+encodeURIComponent(file.document_id)+"/preview",pageNumber || 1);
         const fallback=element("a","","Open extracted text");fallback.href="/uploads/"+encodeURIComponent(file.document_id)+"/pages/"+(pageNumber || 1);fallback.target="_blank";fallback.rel="noopener";menu.append(fallback);
       } else {
         const response=await fetch(downloadUrl(file),{cache:"no-store"});
@@ -219,7 +223,7 @@
     const match=/^\/uploads\/([0-9a-f-]{36})\/(download|pages\/\d+)$/.exec(link.getAttribute("href"));
     if(match){event.preventDefault();window.PrivateUploads.open(match[1],match[2].startsWith("pages/") ? Number(match[2].split("/")[1]) : 1);}
   });
-  window.addEventListener("pagehide",()=>{clearTimeout(timer);generation++;});
+  window.addEventListener("pagehide",()=>{clearTimeout(timer);generation++;const preview=library.querySelector(".file-preview-content");if(preview && preview.disposePreview)preview.disposePreview();});
   const picker=document.getElementById("chat-mode");
   function categoryVisibility() {
     document.querySelectorAll("[data-context-category]").forEach(button=>{button.hidden=mode()!=="wick";});

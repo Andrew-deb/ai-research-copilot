@@ -1143,3 +1143,12 @@ body.chat-viewport .app-footer { display:none; }
 /* The portalled mobile drawer and its backdrop share the page stacking context. */
 body.rail-open .chat-rail-launcher { display:none !important; }
 .message-file-card:hover { text-decoration:none; }
+
+/* One ordinary scroll surface for PDF pages, in panel and full-screen modes. */
+.has-file-preview .file-preview-content.pdf-pages {
+  display:block; overflow:auto; overscroll-behavior:contain;
+  touch-action:pan-x pan-y pinch-zoom; -webkit-overflow-scrolling:touch;
+  padding:8px; box-sizing:border-box;
+}
+.pdf-page { position:relative; width:100%; background:white; margin:0 0 8px; }
+.pdf-page canvas { display:block; width:100%; height:auto; }

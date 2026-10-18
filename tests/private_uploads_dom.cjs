@@ -6,6 +6,7 @@ const dom=new JSDOM(`<meta name="csrf-token" content="token"><main class="chat-p
 const w=dom.window,d=w.document,requests=[],created=[];
 const file={document_id:'00000000-0000-0000-0000-000000000001',filename:'<img src=x onerror=alert(1)>.txt',status:'ready'};
 const resources=d.createElement('aside');d.body.append(resources);w.ChatResources={files:()=>resources};
+w.PdfPreview={mount:(host,url,page)=>{host.dataset.pdf=url;host.dataset.startPage=page;}};
 w.fetch=async(url,options)=>{
  requests.push([url,options]);
  return {ok:true,text:async()=>'<script>unsafe</script>',json:async()=>url==='/uploads/conversations'?{conversation_id:'owned-conversation'}:url==='/uploads'?file:{items:[file]}};
@@ -64,9 +65,10 @@ const settle=()=>new Promise(resolve=>setTimeout(resolve,0));
  assert.ok(resources.querySelector('.conversation-file'));
  file.filename='A deliberately long document filename.pdf';
  w.PrivateUploads.open(file.document_id);
- assert.match(resources.querySelector('iframe').getAttribute('src'),/view=FitH&zoom=page-width&toolbar=0&navpanes=0/);
+ assert.equal(resources.querySelector('[data-pdf]').dataset.pdf,'/uploads/'+file.document_id+'/preview');
+ assert.equal(resources.querySelector('[data-pdf]').dataset.startPage,'1');
  assert.ok(resources.querySelector('.file-preview-menu a').href.endsWith('/pages/1'));
- assert.equal(resources.querySelector('.file-preview-content').children.length,1);
+ assert.equal(resources.querySelector('iframe'),null);
  const picker=d.getElementById('chat-mode');picker.value='wick';picker.dispatchEvent(new w.Event('change'));
  assert.equal(d.querySelector('[data-context-category]').hidden,false);
  const before=requests.length;
@@ -80,7 +82,7 @@ const settle=()=>new Promise(resolve=>setTimeout(resolve,0));
  // A card clicked while conversation metadata is loading waits for the list.
  d.dispatchEvent(new w.Event('wick:conversation'));
  const preview=w.PrivateUploads.open(file.document_id);await preview;await settle();
- assert.ok(resources.querySelector('iframe'));
+ assert.ok(resources.querySelector('[data-pdf]'));
  w.dispatchEvent(new w.Event('pagehide'));dom.window.close();
  console.log('Private upload DOM: prompt preserved, conversation bound, filename safe, invalid file refused.');
 })().catch(error=>{console.error(error);dom.window.close();process.exitCode=1;});

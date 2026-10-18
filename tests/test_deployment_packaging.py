@@ -176,3 +176,10 @@ def test_render_ships_serving_process_lifecycle_hooks(release):
     assert (release["render"] / "gunicorn.conf.py").read_bytes() == (
         ROOT / "dashboard/gunicorn.conf.py").read_bytes()
     assert (release["render"] / "services/background_tasks.py").is_file()
+
+
+def test_render_contains_local_pdf_renderer_and_worker(release):
+    for name in ('pdf.min.mjs', 'pdf.worker.min.mjs'):
+        path = 'static/vendor/pdfjs/' + name
+        assert (release['render'] / path).read_bytes() == (ROOT / 'dashboard' / path).read_bytes()
+    assert (release['render'] / 'static/js/pdf_preview.js').is_file()
