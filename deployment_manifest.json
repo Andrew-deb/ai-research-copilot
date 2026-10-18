@@ -13,7 +13,7 @@
     "shared_resource/brokers/__init__.py": "12c397e973c81b5fb5cfe8da562a0040bc8c4d66bf259239417b635245b28afc",
     "shared_resource/brokers/openalex_broker.py": "b2eb748f12cfb1d47f30387638c205d04f87bbd0a93e6d09a38bdf5a4b3b5c56",
     "shared_resource/brokers/settings.py": "68e58326e6aabcee206475e8a5f1fb5810eed7899a38c6c8a56397a625ba8fb9",
-    "shared_resource/config.py": "ad61dd71bd2c48fbf8923eed9e32bc428b19e8b0f439601cde41d6cbe422e76d",
+    "shared_resource/config.py": "b0129b120dab12c0f5f5ff6c964ea81224c23802d5878fb0966416299a82def0",
     "shared_resource/exceptions.py": "30d4cc794e6f57202a2d88d18ca82d8e4f79533718821f35a33ec945e35802ab",
     "shared_resource/middleware/__init__.py": "e3e034f1cd55e93ed06d1680bb234a733f8bfc8a8191bb4fcc7e17e856c63b25",
     "shared_resource/middleware/identity_middleware.py": "f68e5a7b5e0ae4a8c44f09a18f73cbfbadbcfc9cdbf67f03dff4d4a92b61f546",
@@ -42,7 +42,7 @@
     "shared_resource/storage/azure_blob.py": "539ae4b4e1de472566a36f047eef3fe317d776beb1237aa0e7eb40358d2b83c2",
     "shared_resource/storage/contract.py": "2163eacf66d996ff92f1957b91a90a300ac56c07c5438ff4f591ccb8f8fc3891"
   },
-  "source_revision": "ddb6e91261927fb8505366b2e3a4d908fcb9aeff",
+  "source_revision": "a575256ded34d6bf2583dd89e8e4cd17ebe4ab76",
   "target": "assistant",
   "tools": [
     "add_paper_to_collection",
