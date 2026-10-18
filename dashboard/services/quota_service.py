@@ -33,6 +33,7 @@ from config import (
     GLOBAL_AGENT_PER_DAY,
     GLOBAL_ANON_AGENT_PER_DAY,
     GLOBAL_RAG_PER_DAY,
+    GLOBAL_SPEND_USD_PER_DAY,
     QUOTAS_ENABLED,
     USER_AGENT_PER_DAY,
     USER_RAG_PER_DAY,
@@ -124,6 +125,37 @@ def tier_global_limit_for(tier: str, metric: str) -> int | None:
     return _TIER_GLOBAL_LIMITS.get((tier, metric))
 
 
+def _spend_exhausted(metric: str) -> bool:
+    """
+    Whether today's charged spend has passed the backstop.
+
+    Checked only for metrics that have a request ceiling, which is the same set
+    that reaches a paid provider. Semantic search embeds and queries a vector
+    index; adding a database read to it would buy nothing and cost every search.
+
+    FAILS OPEN. If the spend cannot be read - a suspended database, a dropped
+    connection - the request proceeds, because the request ceilings are still
+    in force and they are the primary protection. Refusing every metered
+    feature because a telemetry query failed would turn a reporting problem into
+    an outage, which is the wrong direction for a backstop.
+    """
+    if GLOBAL_SPEND_USD_PER_DAY <= 0:
+        return False
+    if metric not in _GLOBAL_LIMITS:
+        return False
+    try:
+        spent = lakebase.spend_today()
+    except Exception:  # noqa: BLE001 - see FAILS OPEN above
+        logger.warning("Could not read today's spend; allowing the request",
+                       exc_info=True)
+        return False
+    if spent >= GLOBAL_SPEND_USD_PER_DAY:
+        logger.error("Daily spend backstop reached: $%.4f of $%.2f",
+                     spent, GLOBAL_SPEND_USD_PER_DAY)
+        return True
+    return False
+
+
 def check_and_consume(metric: str, tier: str, scope: str, scope_id: str) -> dict:
     """
     Consume one unit of `metric`, or raise QuotaExceededError.
@@ -144,6 +176,18 @@ def check_and_consume(metric: str, tier: str, scope: str, scope_id: str) -> dict
 
     if metric not in METRICS:
         raise ValueError(f"Unknown quota metric {metric!r}.")
+
+    # Money first, and outermost. Every limit below counts requests, which is a
+    # proxy for spend that holds only while the per-request cost holds; this is
+    # the one that still means something after a model change. The visitor is
+    # told the same thing as for a global ceiling, because from where they are
+    # standing it is the same fact: the feature is resting, and signing in would
+    # not help.
+    if _spend_exhausted(metric):
+        raise QuotaExceededError(
+            f"{_METRIC_LABEL[metric].capitalize()} are resting for today.",
+            metric=metric, scope="global", used=0, limit=0,
+        )
 
     ceiling = global_limit_for(metric)
     if ceiling is not None:
