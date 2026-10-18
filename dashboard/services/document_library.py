@@ -24,3 +24,28 @@ def list_documents(owner, page=1):
     rows = uploads.list_retained(owner, PAGE_SIZE + 1, (page - 1) * PAGE_SIZE)
     return {'items': [upload_service.receipt(row) for row in rows[:PAGE_SIZE]],
             'page': page, 'has_more': len(rows) > PAGE_SIZE}
+
+
+def options(owner, query="", page=1):
+    upload_service.require_enabled()
+    if (
+        not isinstance(query, str)
+        or len(query) > 300
+        or type(page) is not int
+        or not 1 <= page <= 10000
+    ):
+        raise ValidationError("Invalid document search.")
+    rows = uploads.find_retained(owner, query.strip(), 21, (page - 1) * 20)
+    return {
+        "items": [
+            dict(
+                upload_service.receipt(row),
+                kind="attachment",
+                id=str(row["document_id"]),
+                label=row["filename"],
+                snippet="Saved document",
+            )
+            for row in rows[:20]
+        ],
+        "next_cursor": str(page + 1) if len(rows) > 20 else None,
+    }

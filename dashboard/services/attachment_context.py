@@ -38,16 +38,27 @@ def references(owner, conversation_id, ids, *, strict=True):
     upload_service.require_enabled()
     if not owner or not conversation_id:
         raise ValidationError('Sign in and select an owned conversation for uploads.')
+    if not upload_service.lakebase.get_conversation(owner, conversation_id):
+        raise ValidationError("This conversation is unavailable.")
     result = []
     for doc in ids:
         row = upload_service.owned(owner, doc)
-        if str(row.get('conversation_id')) != str(conversation_id):
+        if str(row.get("conversation_id")) != str(conversation_id) and not row.get(
+            "retained_at"
+        ):
             raise ValidationError('That file is not attached to this conversation.')
         available = row['status'] == 'ready' and not row.get('expired')
         if strict and not available:
             raise ValidationError('A selected file is not ready or has expired. Remove it or wait for processing.')
-        result.append({'document_id': doc, 'filename': row['filename'], 'available': available,
-                       'conversation_id': str(conversation_id)})
+        result.append(
+            {
+                "document_id": doc,
+                "filename": row["filename"],
+                "available": available,
+                "conversation_id": str(conversation_id),
+                "retained": bool(row.get("retained_at")),
+            }
+        )
     return result
 
 
@@ -77,18 +88,15 @@ def preview(owner, document_id, page):
 def _read_verified(owner, document_id, query, page, verify):
     verify()
     row = upload_service.owned(owner, document_id)
+    from services import document_artifacts, document_indexing
+
+    artifact = document_artifacts.load(row)
     try:
-        data = upload_storage.for_location(row['storage_location_id']).read(
-            row['artifact_key'], upload_config.LIMITS.max_artifact_bytes)
-    except upload_storage.StorageUnavailable:
-        raise ExternalAPIError('The attached file is temporarily unavailable.') from None
-    if hashlib.sha256(data).hexdigest() != row.get('artifact_hash'):
-        raise ExternalAPIError('Extracted file integrity verification failed.')
-    try:
-        artifact = json.loads(data)
-        if not isinstance(artifact, dict) or artifact.get('version') != row.get('extraction_version'):
-            raise ValueError('version')
-        passages = select_passages(artifact, query, page)
+        passages = None
+        if page is None and row.get("retained_at"):
+            passages = document_indexing.selected_passages(owner, document_id, query)
+        if passages is None:
+            passages = select_passages(artifact, query, page)
     except (ValueError, TypeError, KeyError, AttributeError):
         raise ExternalAPIError('The extracted file could not be read.') from None
     # Re-check expiry/deletion after provider I/O as well.

@@ -160,6 +160,16 @@ def bundle(owner, references):
 
 
 def search(owner, query='', kind=None, cursor=None, category=None):
+    if kind == "document":
+        if not owner:
+            raise ValidationError("Sign in to reference documents.")
+        from services import document_library
+
+        try:
+            page = int(cursor or "1")
+        except ValueError:
+            raise ValidationError("Invalid document page.") from None
+        return document_library.options(owner, query, page)
     kinds = [kind] if kind else None
     if category == 'pages':
         if kind and kind != 'page':
@@ -176,7 +186,19 @@ def search(owner, query='', kind=None, cursor=None, category=None):
     elif category is not None:
         raise ValidationError('Invalid context category.')
     try:
-        return shared_workspace.find_workspace_resources(lakebase, owner, query,
-            kinds, limit=20, cursor=cursor)
+        result = shared_workspace.find_workspace_resources(
+            lakebase, owner, query, kinds, limit=20, cursor=cursor
+        )
+        if category == "assets" and not kind and not cursor and owner:
+            import upload_config
+
+            if upload_config.ENABLED:
+                from services import document_library
+
+                result["items"] = (
+                    document_library.options(owner, query)["items"][:5]
+                    + result["items"]
+                )
+        return result
     except (domain_errors.ValidationError, domain_errors.WorkspaceResourceNotFoundError) as exc:
         raise ValidationError(str(exc)) from exc

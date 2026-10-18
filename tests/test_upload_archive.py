@@ -49,7 +49,7 @@ def test_archive_has_no_partial_success_on_download_error(files):
 
 
 def test_archive_refuses_empty_and_over_limit(monkeypatch, files):
-    for items in ([], [{'status':'ready', 'document_id':str(i)} for i in range(4)]):
+    for items in ([], [{"status": "ready", "document_id": str(i)} for i in range(51)]):
         monkeypatch.setattr(upload_service, 'list_files', lambda *args: items)
         with pytest.raises(ValidationError):
             archive.build('owner', 'chat')
@@ -81,3 +81,17 @@ def test_archive_rejects_oversized_original(files, monkeypatch):
     files.return_value = ({'filename': 'a.txt', 'conversation_id': 'chat'}, b'oversized')
     with pytest.raises(ValidationError):
         archive.build('owner', 'chat')
+
+
+def test_archive_includes_saved_cross_chat_references(files):
+    files.side_effect = lambda owner, doc: (
+        {
+            "filename": doc + ".txt",
+            "conversation_id": "original-chat",
+            "retained_at": "saved",
+        },
+        b"data",
+    )
+    with archive.build("owner", "chat") as output:
+        with ZipFile(output) as result:
+            assert result.namelist() == ["a.txt", "b.txt"]

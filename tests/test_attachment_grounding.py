@@ -26,6 +26,9 @@ def attachment(monkeypatch):
             raise UploadNotFoundError('Unavailable file.')
         return row
     monkeypatch.setattr(upload_service, 'owned', owned)
+    monkeypatch.setattr(
+        upload_service.lakebase, "get_conversation", lambda *a: {"conversation_id": CID}
+    )
     storage = Mock(); storage.read.return_value = data
     monkeypatch.setattr(upload_storage, 'for_location', lambda location: storage)
     return row, storage, documents.references('owner', CID, [DOC])
