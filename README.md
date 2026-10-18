@@ -157,6 +157,7 @@ python -m pytest            # from ai-research-copilot/
 | Doc | Contents |
 |---|---|
 | `context/implementation-plan/implementation_plan.md` | Full architecture, layer contract, phased build plan |
+| `context/implementation-plan/Quota_Calibration_Completion_Plan.md` | Outstanding quota work, with the measurements already taken |
 | `context/setup/setup_guide.md` | Step-by-step setup for every component — local and Databricks |
 | `context/walkthrough/phase_*_walkthrough.md` | What each phase built, why, and the concepts behind it |
 | `context/task/task.md` | Build tracker |

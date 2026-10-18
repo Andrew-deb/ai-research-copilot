@@ -74,14 +74,33 @@ class _Pool:
             self.discarded.append(conn)
 
 
-def test_a_stale_connection_is_stepped_over(monkeypatch):
+# These four assert the probe RAN, so each one pins _last_activity into the
+# past. Without that they depend on no earlier test having touched the database
+# in the last _IDLE_PROBE_SECONDS - which held by luck until a quota check began
+# reading the day's spend on every metered call, and then failed with the probe
+# silently skipped.
+#
+# `quiet` is the fixture that makes the subject of these tests the probe itself
+# rather than the order pytest happened to choose.
+
+
+@pytest.fixture
+def quiet(monkeypatch):
+    """A database nobody has spoken to recently, so the probe is due."""
+    from repositories import lakebase
+
+    monkeypatch.setattr(lakebase, "_last_activity", 0.0)
+    return lakebase
+
+
+def test_a_stale_connection_is_stepped_over(quiet):
     """
     Render's free instance sleeps and Lakebase drops the idle connections. The
     pool does not know: it hands back a socket that looks fine and fails on
     first use. Without the probe, the FIRST request after every wake is an error
     page — on a free tier that is the normal case, not an edge one.
     """
-    from repositories import lakebase
+    lakebase = quiet
 
     pool = _Pool(dead=1)
     conn = lakebase._checkout(pool)
@@ -90,9 +109,9 @@ def test_a_stale_connection_is_stepped_over(monkeypatch):
     assert len(pool.discarded) == 1
 
 
-def test_the_dead_connection_is_discarded_not_returned():
+def test_the_dead_connection_is_discarded_not_returned(quiet):
     """A dead connection put back is one the next caller inherits."""
-    from repositories import lakebase
+    lakebase = quiet
 
     pool = _Pool(dead=2)
     lakebase._checkout(pool)
@@ -100,18 +119,18 @@ def test_the_dead_connection_is_discarded_not_returned():
     assert all(isinstance(c, _DeadConnection) for c in pool.discarded)
 
 
-def test_the_probe_gives_up_rather_than_looping():
+def test_the_probe_gives_up_rather_than_looping(quiet):
     """A database that is genuinely down should fail quickly, not spin."""
-    from repositories import lakebase
+    lakebase = quiet
 
     pool = _Pool(dead=99)
     lakebase._checkout(pool)          # returns whatever the pool gives last
     assert len(pool.discarded) == lakebase._CHECKOUT_ATTEMPTS
 
 
-def test_a_live_connection_is_handed_straight_back():
+def test_a_live_connection_is_handed_straight_back(quiet):
     """The probe costs one round trip; it must not cost more than that."""
-    from repositories import lakebase
+    lakebase = quiet
 
     pool = _Pool(dead=0)
     conn = lakebase._checkout(pool)
@@ -298,3 +317,131 @@ def test_activity_is_recorded_only_on_success():
     block = source.split("yield conn")[1][:300]
     assert "conn.commit()" in block
     assert "_last_activity = time.monotonic()" in block
+
+
+
+# ---------------------------------------------------------------------------
+# The model, which production used to pick by accident
+# ---------------------------------------------------------------------------
+#
+# render.yaml named no model at all, so the deployment silently ran whatever
+# dashboard/config.py happened to default to. Twice that default was a `:free`
+# slug OpenRouter had since retired, which returns 404 on every call: every RAG
+# answer and every agent turn stopped, and nothing in this repository had
+# changed to explain it.
+#
+# ONE default, in dashboard/config.py, and the environment overriding it.
+#
+# An earlier version of these tests also checked mcp_server/research/config.py
+# and agent/agent_config.yaml. Both named a model; neither is ever read. Pinning
+# dead config made two files look load-bearing and would have demanded a four-way
+# edit forever to satisfy a test rather than the application.
+
+_FREE_SUFFIX = ":" + "free"          # built, not written, so the scan below
+                                     # cannot match this file's own prose
+
+
+def _code_default() -> str:
+    """
+    The literal default in dashboard/config.py, not the resolved value.
+
+    `config.OPENROUTER_MODEL` is whatever os.getenv found, so asserting on it
+    tests the machine rather than the code.
+    """
+    import ast
+
+    root = pathlib.Path(__file__).resolve().parents[1]
+    tree = ast.parse((root / "dashboard" / "config.py").read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if (isinstance(node, ast.Call)
+                and getattr(node.func, "attr", None) == "getenv"
+                and len(node.args) == 2
+                and isinstance(node.args[0], ast.Constant)
+                and node.args[0].value == "OPENROUTER_MODEL"
+                and isinstance(node.args[1], ast.Constant)):
+            return node.args[1].value
+    raise AssertionError("dashboard/config.py has no OPENROUTER_MODEL default")
+
+
+def test_there_is_exactly_one_model_default():
+    """
+    The guard against this file's own earlier mistake: a second default is
+    something a reader can find and believe, whether or not anything reads it.
+    """
+    import ast
+
+    root = pathlib.Path(__file__).resolve().parents[1]
+    declaring = []
+    for path in sorted(root.rglob("config.py")):
+        if "venv" in path.parts or "__pycache__" in path.parts:
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if (isinstance(node, ast.Call)
+                    and getattr(node.func, "attr", None) == "getenv"
+                    and node.args
+                    and isinstance(node.args[0], ast.Constant)
+                    and node.args[0].value == "OPENROUTER_MODEL"
+                    and len(node.args) == 2):
+                declaring.append(path.relative_to(root).as_posix())
+
+    assert declaring == ["dashboard/config.py"], \
+        f"expected one model default, found {declaring}"
+
+
+def test_the_default_is_not_a_free_slug():
+    """
+    Not a style rule — a failure that has happened twice.
+
+    `openai/gpt-oss-120b:free` was retired, was replaced with
+    `inclusionai/ling-3.0-flash-vl:free`, and that was retired too. Both times
+    every AI feature returned 404 until a human noticed and renamed it. A paid
+    slug is not withdrawn for being popular, and at roughly 14,000 questions
+    per dollar the saving never covered the fragility.
+    """
+    assert not _code_default().endswith(_FREE_SUFFIX), (
+        f"{_code_default()} is a free slug; two have been retired already")
+
+
+def test_the_example_env_does_not_hand_out_a_free_slug():
+    """
+    Commented out or not, it is what a self-hoster pastes.
+    """
+    root = pathlib.Path(__file__).resolve().parents[1]
+    for line in (root / ".env.example").read_text(encoding="utf-8").splitlines():
+        stripped = line.lstrip("#").strip()
+        if stripped.startswith("OPENROUTER_MODEL="):
+            value = stripped.split("=", 1)[1].split("#")[0].strip()
+            assert not value.endswith(_FREE_SUFFIX), f".env.example offers {value}"
+
+
+def test_production_names_its_own_model():
+    """
+    A model this service depends on belongs in the deployment it runs in.
+    Inheriting it from a code default means changing it is a discovery rather
+    than a diff — which is how production came to serve a retired slug.
+    """
+    env = _render()["env"]
+
+    assert "OPENROUTER_MODEL" in env, "render.yaml does not pin the model"
+    assert env["OPENROUTER_MODEL"], "OPENROUTER_MODEL is named but has no value"
+
+
+def test_the_deployment_agrees_with_the_code_default():
+    """
+    Otherwise local runs measure one model and production serves another, which
+    is exactly how the quota calibration came to be based on the wrong one.
+    """
+    assert _render()["env"]["OPENROUTER_MODEL"] == _code_default()
+
+
+def test_the_model_stays_overridable():
+    """
+    The default is a convenience, never a constraint. A self-hoster with their
+    own provider key, or anyone trying a different model, changes one variable
+    and no code.
+    """
+    root = pathlib.Path(__file__).resolve().parents[1]
+    source = (root / "dashboard" / "config.py").read_text(encoding="utf-8")
+
+    assert 'os.getenv("OPENROUTER_MODEL"' in source

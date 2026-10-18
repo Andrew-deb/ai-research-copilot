@@ -68,6 +68,22 @@ services:
         sync: false
       - key: OPENROUTER_API_KEY_3
         sync: false
+      # Pinned here, not left to the default in dashboard/config.py.
+      #
+      # This file previously named no model at all, so production silently used
+      # whatever that default happened to be - and twice that default was a
+      # `:free` slug OpenRouter had since retired, which 404s on every call.
+      # A model this service depends on belongs in the deployment it runs in,
+      # where changing it is a diff rather than a discovery.
+      #
+      # Safe to change: it is one variable, and reverting needs no code edit.
+      # Two providers serve this model, which is why it is this one and not the
+      # -vl variant that measured better: a single-provider model was observed
+      # returning `engine_overloaded` on all three credentials for twenty
+      # minutes, and no amount of credential failover routes around a busy
+      # provider. See dashboard/config.py.
+      - key: OPENROUTER_MODEL
+        value: "inclusionai/ling-3.0-flash"
       # Research agent -> MCP server on Databricks (Phase 3.4).
       # Omit all four and the assistant reports itself unavailable; search, RAG,
       # collections and notes are unaffected.
@@ -186,34 +202,54 @@ services:
       #
       # Re-run the script after changing the model, the tool budget, or the
       # provider. All three move, and these numbers are only true for one set.
-      - key: ANON_SEARCH_PER_DAY
-        value: "20"
-      - key: ANON_RAG_PER_DAY
-        value: "3"
-      # Kept at one: the headline feature is worth trying before committing to
-      # an account. The tier ceiling below is what stops that being unbounded.
-      - key: ANON_AGENT_PER_DAY
-        value: "1"
       # Searches embed via Hugging Face and make no completion call, so they do
-      # not draw on the allowance above. Generous on purpose.
-      - key: USER_SEARCH_PER_DAY
-        value: "200"
-      - key: USER_RAG_PER_DAY
-        value: "8"
-      - key: USER_AGENT_PER_DAY
+      # not draw on the allowance the rest of these protect.
+      - key: ANON_SEARCH_PER_DAY
+        value: "30"
+      - key: ANON_RAG_PER_DAY
         value: "5"
-      # The ceilings that actually protect availability. Per-visitor limits
-      # reset when somebody clears a cookie; these do not.
+      # Two, not one. The first question is spent learning how to ask; one
+      # question cannot show what the agent does. The tier ceiling below is what
+      # stops two-per-visitor being unbounded.
+      - key: ANON_AGENT_PER_DAY
+        value: "2"
+      - key: USER_SEARCH_PER_DAY
+        value: "300"
+      # Enough to explore in one sitting. At five, a signed-in user spent their
+      # day before finding out whether the tool was any good.
+      - key: USER_RAG_PER_DAY
+        value: "30"
+      - key: USER_AGENT_PER_DAY
+        value: "25"
+      # The ceilings that actually protect the demo. Per-visitor limits reset
+      # when somebody clears a cookie; these do not.
+      #
+      # Sized for roughly eight full sessions in a day, not from a budget: at
+      # the configured model's measured cost a thousand questions is about
+      # fifty cents, so money was never what bounded this. What is being
+      # protected is the demo answering when somebody who matters opens the
+      # link.
       - key: GLOBAL_RAG_PER_DAY
-        value: "8"
+        value: "150"
       - key: GLOBAL_AGENT_PER_DAY
-        value: "9"
+        value: "200"
       # The anonymous tier's share of that ceiling.
       #
       # A per-visitor limit cannot protect a shared pool — it resets with a
-      # cleared cookie, so ten visitors at one question each are ten questions
-      # however low it is set. This is the only limit that bounds the tier, and
-      # it leaves the rest of the allowance for people who signed in.
+      # cleared cookie, so ten visitors at two questions each are twenty
+      # questions however low it is set. This is the only limit that bounds the
+      # tier, and it leaves the rest for people who signed in.
       - key: GLOBAL_ANON_AGENT_PER_DAY
-        value: "4"
+        value: "40"
+      # The backstop, in money rather than in requests.
+      #
+      # Every limit above counts requests, which is a proxy for spend that holds
+      # only while the per-request cost holds — and the previous numbers were
+      # built on a free-request counter that read zero while money was leaving
+      # the account. This is the unit that cannot drift when the model changes.
+      #
+      # About fifty times normal use, so it should never fire in ordinary
+      # operation. It exists for the case nobody predicted. 0 disables it.
+      - key: GLOBAL_SPEND_USD_PER_DAY
+        value: "1.00"
       # AGENT_MAX_TOOL_CALLS is set with the other agent settings above.

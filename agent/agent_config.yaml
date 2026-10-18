@@ -3,9 +3,13 @@ agent:
   version: "1.0.0"
   description: "Agentic AI Research Assistant and Learning Mentor powered by FastMCP and Lakebase"
 
+# NOTE: nothing loads this file. It is a design record, not configuration.
+# Naming a model here is how the repository came to have four model names, one
+# of which was two retirements out of date. The model is set by
+# OPENROUTER_MODEL, defaulting in dashboard/config.py.
 model:
   provider: "openrouter" # Options: openrouter, databricks_serving, openai
-  name: "inclusionai/ling-3.0-flash-vl:free"   # :free slug of gpt-oss-120b was retired by OpenRouter
+  name: "${OPENROUTER_MODEL}"   # see dashboard/config.py for the default
   temperature: 0.2
   max_tokens: 4096
   top_p: 0.95
