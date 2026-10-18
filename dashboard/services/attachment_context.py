@@ -57,7 +57,25 @@ def read(owner, context, document_id, query='', page=None):
     match = next((item for item in context if item['document_id'] == document_id), None)
     if not match:
         raise ValidationError('Select this file in the current message before reading it.')
-    references(owner, match['conversation_id'], [document_id])
+    return _read_verified(owner, document_id, query, page,
+                          lambda: references(owner, match['conversation_id'], [document_id]))
+
+
+def preview(owner, document_id, page):
+    """Owner-authorized browser preview, including saved files whose chat was deleted.
+
+    Agent reads continue to require current-message selection through read().
+    """
+    upload_service.require_enabled()
+    def verify():
+        row = upload_service.owned(owner, document_id)
+        if row['status'] != 'ready' or row.get('expired'):
+            raise ValidationError('This file is unavailable or has expired.')
+    return _read_verified(owner, document_id, '', page, verify)
+
+
+def _read_verified(owner, document_id, query, page, verify):
+    verify()
     row = upload_service.owned(owner, document_id)
     try:
         data = upload_storage.for_location(row['storage_location_id']).read(
@@ -74,7 +92,7 @@ def read(owner, context, document_id, query='', page=None):
     except (ValueError, TypeError, KeyError, AttributeError):
         raise ExternalAPIError('The extracted file could not be read.') from None
     # Re-check expiry/deletion after provider I/O as well.
-    references(owner, match['conversation_id'], [document_id])
+    verify()
     for passage in passages:
         passage['source_id'] = 'doc:'+document_id+':p'+str(passage['page'])
     return {'document_id': document_id, 'filename': row['filename'], 'passages': passages,

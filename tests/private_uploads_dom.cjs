@@ -10,6 +10,7 @@ const resources=d.createElement('aside');d.body.append(resources);let fileCount=
 w.PdfPreview={mount:(host,url,page)=>{host.dataset.pdf=url;host.dataset.startPage=page;}};
 w.fetch=async(url,options)=>{
  requests.push([url,options]);
+ if(url.endsWith("/retain")){file.retained=true;file.expires_at=null;}
  return {ok:true,text:async()=>'<script>unsafe</script>',json:async()=>url==='/uploads/conversations'?{conversation_id:'owned-conversation'}:url==='/uploads'?file:{items:returnedItems || [file]}};
 };
 w.HTMLDialogElement.prototype.showModal=function(){this.open=true;};
@@ -59,6 +60,10 @@ const settle=()=>new Promise(resolve=>setTimeout(resolve,0));
  assert.equal(resources.querySelector('pre').textContent,'<script>unsafe</script>');
  assert.equal(resources.querySelector('script'),null);
  assert.equal(resources.querySelector('[aria-label="Download original"]').getAttribute('href'),'/uploads/'+file.document_id+'/download');
+ resources.querySelector('[aria-label="Save to workspace"]').click();await settle();await settle();
+ assert.ok(requests.some(([url,options])=>url.endsWith('/retain') && options.method==='POST'));
+ assert.equal(resources.querySelector('[aria-label="Save to workspace"]'),null);
+ assert.match(resources.querySelector('.file-preview-menu .private-files-note').textContent,/Saved to workspace/);
  const toolbar=resources.querySelector('.file-preview-toolbar');
  assert.equal(toolbar.children.length,5); // title + download, expand, more, close
  assert.equal(toolbar.querySelector('.file-preview-menu .private-files-note').textContent.includes('Ready'),true);

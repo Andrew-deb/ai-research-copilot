@@ -83,3 +83,11 @@ run state. It does not add MCP tools.
 storage; these tables retain ownership, capacity reservations and durable jobs.
 See `docs/setup/private_uploads.md` for Azure credentials, privileges and rollout.
 No MCP catalog migration is involved.
+
+**Retained documents:** apply `30_retained_documents.sql` after `29_private_uploads.sql`
+and before deploying Save to workspace. The additive nullable `retained_at` column
+keeps existing uploads temporary. Saved files reuse their existing object keys,
+remain charged against the same storage reservations and survive original-chat
+removal. Explicit deletion and account deletion still queue cleanup. Deploy all
+upload workers from the matching release before using retention; an older worker
+does not recognize the new retention policy. No MCP migration is required.

@@ -342,3 +342,44 @@ before selecting the file. Expired/deleted items show an unavailable state rathe
 than falling through to a download. Explicit Download original/Download all
 controls retain their download behaviour. Render-only rollout, with no backend,
 permission, schema or MCP changes.
+
+### Increment D1 — Save to workspace
+
+Apply `sql/30_retained_documents.sql` as the schema owner before deploying this
+release to Render. Deploy/restart every upload worker with the same release;
+do not leave an old standalone worker running alongside retained-document code.
+Use the existing `UPLOADS_ENABLED` / `UPLOAD_WORKER_ENABLED` settings. No new
+Azure objects, credentials, environment variables or MCP deployment are needed.
+Existing table-level SELECT/UPDATE permissions cover the new column; deployments
+using column-specific grants must include `retained_at`.
+
+Only Ready, unexpired uploads can be saved. Open Files, open the file preview,
+then use the bookmark icon (Save to workspace) in the more-actions menu. Saving
+is idempotent and serialized with expiry/deletion cleanup: once cleanup has won,
+saving refuses rather than resurrecting the object. No original or extraction
+artifact is copied and no embedding/model request is made.
+
+The Documents navigation entry opens the owner's paginated saved-file library.
+Files open in a dedicated preview with extracted text, download and delete icon
+controls. Saved originals/artifacts remain private and count against the existing
+100 MiB/user and 1 GiB/deployment defaults (or configured capacities). The existing
+three-file limit in the original conversation is unchanged by saving. Retention
+is not a storage quota bypass.
+
+The original `expires_at` remains recorded, but saved files do not expire on that
+date. They survive deletion of the original conversation and can still be opened
+from Documents. Deleting a file makes it unavailable immediately; the durable
+worker deletes both original and extracted artifact before releasing capacity.
+Deleting the owner account also triggers cleanup, including saved files.
+
+This first increment does not add cross-conversation @ mentions, document
+collection membership, MCP write tools, content editing or semantic indexing.
+Agent reads still require an explicitly selected file from the current chat.
+Later increments can extend that selection boundary deliberately.
+
+Live acceptance: save a Ready PDF and TXT; repeat Save; confirm the same document
+ID/key and unchanged byte reservation; open Documents; delete the original chat;
+verify saved preview/download still work; test another user's refusal; delete the
+saved file and verify cleanup/capacity release. Separately verify that unsaved
+expiry still removes files and account deletion cleans retained files. Local SQL
+and mocked storage tests do not prove the production worker/migration was applied.
