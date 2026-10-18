@@ -1,8 +1,13 @@
 """
 dashboard/config.py — Single source of truth for dashboard configuration.
 
-Same secret-scope-then-env-var pattern as mcp_server/shared_resource/config.py.
+Same env-var-then-secret-scope pattern as mcp_server/shared_resource/config.py.
 Each Databricks App is its own process with its own config module.
+
+The order was secret-scope-first until October 2026, and reversing it is the
+single largest change this module has had: it took process start from about 55
+seconds to 7. `_get_secret` records what the old order cost, because the bill
+arrived somewhere nobody was looking - a database branch, not a slow boot.
 """
 
 import base64
@@ -15,15 +20,65 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
+# How long one Databricks secret lookup may take. Short on purpose: this runs at
+# import, before anything can serve a request, and the whole point of the
+# ordering below is that nothing here delays a cold start.
+_SECRET_TIMEOUT_SECONDS = 5
+
 
 def _get_secret(scope: str, key: str, env_fallback: str) -> str | None:
+    """
+    One configured value: the environment first, a Databricks secret scope only
+    if the environment did not supply it.
+
+    THE ORDER IS THE POINT, and it used to be the other way round.
+
+    Asking Databricks first cost one authenticated round trip per value. This
+    module reads eight, so every process start paid eight of them - measured at
+    5.7 to 8.4 seconds each, about 48 seconds in total - and then used the
+    environment variable anyway, because on this deployment the lookups do not
+    merely miss, they fail:
+
+        database  /lakebase-url     PermissionDenied
+        openrouter/api-key          PermissionDenied
+        google    /client-id        ResourceDoesNotExist
+
+    Forty-eight seconds for a path that has never returned a value here.
+
+    What it cost, concretely. Render's free tier stops an idle service, and the
+    next request waits for it to start: measured at 34 to 53 seconds, nearly all
+    of it this function. cron-job.org gives a request 30 seconds, so the ping
+    meant to keep the service awake timed out before the service could finish
+    waking - every time, for weeks. Nothing touched Lakebase, its compute was
+    suspended and then disabled, and the branch had to be recreated. A visitor
+    opening a cold link paid the same wait.
+
+    Databricks is still consulted when the environment is silent, which is how a
+    Databricks App is meant to supply these. It is just no longer asked about
+    values we already have.
+    """
+    value = os.getenv(env_fallback)
+    if value:
+        return value
+
     try:
         from databricks.sdk import WorkspaceClient
-        raw = WorkspaceClient().secrets.get_secret(scope=scope, key=key)
+        from databricks.sdk.core import Config as _DatabricksConfig
+
+        # A bounded wait, so a hang cannot reproduce the outage above. Without
+        # it the only limit is the SDK's own retry budget, which is minutes.
+        client = WorkspaceClient(
+            config=_DatabricksConfig(http_timeout_seconds=_SECRET_TIMEOUT_SECONDS))
+        raw = client.secrets.get_secret(scope=scope, key=key)
         return base64.b64decode(raw.value).decode("utf-8")
-    except Exception:
-        pass
-    return os.getenv(env_fallback)
+    except Exception as exc:  # noqa: BLE001 - configuration must not fail to import
+        # Named, not silent. This was `except Exception: pass`, so eight failing
+        # lookups produced no evidence at all and went unnoticed until they had
+        # cost a database branch. The scope and key are safe to log; the value
+        # is never logged, found or not.
+        logger.info("No secret %s/%s and no %s in the environment (%s)",
+                    scope, key, env_fallback, type(exc).__name__)
+        return None
 
 
 # --- Lakebase ---
@@ -119,11 +174,47 @@ def _credentials() -> list[str]:
 
 
 OPENROUTER_API_KEYS: list[str] = _credentials()
-# openai/gpt-oss-120b:free was retired by OpenRouter and now 404s, which broke
-# every RAG answer. This default is verified for plain synthesis AND tool
-# calling; the paid slug openai/gpt-oss-120b is the fallback if free-tier
-# rate limits become a problem, and it is an env change, not a code change.
-OPENROUTER_MODEL: str = os.getenv("OPENROUTER_MODEL", "inclusionai/ling-3.0-flash-vl:free")
+# Two requirements, and the second is the one that is easy to miss.
+#
+# NOT A `:free` SLUG. Twice a pinned `:free` variant has been retired under us
+# and started returning 404 "This model is unavailable for free" on every
+# single call: first openai/gpt-oss-120b:free, then
+# inclusionai/ling-3.0-flash-vl:free. Both failures were silent, in that
+# nothing here changed - the provider withdrew the variant - and total, in that
+# every RAG answer and every agent turn stopped at once. A paid slug is not
+# withdrawn for being popular, and at $0.021/M prompt and $0.063/M completion
+# tokens this is roughly 14,000 questions per dollar, so the saving the free
+# variant bought never covered the fragility.
+#
+# MORE THAN ONE PROVIDER. This is why the model is ling-3.0-flash and not
+# ling-3.0-flash-vl, which measured better on every other axis. The VL variant
+# is served by exactly one provider, and when that provider's shared pool is
+# busy OpenRouter has nowhere to route: measured, it returned
+# `engine_overloaded` with `limit_source: upstream_provider_shared_pool`
+# continuously for over twenty minutes, on all three credentials at once.
+#
+# Credential failover cannot help with that, which is the point. Three keys
+# protect against a key being revoked, expired or throttled; they are three
+# ways of reaching the SAME provider. A single-provider model puts the demo at
+# the mercy of someone else's capacity, and the whole reserve exists so the
+# thing answers when somebody who matters opens the link.
+#
+# ling-3.0-flash is served by Novita and DeepInfra, so one being busy is a
+# routing decision rather than an outage. Its endpoint also serves 262k context
+# against the VL variant's actual 131k - the models list advertises 262k for
+# both, and the endpoints list disagrees; the endpoints list is the one serving
+# the request.
+#
+# Verified for the part a cheaper model usually fails - tool calling and the
+# citation contract, not prose: 20 of 21 measured runs closed with a parseable
+# citations block and every citation resolving. The one miss produced no block
+# at all, which resolve_citations degrades safely (markers stripped, no
+# sources shown) rather than mapping a number to the wrong paper.
+#
+# render.yaml pins this explicitly rather than relying on the default, so
+# production never depends on a value that can rot here unnoticed. Changing it
+# is one environment variable and no code.
+OPENROUTER_MODEL: str = os.getenv("OPENROUTER_MODEL", "inclusionai/ling-3.0-flash")
 
 # =============================================================================
 # Databricks service auth + MCP (Phase 3.4)
@@ -276,46 +367,107 @@ ALLOW_ANONYMOUS_DEMO: bool = os.getenv("ALLOW_ANONYMOUS_DEMO", "true").lower() =
 # =============================================================================
 # EVERY NUMBER BELOW IS A PLACEHOLDER, not a production value.
 #
-# Production values come from the calibration step (plan 3.6), which measures
-# what an operation actually consumes and works backwards from the providers'
-# free allowances. Choosing them now would be guessing, so they are deliberately
-# stingy: an un-calibrated deploy should be restrictive rather than expensive.
+# What these limits are FOR, because the previous answer was wrong.
 #
-# Authentication raises the allowance. It never removes it — an authenticated
+# They were sized by dividing a 50-request-per-day free-model allowance by the
+# 2.46 provider calls an agent question makes. That allowance meters only
+# `:free` model variants. The configured model is a paid one, so the counter
+# reads 0/50 on every credential while real money is spent - the arithmetic was
+# sound and the input was fiction. Everything below was therefore derived from a
+# meter the application never touches.
+#
+# Priced properly, a question costs hundredths of a cent: roughly fourteen
+# thousand per dollar on the configured model, and a thousand-question crawl
+# comes to about fifty cents. Money was never the binding constraint, so a
+# ceiling computed from a budget lands in the thousands and protects nothing.
+#
+# These numbers are ABUSE protection. The risk is a crawler finding the demo and
+# draining it overnight so that it fails when somebody who matters opens the
+# link - authentication_and_demo_design.md §6d. They are chosen so that:
+#
+#   * a signed-in person can explore properly in one sitting rather than
+#     rationing questions;
+#   * several such people can do that on the same day;
+#   * an anonymous visitor can try the headline feature before committing to an
+#     account, while the anonymous tier as a whole cannot drain the day;
+#   * a bot that finds the endpoint hits a wall long before anything expensive
+#     or unavailable happens.
+#
+# GLOBAL_SPEND_USD_PER_DAY is the backstop underneath all of them, in the one
+# unit that a cheaper model or a longer answer cannot quietly change.
+#
+# Authentication raises the allowance. It never removes it - an authenticated
 # user with a runaway script costs exactly as much as an anonymous one.
+#
+# Re-derive with scripts/calibrate_quotas.py, which reads the live catalogue and
+# every credential rather than trusting a number in a document.
 
-ANON_SEARCH_PER_DAY: int = int(os.getenv("ANON_SEARCH_PER_DAY", "20"))
-ANON_RAG_PER_DAY: int = int(os.getenv("ANON_RAG_PER_DAY", "3"))
-ANON_AGENT_PER_DAY: int = int(os.getenv("ANON_AGENT_PER_DAY", "1"))
+# Search makes no completion call - it embeds via Hugging Face and queries
+# pgvector - so it does not draw on the allowance the rest of this protects.
+# Generous on purpose: being stingy here costs nothing and buys nothing.
+ANON_SEARCH_PER_DAY: int = int(os.getenv("ANON_SEARCH_PER_DAY", "30"))
+ANON_RAG_PER_DAY: int = int(os.getenv("ANON_RAG_PER_DAY", "5"))
+# Two, not one. One question cannot show what the agent does: the first is spent
+# learning how to ask. Two is still far too few to be worth automating.
+ANON_AGENT_PER_DAY: int = int(os.getenv("ANON_AGENT_PER_DAY", "2"))
 
-USER_SEARCH_PER_DAY: int = int(os.getenv("USER_SEARCH_PER_DAY", "200"))
-# Calibrated, and kept at or below the global ceilings below. A per-user
-# allowance ABOVE the global one is not a looser limit, it is an incoherent
-# pair: the individual number promises something the shared one will refuse,
-# and the person is told they have allowance left at the moment they are turned
-# away. These two were left at their placeholders when render.yaml was
-# calibrated, which is exactly that state.
-USER_RAG_PER_DAY: int = int(os.getenv("USER_RAG_PER_DAY", "8"))
-USER_AGENT_PER_DAY: int = int(os.getenv("USER_AGENT_PER_DAY", "5"))
+USER_SEARCH_PER_DAY: int = int(os.getenv("USER_SEARCH_PER_DAY", "300"))
+# Enough to explore in one sitting. At five, a signed-in user spent their day
+# before finding out whether the tool was any good - a limit sized to ration a
+# free allowance that did not apply.
+#
+# Kept at or below the global ceilings below. A per-user allowance ABOVE the
+# global one is not a looser limit, it is an incoherent pair: the individual
+# number promises something the shared one will refuse, and the person is told
+# they have allowance left at the moment they are turned away. These two were
+# left at their placeholders when render.yaml was calibrated, which is exactly
+# that state, and tests now forbid it.
+USER_RAG_PER_DAY: int = int(os.getenv("USER_RAG_PER_DAY", "30"))
+USER_AGENT_PER_DAY: int = int(os.getenv("USER_AGENT_PER_DAY", "25"))
 
-# The ceilings that protect the budget. On a free tier they protect availability:
-# exhausting a provider's daily allowance means the feature is dead until it
-# resets, for everyone, including whoever is demonstrating it.
-GLOBAL_RAG_PER_DAY: int = int(os.getenv("GLOBAL_RAG_PER_DAY", "8"))
-GLOBAL_AGENT_PER_DAY: int = int(os.getenv("GLOBAL_AGENT_PER_DAY", "9"))
+# The ceilings that actually protect the demo, because no amount of
+# cookie-clearing moves them.
+#
+# Sized so that roughly eight people can each have a full session on the same
+# day before the feature rests. At the measured 2.48 provider requests per
+# question that is about 500 upstream calls and, on the configured model,
+# small change - the point is the shape of the day, not the bill.
+GLOBAL_RAG_PER_DAY: int = int(os.getenv("GLOBAL_RAG_PER_DAY", "150"))
+GLOBAL_AGENT_PER_DAY: int = int(os.getenv("GLOBAL_AGENT_PER_DAY", "200"))
 
 # A second ceiling, for anonymous agent use alone.
 #
 # The per-visitor limit cannot protect a shared allowance: it resets with a
-# cleared cookie, so ten curious visitors at one question each are ten questions
-# however low it is set. Calibration measured 2.46 provider requests per agent
-# question against a 50/day allowance, which means anonymous traffic can drain
-# the day before a signed-in user asks anything.
+# cleared cookie, so ten curious visitors at two questions each are twenty
+# questions however low it is set. This is the only limit that bounds the tier.
 #
-# So anonymous visitors keep their one question — the headline feature is worth
-# trying before committing to an account — and the tier as a whole is capped
-# well below the global one. What is left is reserved for people who came back.
-GLOBAL_ANON_AGENT_PER_DAY: int = int(os.getenv("GLOBAL_ANON_AGENT_PER_DAY", "4"))
+# A fifth of the global ceiling: enough that a genuine stream of first-time
+# visitors is served, and not so much that anonymous traffic can take the day
+# from people who signed in. What is left is reserved for them.
+GLOBAL_ANON_AGENT_PER_DAY: int = int(os.getenv("GLOBAL_ANON_AGENT_PER_DAY", "40"))
+
+# The backstop, in money.
+#
+# Every limit above counts REQUESTS, which is a proxy for spend that holds only
+# while the per-request cost holds. Change the model, raise the tool budget, or
+# let answers grow longer, and the same request count costs a different amount -
+# which is how the previous numbers came to be built on a counter that read zero
+# while money was leaving the account.
+#
+# This is the one unit that cannot drift. At the configured model's measured
+# cost, the ceilings above come to a couple of cents a day, so a dollar is about
+# fifty times normal use: it should never fire in ordinary operation, and it
+# bounds the case nobody predicted - an expensive model configured by mistake, a
+# retry loop, a question that reasons for pages.
+#
+# It TRAILS BY ONE OPERATION. Cost is only known once the provider reports it,
+# so telemetry is written after the fact and this stops the next request rather
+# than the one that crossed the line. For a backstop that is the right trade;
+# the alternative is estimating a cost before spending it, and the request
+# ceilings above are already that estimate.
+#
+# 0 disables it, for a self-hoster who would rather bound spend at the provider.
+GLOBAL_SPEND_USD_PER_DAY: float = float(os.getenv("GLOBAL_SPEND_USD_PER_DAY", "1.00"))
 
 # How often a background thread runs one trivial query, in seconds. 0 disables.
 #

@@ -1,8 +1,10 @@
 """
 shared_resource/config.py — Shared database and embedding-contract configuration.
 
-Loads secrets from Databricks secret scope (production) with fallback to
-.env variables (local development). Provider-specific settings live in research/config.py; server startup owns transport settings.
+Reads each value from the environment, falling back to a Databricks secret
+scope when the environment is silent — that order matters, and `_get_secret`
+explains why. Provider-specific settings live in research/config.py; server
+startup owns transport settings.
 """
 
 import base64
@@ -15,16 +17,44 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
+# A bounded wait for one secret lookup. This runs at import, before anything can
+# serve a request, so it must never be the reason a process is slow to start.
+_SECRET_TIMEOUT_SECONDS = 5
+
 
 def _get_secret(scope: str, key: str, env_fallback: str) -> str | None:
-    """Try Databricks secret scope first, fall back to environment variable."""
+    """
+    The environment first, a Databricks secret scope only if it is silent.
+
+    The same order, and for the same reason, as dashboard/config.py - which
+    explains it at length and is worth reading before changing this. In short:
+    asking Databricks first costs one authenticated round trip per value at
+    import, measured at 5.7 to 8.4 seconds each. On the dashboard that was about
+    48 seconds per process start, it pushed a cold start past the 30-second
+    budget of the schedule that keeps the service awake, and the database was
+    eventually suspended for want of a successful ping.
+
+    This module is imported by the dashboard as well as by the MCP server, so it
+    inherits the same exposure.
+    """
+    value = os.getenv(env_fallback)
+    if value:
+        return value
+
     try:
         from databricks.sdk import WorkspaceClient
-        raw = WorkspaceClient().secrets.get_secret(scope=scope, key=key)
+        from databricks.sdk.core import Config as _DatabricksConfig
+
+        client = WorkspaceClient(
+            config=_DatabricksConfig(http_timeout_seconds=_SECRET_TIMEOUT_SECONDS))
+        raw = client.secrets.get_secret(scope=scope, key=key)
         return base64.b64decode(raw.value).decode("utf-8")
-    except Exception:
-        pass
-    return os.getenv(env_fallback)
+    except Exception as exc:  # noqa: BLE001 - configuration must not fail to import
+        # Named rather than swallowed: `except Exception: pass` is why eight
+        # failing lookups in the dashboard went unnoticed for weeks.
+        logger.info("No secret %s/%s and no %s in the environment (%s)",
+                    scope, key, env_fallback, type(exc).__name__)
+        return None
 
 
 # --- Lakebase ---

@@ -25,7 +25,17 @@ WIKIPEDIA_RATE_LIMIT_DELAY: float = float(os.getenv("WIKIPEDIA_RATE_LIMIT_DELAY"
 # --- OpenRouter ---
 OPENROUTER_API_KEY: str | None = _get_secret("openrouter", "api-key", "OPENROUTER_API_KEY")
 OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
-OPENROUTER_MODEL: str = os.getenv("OPENROUTER_MODEL", "openai/gpt-oss-120b:free")
+# No OPENROUTER_MODEL here on purpose.
+#
+# This module declared one for a long time and nothing ever read it - the MCP
+# server makes no completion calls at all. It sat at
+# openai/gpt-oss-120b:free, two retirements stale, and the only thing it ever
+# did was make it look as though two services had drifted apart. A second
+# default that cannot be used can still be read and believed, which is worse
+# than having none.
+#
+# dashboard/config.py owns the model. Set OPENROUTER_MODEL in the environment
+# to change it.
 
 # --- MCP Server ---
 MCP_SERVER_NAME: str = "ai-research-copilot"
