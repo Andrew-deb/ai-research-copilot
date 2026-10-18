@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="{% block viewport %}width=device-width, initial-scale=1{% endblock %}">
   <link rel="icon" type="image/png" href="{{ url_for('static', filename='img/alfred/favicon-magnifier.png') }}">
   <title>{% block title %}Alfred{% endblock %}</title>
 
@@ -212,6 +212,11 @@
         <a href="{{ url_for('progress.notes') }}" class="nav-item {{ 'active' if ep == 'progress.notes' }}" aria-label="Notes" data-tooltip="Notes">
           {{ icon('note') }}<span>Notes</span>
         </a>
+        {% if private_uploads_enabled %}
+        <a href="{{ url_for('uploads.documents_page') }}" class="nav-item {{ 'active' if ep in ('uploads.documents_page', 'uploads.document_view') }}" aria-label="Documents" data-tooltip="Documents">
+          {{ icon('note') }}<span>Documents</span>
+        </a>
+        {% endif %}
         {% endif %}
         <a href="{{ url_for('goals.list_goals') }}" class="nav-item {{ 'active' if ep.startswith('goals.') }}" aria-label="Goals" data-tooltip="Goals">
           {{ icon('target') }}<span>Goals</span>
@@ -378,11 +383,11 @@
     <button type="button" role="menuitem" data-action="pin">
       {{ icon('pin') }}<span data-label="pin">Pin</span>
     </button>
-    <button type="button" role="menuitem" data-action="rename">
-      {{ icon('pencil') }}<span>Rename</span>
+    <button type="button" role="menuitem" data-action="rename" title="Rename conversation" aria-label="Rename conversation">
+      {{ icon('pencil') }}<span class="sr-only">Rename</span>
     </button>
-    <button type="button" role="menuitem" class="is-danger" data-action="delete">
-      {{ icon('trash') }}<span>Delete</span>
+    <button type="button" role="menuitem" class="is-danger" data-action="delete" title="Delete conversation" aria-label="Delete conversation">
+      {{ icon('trash') }}<span class="sr-only">Delete</span>
     </button>
   </div>
   {% endif %}
@@ -628,8 +633,8 @@
           <span class="note-words" data-word-count-for="notes-pad-body">0 words</span>
           <span style="display: flex; gap: 8px;">
             {# Nothing is written until you choose. #}
-            <button type="button" class="btn btn-ghost btn-sm" id="notes-pad-discard">Discard</button>
-            <button type="submit" class="btn btn-primary btn-sm">Save note</button>
+            <button type="button" class="btn btn-ghost btn-sm" id="notes-pad-discard" title="Discard changes" aria-label="Discard changes">{{ icon('close') }}</button>
+            <button type="submit" class="btn btn-primary btn-sm" aria-label="Save note" title="Save note">{{ icon('check') }}</button>
           </span>
         </div>
       </form>
@@ -675,9 +680,9 @@
       {% block content %}{% endblock %}
     </main>
 
-    <footer class="app-footer">
+    {% block app_footer %}<footer class="app-footer">
       Alfred — Your research assistant
-    </footer>
+    </footer>{% endblock %}
   </div>
 </div>
 

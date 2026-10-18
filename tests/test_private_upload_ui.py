@@ -8,4 +8,5 @@ def test_ui_exposes_uploads_in_both_modes_only_when_enabled(client, monkeypatch)
     for url in ("/chat", "/chat/assistant"):
         text = client.get(url).text
         assert 'id="upload-choose"' in text and 'id="upload-input"' in text
-        assert "Agent reading is coming next" in text
+        assert 'id="private-files"' in text
+        assert 'id="upload-details"' not in text

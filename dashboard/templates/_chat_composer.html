@@ -16,10 +16,21 @@
      initial_prompt     prefill, from ?q= #}
 
 {% if can_ask %}
+<div class="chat-composer-dock">
+  {# Stated up front rather than on refusal. Discovering a limit by hitting it
+     reads as the product breaking; knowing it in advance reads as a free tier. #}
+  {% if agent_daily_limit %}
+    <p class="chat-note">
+      {{ agent_daily_limit }} question{{ '' if agent_daily_limit == 1 else 's' }} a day
+      {%- if not is_authenticated %} — <a href="{{ url_for('auth.signup') }}">sign up</a> for more{% endif %}.
+    </p>
+  {% endif %}
+
   {# The textarea's content is kept on one line deliberately: a textarea
      preserves its own whitespace, so indenting it would arrive as blanks in
      front of the question. #}
   <form class="composer {{ 'composer-with-mode' if chat_mode or wick_panel }}" id="chat-composer" autocomplete="off">
+    {% include "_private_uploads.html" %}
     <textarea class="composer-input" id="chat-input" rows="1"
               placeholder="{{ composer_placeholder | default('Ask Wick about your workspace…' if chat_mode == 'wick' else 'Ask a research question…') }}"
               aria-label="{{ 'Ask Wick' if chat_mode == 'wick' else 'Ask a research question' }}">{{ initial_prompt | default('') }}</textarea>
@@ -85,10 +96,10 @@
         <path d="M12 19V5M5 12l7-7 7 7"/>
       </svg>
     </button>
-    <button class="composer-stop" type="button" hidden aria-label="Stop agent run">Stop</button>
+    <button class="composer-stop" type="button" hidden aria-label="Stop agent run" title="Stop"><svg class="icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg></button>
     {% if chat_mode or wick_panel %}</div>{% endif %}
   </form>
-  {% include "_private_uploads.html" %}
+  {% include "_private_upload_tools.html" %}
 
 
   {# Below the composer, not above it: these are suggestions for an empty input,
@@ -105,14 +116,7 @@
     </ul>
   {% endif %}
 
-  {# Stated up front rather than on refusal. Discovering a limit by hitting it
-     reads as the product breaking; knowing it in advance reads as a free tier. #}
-  {% if agent_daily_limit %}
-    <p class="chat-note">
-      {{ agent_daily_limit }} question{{ '' if agent_daily_limit == 1 else 's' }} a day
-      {%- if not is_authenticated %} — <a href="{{ url_for('auth.signup') }}">sign up</a> for more{% endif %}.
-    </p>
-  {% endif %}
+</div>
 {% else %}
   <p class="chat-note">
     <a href="{{ url_for('auth.login') }}">Log in</a> to ask research questions.

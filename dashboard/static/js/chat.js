@@ -120,7 +120,7 @@
       window.parent.postMessage({ source: "alfred-assistant", type: type, value: value }, window.location.origin);
     }
   }
-  var stage = form.closest(".chat-stage") || form;
+  var stage = form.closest(".chat-stage") || form.closest(".chat-composer-dock") || form;
   var thread = document.getElementById("chat-thread");
   var pending = false;
   var approvalRunId = null;
@@ -229,13 +229,14 @@
     }
   }
 
-  function addUserMessage(text) {
+  function addUserMessage(text, attachments) {
     var el = document.createElement("article");
     el.className = "chat-msg chat-msg-user";
     var bubble = document.createElement("div");
     bubble.className = "chat-prompt-text";
-    if (window.WickMentions) { window.WickMentions.render(bubble, text); }
+    if (window.WickMentions) { window.WickMentions.render(bubble, text, attachments); }
     else { bubble.textContent = text; }
+    var files=bubble.querySelector(".message-files");if(files)el.appendChild(files);
     el.appendChild(bubble);
     ensureThread().appendChild(el);
     scrollToLatest();
@@ -363,6 +364,7 @@
 
   function prettyTool(name) {
     return {
+      read_attached_document: "Reading an attached file",
       find_workspace_resources: "Finding workspace assets",
       get_workspace_resource: "Reading workspace context",
       get_workspace_paper: "Reading a saved paper",
@@ -404,6 +406,8 @@
     if (!rail) { return; }
     rail.classList.toggle("is-open", open);
     if (railScrim) { railScrim.hidden = !open; }
+    updateLauncher();
+    if(railLauncher)railLauncher.setAttribute("aria-expanded",String(open));
     // Only while the drawer covers the page — a scroll lock left on would
     // freeze the conversation behind it.
     document.body.classList.toggle("rail-open", open);
@@ -421,57 +425,56 @@
       var margin = 8;
       return {
         x: Math.max(margin, Math.min(x, window.innerWidth - el.offsetWidth - margin)),
-        y: Math.max(margin, Math.min(y, window.innerHeight - el.offsetHeight - margin)),
+        y: Math.max(margin+(window.visualViewport ? window.visualViewport.offsetTop : 0), Math.min(y, (window.visualViewport ? window.visualViewport.height+window.visualViewport.offsetTop : window.innerHeight) - el.offsetHeight - margin)),
       };
     }
 
+    var activePointer=null, suppressClick=false;
     el.addEventListener("pointerdown", function (e) {
-      var box = el.getBoundingClientRect();
-      startX = e.clientX;
-      startY = e.clientY;
-      originX = box.left;
-      originY = box.top;
-      moved = false;
-      el.setPointerCapture(e.pointerId);
+      if(e.button!==0 || e.isPrimary===false)return;
+      var box=el.getBoundingClientRect();startX=e.clientX;startY=e.clientY;
+      originX=box.left;originY=box.top;moved=false;suppressClick=false;activePointer=e.pointerId;
+      if(el.setPointerCapture)el.setPointerCapture(e.pointerId);
     });
-
     el.addEventListener("pointermove", function (e) {
-      if (!el.hasPointerCapture(e.pointerId)) { return; }
-      var dx = e.clientX - startX;
-      var dy = e.clientY - startY;
-      // A press that has not travelled is still a tap; only past the threshold
-      // does it become a drag, or the button would be impossible to press.
-      if (!moved && Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) {
-        return;
-      }
-      moved = true;
-      var next = clamp(originX + dx, originY + dy);
-      // Switching to left/top once dragged; it starts anchored right/bottom.
-      el.style.left = next.x + "px";
-      el.style.top = next.y + "px";
-      el.style.right = "auto";
-      el.style.bottom = "auto";
+      if(activePointer!==e.pointerId)return;
+      var dx=e.clientX-startX,dy=e.clientY-startY;
+      if(!moved && Math.abs(dx)<DRAG_THRESHOLD && Math.abs(dy)<DRAG_THRESHOLD)return;
+      moved=true;var next=clamp(originX+dx,originY+dy);
+      el.style.left=next.x+"px";el.style.top=next.y+"px";el.style.right="auto";el.style.bottom="auto";
     });
-
-    el.addEventListener("pointerup", function (e) {
-      if (el.hasPointerCapture(e.pointerId)) { el.releasePointerCapture(e.pointerId); }
-      if (!moved) { onTap(); }
+    el.addEventListener("pointerup",function(e){
+      if(activePointer!==e.pointerId)return;
+      suppressClick=moved;activePointer=null;
+      if(el.hasPointerCapture && el.hasPointerCapture(e.pointerId))el.releasePointerCapture(e.pointerId);
     });
+    el.addEventListener("pointercancel",function(){activePointer=null;suppressClick=true;});
+    el.addEventListener("click",function(e){if(suppressClick && e.detail!==0){suppressClick=false;e.preventDefault();return;}suppressClick=false;onTap();});
 
     // A button parked against an edge would be half off-screen after a rotate.
-    window.addEventListener("resize", function () {
-      if (el.style.left === "" || el.hidden) { return; }
-      var box = el.getBoundingClientRect();
-      var next = clamp(box.left, box.top);
-      el.style.left = next.x + "px";
-      el.style.top = next.y + "px";
-    });
+    function repositionLauncher() {
+      if(el.style.left === "" || el.hidden || (window.visualViewport && window.visualViewport.scale!==1))return;
+      var box=el.getBoundingClientRect(),next=clamp(box.left,box.top);
+      el.style.left=next.x+"px";el.style.top=next.y+"px";
+    }
+    window.addEventListener("resize",repositionLauncher);
+    if(window.visualViewport){window.visualViewport.addEventListener("resize",repositionLauncher);window.visualViewport.addEventListener("scroll",repositionLauncher);}
+
   }
 
   function updateLauncher() {
     if (!railLauncher) { return; }
-    railLauncher.hidden = sourceCount === 0;
-    railLauncher.textContent = "Sources" + (sourceCount ? " (" + sourceCount + ")" : "");
+    railLauncher.hidden = rail.classList.contains("is-open") || (sourceCount === 0 && !rail.dataset.hasFiles);
+    railLauncher.textContent = rail.dataset.hasFiles ? "Files & Sources" : "Sources" + (sourceCount ? " (" + sourceCount + ")" : "");
+  }
+
+  // Mounting a tab is not evidence that the conversation contains resources.
+  function updateResourceVisibility() {
+    var empty=sourceCount===0 && !rail.dataset.hasFiles;
+    rail.hidden=empty;
+    rail.classList.toggle("is-empty",empty);
+    if(empty)setDrawer(false);
+    else updateLauncher();
   }
 
   function ensureRail() {
@@ -497,7 +500,7 @@
 
     var label = document.createElement("span");
     label.className = "chat-rail-label";
-    label.textContent = "Sources";
+    label.textContent = "Resources";
     toggle.appendChild(label);
 
     function setCollapsed(collapsed) {
@@ -527,6 +530,7 @@
     // Hidden until it has something to show. A "Sources" heading over an empty
     // column is a promise the turn has not kept yet.
     rail.classList.add("is-empty");
+    rail.hidden=true;
 
     wrapper.appendChild(rail);
 
@@ -544,13 +548,23 @@
     launcher.className = "chat-rail-launcher";
     launcher.hidden = true;                  // until there is something to show
     launcher.setAttribute("aria-controls", "chat-rail-body");
-    launcher.title = "Sources — drag to move";
+    launcher.title = "Files and sources — drag to move";
     document.body.appendChild(launcher);
 
     makeDraggable(launcher, function () { setDrawer(true); });
 
     railLauncher = launcher;
     railScrim = scrim;
+    // A fixed mobile shell is its own stacking context. Keep drawer and
+    // backdrop as siblings at the page level so the backdrop cannot cover it.
+    function placeDrawer() {
+      var mobile=window.matchMedia("(max-width: 1100px)").matches;
+      var parent=mobile ? document.body : wrapper;
+      if(rail.parentNode!==parent)parent.appendChild(rail);
+      if(!mobile && rail.classList.contains("is-open"))setDrawer(false);
+    }
+    placeDrawer();window.addEventListener("resize",placeDrawer);
+
 
     scrim.addEventListener("click", function () { setDrawer(false); });
     document.addEventListener("keydown", function (e) {
@@ -563,10 +577,67 @@
     return rail;
   }
 
+  var filesBody = null, sourceTab = null, filesTab = null, resourceGeometry = null;
+  function selectResource(kind, open) {
+    ensureResources();
+    if(kind === "sources") {var restore=rail.querySelector('[aria-label="Restore preview"]');if(restore)restore.click();}
+    if(resourceGeometry)resourceGeometry.preview(kind === "files" && !!filesBody.querySelector(".file-preview-toolbar"));
+    rail.querySelector(".chat-rail-body").hidden = kind !== "sources";
+    filesBody.hidden = kind !== "files";
+    sourceTab.setAttribute("aria-selected", String(kind === "sources"));
+    filesTab.setAttribute("aria-selected", String(kind === "files"));
+    if(open && (sourceCount>0 || rail.dataset.hasFiles)) {
+      if(window.matchMedia("(max-width: 1100px)").matches) setDrawer(true);
+      else expandRail();
+    }
+  }
+  function ensureResources() {
+    ensureRail();
+    if(filesBody) return;
+    var tabs = document.createElement("div"); tabs.className="resource-tabs"; tabs.setAttribute("role","tablist");
+    sourceTab=document.createElement("button"); filesTab=document.createElement("button");
+    [[sourceTab,"Sources","sources"],[filesTab,"Files","files"]].forEach(function(entry) {
+      var button=entry[0]; button.type="button"; button.textContent=entry[1]; button.setAttribute("role","tab");
+      button.id="resource-tab-"+entry[2]; button.setAttribute("aria-controls","resource-"+entry[2]);
+      button.addEventListener("click",function(){selectResource(entry[2],false);}); tabs.append(button);
+    });
+    filesBody=document.createElement("div"); filesBody.className="chat-files-body"; filesBody.id="resource-files";
+    filesBody.setAttribute("role","tabpanel"); filesBody.setAttribute("aria-labelledby",filesTab.id);
+    var sources=rail.querySelector(".chat-rail-body"); sources.id="resource-sources";
+    sources.setAttribute("role","tabpanel"); sources.setAttribute("aria-labelledby",sourceTab.id);
+    rail.querySelector(".chat-rail-toggle").setAttribute("aria-controls","resource-sources resource-files");
+    rail.insertBefore(tabs,sources); rail.append(filesBody);
+    if(window.ResourcePanel)resourceGeometry=window.ResourcePanel.mount(rail, page.parentNode);
+    filesBody.hidden=true; sourceTab.setAttribute("aria-selected","true"); filesTab.setAttribute("aria-selected","false");
+    tabs.addEventListener("keydown",function(e){
+      if(e.key !== "ArrowLeft" && e.key !== "ArrowRight")return;
+      e.preventDefault(); var next=document.activeElement===sourceTab ? filesTab : sourceTab;
+      next.click(); next.focus();
+    });
+  }
+  window.ChatResources={
+    files:function(open){ensureResources();if(open)selectResource("files",true);return filesBody;},
+    setFileCount:function(count){
+      ensureResources();
+      if(count>0)rail.dataset.hasFiles="true";
+      else delete rail.dataset.hasFiles;
+      if(count>0 && sourceCount===0)selectResource("files",false);
+      else if(!count && sourceCount>0)selectResource("sources",false);
+      updateResourceVisibility();
+    },
+    sources:function(){selectResource("sources",true);},
+    preview:function(value){ensureResources();if(resourceGeometry)resourceGeometry.preview(value);},
+    expand:function(value){ensureResources();if(resourceGeometry)resourceGeometry.expand(value);}
+  };
+
   function railBody() {
     return ensureRail().querySelector(".chat-rail-body");
   }
 
+  function sourceId(source) {return source.source_id || source.paper_id;}
+  function sourceHref(source) {
+    return source.source_kind === "document" ? "/uploads/"+encodeURIComponent(source.document_id)+"/pages/"+Number(source.page) : "/paper/"+encodeURIComponent(source.paper_id);
+  }
   function sourceList(items, numbered) {
     var ol = document.createElement("ol");
     ol.className = "chat-citations" + (numbered ? "" : " is-plain");
@@ -578,7 +649,7 @@
       }
 
       var a = document.createElement("a");
-      a.href = "/paper/" + encodeURIComponent(c.paper_id);
+      a.href = sourceHref(c);
       a.textContent = c.title;
       li.appendChild(a);
 
@@ -621,10 +692,10 @@
   function addSources(result, question) {
     var cited = result.citations || [];
     var citedIds = {};
-    cited.forEach(function (c) { citedIds[c.paper_id] = true; });
+    cited.forEach(function (c) { citedIds[sourceId(c)] = true; });
 
     var consulted = (result.sources || []).filter(function (s) {
-      return !citedIds[s.paper_id];
+      return !citedIds[sourceId(s)];
     });
     if (!cited.length && !consulted.length) { return; }
 
@@ -649,9 +720,8 @@
 
     var body = railBody();
     body.appendChild(group);
-    rail.classList.remove("is-empty");
-    sourceCount += cited.length || consulted.length;
-    updateLauncher();
+    sourceCount += cited.length + consulted.length;
+    updateResourceVisibility();
     return group;
   }
 
@@ -693,6 +763,7 @@
   function showSource(group, number) {
     dismissPreview();
     if (!group) { return; }
+    selectResource("sources", false);
     if (window.matchMedia("(max-width: 1100px)").matches) { setDrawer(true); }
     else if (expandRail) { expandRail(); }
     var item = group.querySelector('[data-citation-number="' + number + '"]');
@@ -714,7 +785,7 @@
     var box = document.createElement("div");
     box.className = "chat-citation-preview";
     box.setAttribute("role", "dialog");
-    box.setAttribute("aria-label", "Paper preview");
+    box.setAttribute("aria-label", citation.source_kind === "document" ? "Uploaded source preview" : "Paper preview");
 
     var title = document.createElement("strong");
     title.className = "chat-preview-title";
@@ -722,6 +793,7 @@
     box.appendChild(title);
 
     var details = [];
+    if(citation.source_kind === "document")details.push("Extracted page "+citation.page+(citation.available===false ? " · unavailable" : ""));
     if (Array.isArray(citation.authors) && citation.authors.length) {
       details.push(citation.authors.slice(0, 3).map(function (author) {
         return typeof author === "string" ? author : author.display_name || author.name || "";
@@ -738,7 +810,7 @@
     var excerpt = document.createElement("p");
     excerpt.className = "chat-preview-excerpt";
     var summary = citation.tldr || citation.abstract_excerpt;
-    excerpt.textContent = summary ? String(summary) : "No summary available for this paper.";
+    excerpt.textContent = summary ? String(summary) : (citation.source_kind === "document" ? "Open the source page to view the extracted passages. Expired or deleted files are unavailable." : "No summary available for this paper.");
     box.appendChild(excerpt);
     if (summary) {
       var kind = document.createElement("span");
@@ -753,7 +825,7 @@
     open.href = anchor.href;
     open.target = "_blank";
     open.rel = "noopener noreferrer";
-    open.textContent = "Open paper";
+    open.textContent = citation.source_kind === "document" ? "Open source page" : "Open paper";
     actions.appendChild(open);
     if (group) {
       var reveal = document.createElement("button");
@@ -789,7 +861,7 @@
     var mapped = Object.create(null);
     citations.forEach(function (c) {
       if (Number.isSafeInteger(Number(c.number)) && Number(c.number) > 0 &&
-          c.paper_id && c.title) { mapped[String(c.number)] = c; }
+          sourceId(c) && c.title) { mapped[String(c.number)] = c; }
     });
     var walker = document.createTreeWalker(answer, NodeFilter.SHOW_TEXT, {
       acceptNode: function (node) {
@@ -811,11 +883,11 @@
         fragment.appendChild(document.createTextNode(text.slice(start, match.index)));
         let link = document.createElement("a");
         link.className = "chat-inline-citation";
-        link.href = "/paper/" + encodeURIComponent(citation.paper_id);
+        link.href = sourceHref(citation);
         link.target = "_blank";
         link.rel = "noopener noreferrer";
         link.textContent = match[0];
-        link.setAttribute("aria-label", "Paper " + citation.number + ": " + citation.title);
+        link.setAttribute("aria-label", "Source " + citation.number + ": " + citation.title);
         link.addEventListener("mouseenter", function () { openPreview(link, citation, group); });
         link.addEventListener("mouseleave", schedulePreviewDismissal);
         link.addEventListener("focus", function () { openPreview(link, citation, group); });
@@ -939,6 +1011,7 @@
         surface: embedded ? "assistant" : "agent",
         chat_mode: embedded ? "wick" : (modePicker ? modePicker.value : "research"),
         approval_mode: (embedded || (modePicker && modePicker.value === "wick")) && permissionButton ? permissionButton.value : "ask",
+        attachment_ids: options.action ? undefined : (options.attachment_ids || []),
         context_references: window.WickContext ? window.WickContext.references() : undefined,
         context_kind: (embedded || (page && page.dataset.chatMode === "wick")) ? page.dataset.contextKind : "",
         context_id: (embedded || (page && page.dataset.chatMode === "wick")) ? page.dataset.contextId : "" }),
@@ -1133,12 +1206,13 @@
       question = window.WickContext.formatPrompt(question);
       if (question.length > 2000) { addNotice("Shorten your prompt or remove a reference (2,000 characters including references)."); return; }
     }
+    if(!options.action && window.PrivateUploads) options.attachment_ids=window.PrivateUploads.references();
     completedWrites = [];
     activeRunId = null;
     stopRequested = false;
     setPending(true);
     if (options.action !== "regenerate") { addUserMessage(question); }
-    if (!options.action) { input.value = ""; }
+    if (!options.action) { input.value = ""; document.dispatchEvent(new Event("uploads:sent")); }
     if (embedded && !options.action) {
       try { sessionStorage.removeItem(draftKey); } catch (e) { /* private mode */ }
     }
@@ -1241,7 +1315,7 @@
         var save = document.createElement("button");
         save.type = "button";
         save.className = "chat-prompt-save";
-        save.textContent = "Send";
+        save.textContent = "↑";save.title="Send edited prompt";save.setAttribute("aria-label","Send edited prompt");
         save.addEventListener("click", function () {
           var changed = field.value.trim();
           if (changed) {
@@ -1251,7 +1325,7 @@
         });
         var cancel = document.createElement("button");
         cancel.type = "button";
-        cancel.textContent = "Cancel";
+        cancel.textContent = "×";cancel.title="Cancel editing";cancel.setAttribute("aria-label","Cancel editing");
         function closeEditor() {
           formEdit.remove();
           bubble.hidden = false;
@@ -1384,7 +1458,7 @@
     var previousPrompt = null;
     history.forEach(function (message) {
       if (message.role === "user") {
-        var promptEl = addUserMessage(message.content || "");
+        var promptEl = addUserMessage(message.content || "", (message.usage || {}).attachment_references);
         versionControls(promptEl, message, null);
         previousPrompt = message;
       } else if (message.role === "assistant") {

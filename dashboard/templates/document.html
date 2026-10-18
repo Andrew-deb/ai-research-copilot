@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}{{ document.filename }} — Alfred{% endblock %}
+{% block topbar_title %}Documents{% endblock %}
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/documents.css') }}">
+{% endblock %}
+{% block content %}
+<section class="saved-document" data-document-id="{{ document.document_id }}" data-filename="{{ document.filename }}">
+  <header class="saved-document-toolbar">
+    <a class="icon-btn" href="{{ url_for('uploads.documents_page') }}" aria-label="Back to documents" title="Back to documents">{{ icon('arrow-left') }}</a>
+    <h1>{{ document.filename }}</h1>
+    <a class="icon-btn" href="{{ url_for('uploads.preview_page', document_id=document.document_id, page=1) }}" title="Open extracted text" aria-label="Open extracted text">{{ icon('note') }}</a>
+    <a class="icon-btn" href="{{ url_for('uploads.download_file', document_id=document.document_id) }}" aria-label="Download original" title="Download original">{{ icon('download') }}</a>
+    <button class="icon-btn" type="button" data-delete-document="{{ document.document_id }}" title="Delete file" aria-label="Delete file">{{ icon('trash') }}</button>
+  </header>
+  <p id="document-status" role="status" aria-live="polite"></p>
+  <div id="saved-document-preview" class="saved-document-preview">Loading preview…</div>
+</section>
+<script src="{{ url_for('static', filename='js/pdf_preview.js') }}"></script>
+<script src="{{ url_for('static', filename='js/documents.js') }}"></script>
+{% endblock %}

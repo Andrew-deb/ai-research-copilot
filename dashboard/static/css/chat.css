@@ -787,51 +787,6 @@
 }
 
 @media (max-width: 1100px) {
-  /* The document scrolls again below this width; the composer holds its place
-     by sticking rather than by the column having a fixed height. */
-  .content-fill { display: block; }
-
-  .chat-with-rail {
-    display: block;
-    max-width: 740px;
-    height: auto;
-    min-height: 0;
-  }
-
-  .chat-page { display: block; }
-  .chat-with-rail > .chat-page,
-  .chat-with-rail > .landing-main { height: auto; }
-
-  /* The composer holds its place at the bottom of the screen while the
-     conversation scrolls behind it.
-
-     Sticky rather than the fixed-height column desktop uses: mobile viewport
-     height moves as the browser chrome hides and shows, so any calc() against
-     it is wrong for part of every scroll. Sticky needs no height at all — it
-     pins while there is thread above it and settles naturally at the end. */
-  .chat-page.has-conversation .chat-stage,
-  .landing-main.has-conversation .chat-stage {
-    position: sticky;
-    bottom: 0;
-    z-index: 5;
-    /* Opaque, or the thread shows through the box being typed into. */
-    background: var(--bg);
-    margin: 0 -6px;
-    padding: 8px 6px 10px;
-    box-shadow: 0 -10px 12px -8px var(--bg);
-  }
-
-  /* The landing page has no .chat-stage wrapper; its composer is a direct
-     child, so it is pinned the same way. */
-  .landing-main.has-conversation > .composer {
-    position: sticky;
-    bottom: 0;
-    z-index: 5;
-    background: var(--bg);
-    padding: 8px 0 10px;
-    box-shadow: 0 -10px 12px -8px var(--bg);
-  }
-
   .chat-rail-launcher:not([hidden]) { display: block; }
 
   .chat-rail {
@@ -1018,10 +973,185 @@
 #wick-permission-picker .mode-pick-menu { left: 0; right: auto; max-width: calc(100vw - 48px); }
 
 /* Private file controls remain outside the editable prompt, without another box. */
-.private-files { flex-basis: 100%; min-width: 0; font-size: .8rem; }
+/* File cards sit above the prompt without consuming the composer toolbar. */
+.composer:has(.private-files) { flex-wrap: wrap; }
+.composer-with-mode .private-files { flex-basis: auto; }
+.private-files { flex-basis: 100%; width: 100%; min-width: 0; text-align: left; font-size: .8rem; }
 .private-files:has(#upload-list:empty):has(#upload-status:empty) { display: none; }
-.private-files-note { color: var(--text-muted); margin: .4rem 0; }
-.private-file { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; padding: .25rem 0; }
-.private-file > span:first-child { overflow-wrap: anywhere; }
-.private-file button { border: 0; background: transparent; color: var(--text-muted); cursor: pointer; font: inherit; padding: .2rem; }
-.private-file a { font: inherit; }
+#upload-list { display: flex; flex-wrap: wrap; gap: 10px; padding: 4px 3px 8px; }
+#upload-list:empty, #upload-status:empty { display: none; }
+#upload-status { margin: 4px 0; color: var(--text-muted); overflow-wrap: anywhere; }
+.private-file { position: relative; width: min(230px, 100%); min-width: 0; }
+.private-file-open { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 72px;
+  padding: 12px; border: 1px solid var(--border); border-radius: 14px;
+  background: var(--surface); color: var(--text); text-align: left; cursor: pointer; font: inherit; }
+.private-file-open:hover { border-color: var(--border-strong); }
+.private-file-icon { display: grid; place-items: center; flex: none; width: 40px; height: 46px;
+  border: 1px solid var(--border-strong); border-radius: 6px; color: var(--text-muted); font-size: 10px; font-weight: 600; }
+.private-file-info { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.private-file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.private-file-state { color: var(--text-muted); font-size: 11px; }
+.private-file-remove { position: absolute; top: -5px; right: -5px; display: grid; place-items: center;
+  width: 24px; height: 24px; padding: 0; border: 1px solid var(--border-strong); border-radius: 50%;
+  background: var(--surface); color: var(--text); font-size: 18px; cursor: pointer; opacity: 0; }
+.private-file:hover .private-file-remove, .private-file:focus-within .private-file-remove { opacity: 1; }
+.private-file-open:focus-visible, .private-file-remove:focus-visible { outline: 2px solid var(--brand); outline-offset: 3px; }
+@media (hover: none) { .private-file-remove { opacity: 1; } }
+.upload-details { width: min(560px, calc(100vw - 32px)); max-height: 80vh; overflow: auto;
+  padding: 22px; border: 1px solid var(--border-strong); border-radius: 18px; background: var(--surface); color: var(--text); }
+.upload-details::backdrop { background: rgb(0 0 0 / .55); }
+.upload-details-header { display: flex; align-items: flex-start; gap: 12px; justify-content: space-between; }
+.upload-details-header h2 { margin: 0; font-size: 16px; overflow-wrap: anywhere; }
+.upload-details button { font: inherit; color: var(--text); background: transparent; border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; cursor: pointer; }
+.upload-details-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 18px; }
+.upload-details-meta, .private-files-note { color: var(--text-muted); font-size: 12px; line-height: 1.6; }
+.upload-text-preview { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 40vh; overflow: auto; font-size: 12px; }
+.upload-details-error { font-size: 13px; }
+
+.private-file-attach { border:0; background:transparent; color:var(--brand); padding:5px 8px; font:inherit; font-size:11px; cursor:pointer; }
+
+/* A single resource rail serves sources and private conversation files. */
+.resource-tabs { display:flex; gap:8px; padding:12px 0; border-bottom:1px solid var(--border); }
+.resource-tabs button { flex:1; padding:9px; border:0; border-radius:8px; background:transparent; color:var(--text-muted); font:inherit; cursor:pointer; }
+.resource-tabs button[aria-selected="true"] { background:var(--surface-2); color:var(--text); }
+.chat-files-body { overflow:auto; min-height:0; flex:1; padding:16px 0; }
+.chat-rail.is-collapsed .resource-tabs,.chat-rail.is-collapsed .chat-files-body { display:none; }
+.chat-rail [hidden] { display:none !important; }
+.conversation-file-list h3 { font-size:14px; overflow-wrap:anywhere; margin:0; }
+.conversation-file { display:flex; flex-wrap:wrap; align-items:center; gap:10px; width:100%; padding:12px; margin:10px 0; border:1px solid var(--border); border-radius:12px; background:var(--surface); color:var(--text); font:inherit; text-align:left; cursor:pointer; }
+.conversation-file .private-file-name { flex:1; }
+.conversation-file small { width:100%; }
+.file-icon-action,.files-panel-button { display:inline-grid; place-items:center; min-width:36px; min-height:36px; padding:7px; border:1px solid var(--border); border-radius:8px; background:transparent; color:var(--text); cursor:pointer; text-decoration:none; }
+.file-icon-action svg { width:18px; height:18px; }
+.file-pdf-preview { width:100%; height: min(64vh,700px); border:1px solid var(--border); border-radius:10px; background:white; }
+.message-files { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
+.message-files:empty { display:none; }
+.message-file-card { display:block; max-width:100%; padding:12px 16px; border:1px solid var(--border-strong); border-radius:12px; background:var(--surface); overflow-wrap:anywhere; text-decoration:none; font-size:13px; }
+@media(max-width:1100px) {
+  .chat-rail.is-collapsed .resource-tabs { display:flex; }
+  .chat-rail.is-collapsed .chat-files-body:not([hidden]) { display:block; }
+  .chat-rail { max-width:100vw; }
+}
+/* Upload references are represented by draft file cards, not duplicate text. */
+.composer:has(#private-files) .wick-inline-reference[data-reference-kind="attachment"] { display:none; }
+.resource-tabs button:focus-visible,.file-icon-action:focus-visible,.conversation-file:focus-visible { outline:2px solid var(--brand); outline-offset:2px; }
+
+/* Bound the rail itself: intrinsic filenames must never claim the chat width. */
+.chat-with-rail { max-width:1600px; gap:24px; }
+.chat-rail { min-width:0; max-width:55%; box-sizing:border-box; }
+.chat-files-body,.conversation-file-list,.file-preview-content { min-width:0; }
+.chat-files-body { display:flex; flex-direction:column; }
+.conversation-file-list { flex:1; min-height:0; }
+.file-menu-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.file-download-all { font-size:12px; white-space:nowrap; color:var(--text-muted); text-decoration:none; padding:8px 0; }
+.conversation-file-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(140px,100%),1fr)); gap:12px; }
+.conversation-file-tile { position:relative; min-width:0; }
+.conversation-file { display:flex; flex-direction:column; align-items:flex-start; gap:12px; margin:0; height:155px; padding:14px; border-radius:12px; overflow:hidden; }
+.conversation-file .private-file-name { flex:none; max-width:100%; white-space:normal; overflow:hidden; display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; font-size:12px; line-height:1.4; overflow-wrap:anywhere; padding-right:14px; }
+.conversation-file .private-file-icon { margin-top:auto; width:auto; height:auto; padding:3px 6px; font-size:10px; }
+.conversation-file .private-file-state { width:auto; font-size:10px; }
+.file-menu-delete { position:absolute; right:5px; top:5px; opacity:0; background:var(--surface); min-width:30px; min-height:30px; padding:5px; }
+.conversation-file-tile:hover .file-menu-delete,.conversation-file-tile:focus-within .file-menu-delete { opacity:1; }
+@media(hover:none) { .file-menu-delete { opacity:1; } }
+.chat-msg-user { min-width:0; }
+.chat-msg-user > .message-files { justify-content:flex-end; white-space:normal; }
+.message-file-card { display:flex; align-items:center; gap:12px; width:290px; max-width:100%; box-sizing:border-box; padding:12px 14px; color:var(--text); }
+.message-file-icon { display:grid; place-items:center; flex:none; width:34px; height:40px; color:var(--brand); border:1px solid var(--border-strong); border-radius:6px; font-size:10px; }
+.message-file-info { display:flex; flex-direction:column; min-width:0; gap:4px; }
+.message-file-info strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; }
+.message-file-info small { color:var(--text-muted); font-size:11px; }
+.has-file-preview .chat-files-body { overflow:hidden; padding-bottom:0; }
+.has-file-preview .conversation-file-list { display:flex; flex-direction:column; overflow:hidden; }
+.file-preview-content { flex:1; min-height:0; display:flex; flex-direction:column; overflow:auto; background:var(--surface-2); border-radius:10px; }
+.file-pdf-preview { display:block; flex:1; min-height:200px; height:100%; border:0; border-radius:0; }
+.file-preview-content .upload-text-preview { max-height:none; padding:16px; margin:0; line-height:1.7; }
+.resource-resize { position:absolute; left:-7px; top:0; bottom:0; width:12px; cursor:col-resize; touch-action:none; z-index:2; }
+.resource-resize:hover::after,.resource-resize:focus-visible::after { content:""; position:absolute; top:0; bottom:0; left:5px; width:2px; background:var(--brand); }
+.chat-rail.is-resizing { transition:none; user-select:none; }
+@media(min-width:1101px) {
+ .chat-rail { position:relative; flex:0 0 var(--resource-width,360px); width:var(--resource-width,360px); }
+ .chat-rail.is-collapsed { flex-basis:44px; width:44px; }
+ .chat-rail.is-collapsed .resource-resize { display:none; }
+}
+.chat-rail.is-expanded { display:flex; position:fixed; inset:12px; width:auto; max-width:none; height:auto; z-index:80; background:var(--surface); padding:12px 20px; border:1px solid var(--border); border-radius:14px; box-shadow:var(--shadow); transform:none; }
+.chat-rail.is-expanded .resource-resize { display:none; }
+@media(max-width:1100px) {
+ .chat-rail { max-width:100vw; }
+ .resource-resize { display:none; }
+ .chat-rail.is-expanded { inset:0; border:0; border-radius:0; padding: max(8px,env(safe-area-inset-top)) 12px max(8px,env(safe-area-inset-bottom)); }
+}
+
+/* Preview is a document surface: one toolbar, then all remaining space. */
+.chat-rail.has-file-preview { padding:0; overflow:visible; }
+.chat-rail.has-file-preview > .chat-rail-toggle,
+.chat-rail.has-file-preview > .resource-tabs { display:none; }
+.chat-rail.has-file-preview > .chat-files-body { padding:0; overflow:hidden; }
+.has-file-preview .conversation-file-list { height:100%; min-height:0; }
+.has-file-preview .file-preview-toolbar { display:flex; align-items:center; flex-wrap:nowrap; gap:2px; height:46px; min-height:46px; box-sizing:border-box; padding:5px 8px; border-bottom:1px solid var(--border); background:var(--surface); position:relative; z-index:3; }
+.has-file-preview .file-preview-toolbar h3 { flex:1 1 0; min-width:0; margin:0 6px 0 2px; font-size:12px; line-height:1.4; font-weight:400; }
+.file-preview-toolbar > .file-icon-action,.file-preview-more > summary { min-width:30px; min-height:30px; width:30px; height:30px; padding:5px; border:0; border-radius:6px; flex:none; box-sizing:border-box; }
+.file-preview-toolbar .file-icon-action:hover { background:var(--surface-2); }
+.file-preview-more { flex:none; position:relative; }
+.file-preview-more > summary { list-style:none; cursor:pointer; font-size:20px; }
+.file-preview-more > summary::-webkit-details-marker { display:none; }
+.file-preview-menu { position:absolute; right:0; top:calc(100% + 8px); width: min(250px,70vw); padding:12px; background:var(--surface); border:1px solid var(--border-strong); border-radius:10px; box-shadow:var(--shadow); }
+.file-preview-menu .private-files-note { margin:0 0 10px; }
+.file-preview-menu > a { display:block; margin-top:10px; font-size:12px; }
+.has-file-preview .file-preview-content { flex:1 1 0; height:0; min-height:0; border-radius:0; overflow:auto; }
+.has-file-preview .file-pdf-preview { flex:1 1 0; width:100%; height:100%; min-height:0; margin:0; }
+.chat-rail.has-file-preview.is-expanded { inset:0; width:auto; height:100dvh; max-height:100dvh; padding:0; border:0; border-radius:0; }
+.upload-preview-message { padding:16px; font-size:13px; }
+@media(max-width:1100px) {
+ .chat-rail.has-file-preview.is-open { width:min(100vw,520px); max-width:100vw; }
+ .chat-rail.has-file-preview.is-expanded { width:100vw; max-width:100vw; }
+ .chat-rail.has-file-preview .file-preview-toolbar { padding-top:max(5px,env(safe-area-inset-top)); height:calc(46px + env(safe-area-inset-top,0px)); }
+}
+
+/* The allowance belongs above the input; only the thread scrolls in a chat. */
+.chat-composer-dock { min-width:0; flex:none; }
+.chat-composer-dock > .chat-note { margin:0 0 6px; text-align:left; }
+body.chat-viewport .app-footer { display:none; }
+@media(max-width:1100px) {
+ body.chat-viewport { height:100dvh; overflow:hidden; }
+ body.chat-viewport .app-shell { position:fixed; top:var(--chat-view-top,0px); left:0; right:0; height:var(--chat-view-height,100dvh); min-height:0; }
+ body.chat-viewport .main-col { min-height:0; }
+ body.chat-viewport .topbar { flex:none; min-height:var(--topbar-h); }
+ body.chat-viewport .content-fill { display:flex; flex-direction:column; min-height:0; overflow:hidden; padding:12px 12px 0; }
+ body.chat-viewport .chat-with-rail { display:flex; flex-direction:column; height:100%; min-height:0; width:100%; }
+ body.chat-viewport .chat-page,body.chat-viewport .chat-with-rail > .chat-page,
+ body.chat-viewport .landing-main.has-conversation { display:flex; flex-direction:column; flex:1; height:100%; min-height:0; overflow:hidden; padding-bottom:0; }
+ body.chat-viewport .chat-page.is-empty { overflow:auto; }
+ body.chat-viewport .chat-thread { flex:1 1 0; min-height:0; overflow-y:auto; overscroll-behavior-y:contain; -webkit-overflow-scrolling:touch; }
+ body.chat-viewport .chat-page.has-conversation .chat-stage,
+ body.chat-viewport .landing-main.has-conversation > .chat-composer-dock { position:static; flex:none; margin:0; padding:8px 0 max(8px,env(safe-area-inset-bottom)); background:var(--bg); }
+ .chat-composer-dock .composer-input { max-height:var(--chat-editor-max-height,180px); overflow-y:auto; }
+ .chat-rail { position:fixed; top:var(--chat-view-top,0px); bottom:auto; height:var(--chat-view-height,100dvh); }
+ .chat-rail.has-file-preview.is-expanded { top:var(--chat-view-top,0px); bottom:auto; height:var(--chat-view-height,100dvh); max-height:var(--chat-view-height,100dvh); }
+ .chat-rail-launcher { bottom:calc(112px + var(--chat-keyboard-inset,0px)); }
+}
+.chat-composer-dock { width:100%; box-sizing:border-box; }
+@media(max-width:1100px) {
+ .chat-composer-dock #upload-list { flex-wrap:nowrap; overflow-x:auto; }
+ .chat-composer-dock .private-file { flex:0 0 210px; }
+}
+@media(max-width:1100px) {
+ .chat-page.is-empty .chat-composer-dock { display:flex; flex-direction:column; order:3; }
+ .chat-page.is-empty .chat-composer-dock > .chat-starters { order:0; }
+ .chat-page.is-empty .chat-composer-dock > .chat-note { order:1; margin:0 0 6px; }
+ .chat-page.is-empty .chat-composer-dock > .composer { order:2; }
+}
+/* The portalled mobile drawer and its backdrop share the page stacking context. */
+body.rail-open .chat-rail-launcher { display:none !important; }
+.message-file-card:hover { text-decoration:none; }
+
+/* One ordinary scroll surface for PDF pages, in panel and full-screen modes. */
+.has-file-preview .file-preview-content.pdf-pages {
+  display:block; overflow:auto; overscroll-behavior:contain;
+  touch-action:pan-x pan-y pinch-zoom; -webkit-overflow-scrolling:touch;
+  padding:8px; box-sizing:border-box;
+}
+.pdf-page { position:relative; width:100%; background:white; margin:0 0 8px; }
+.pdf-page canvas { display:block; width:100%; height:auto; }
+
+/* Empty resources must never reserve a column or display a launcher. */
+.chat-rail[hidden], .files-panel-button[hidden] { display:none !important; }

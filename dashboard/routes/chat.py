@@ -8,6 +8,7 @@ resolved server-side; its origin is recorded only for a new thread.
 import json
 import logging
 import queue
+import re
 import threading
 import uuid
 
@@ -22,7 +23,7 @@ from middleware.auth import current_tier, current_user_id, current_quota_scope, 
 from middleware.error_handler import visitor_message
 from middleware.capabilities import AGENT_QUERY, consume_quota, require_capability, tier_can
 from routes.helpers import form_or_json, wants_json
-from services import (agent_service, assistant_context, collection_service,
+from services import (agent_service, assistant_context, attachment_context, collection_service,
                       conversation_service, goal_service, quota_service, telemetry_service)
 from repositories import agent_runs, action_approvals, lakebase
 from services import action_approval_service as approvals
@@ -264,7 +265,7 @@ def ask():
     # is already spent, and a 400 delivered as a stream event is a bad request
     # the browser was told to treat as success.
     payload = form_or_json("question", "conversation_id", "action", "source_message_id",
-                           "surface", "context_kind", "context_id", "chat_mode", "context_references", "approval_mode")
+                           "surface", "context_kind", "context_id", "chat_mode", "context_references", "approval_mode", "attachment_ids")
     question = agent_service.validate_question(payload.get("question") or "")
     conversation_id = (payload.get("conversation_id") or "").strip() or None
     tier = current_tier()
@@ -306,6 +307,17 @@ def ask():
     if mode != "new" and (not user_id or not conversation_id or not source_id):
         abort(400)
     prepared = conversation_service.prepare_turn(user_id, conversation_id, mode, source_id)
+    ids = payload.get('attachment_ids')
+    original_ids = prepared.get('attachment_ids', [])
+    if mode == 'regenerate':
+        if ids is not None and ids != original_ids:
+            abort(400, description='Regeneration must use the original attachments.')
+        ids = original_ids
+    elif ids is None:
+        ids = list(dict.fromkeys(re.findall(r'/uploads/([0-9a-fA-F-]{36})/download', question))) if mode == 'edit' else []
+    attached = attachment_context.references(user_id, conversation_id, ids, strict=mode == 'new')
+    if attached:
+        context = dict(context or {'label': 'Attached files'}, attachments=attached)
     if mode == "regenerate" and question != prepared["original_question"]:
         abort(400, description="Regeneration must use the original prompt.")
 
@@ -450,7 +462,12 @@ def _run_turn(question: str, tier: str, user_id: str | None,
                 options['before_tool'] = lambda name,args,checkpoint: approvals.guard(user_id,name,args,checkpoint,permit,mode=approval_mode)
                 if resume: options['resume'] = resume
             if context:
-                options["page_context"] = context
+                options["page_context"] = {k:v for k,v in context.items() if k != 'attachments'}
+                if context.get('attachments'):
+                    if resume:
+                        for item in context['attachments']:
+                            attachment_context.references(user_id, item['conversation_id'], [item['document_id']])
+                    options['attachment_context'] = context['attachments']
             if should_stop:
                 options["should_stop"] = should_stop
             try:
@@ -493,6 +510,8 @@ def _with_conversation(result: dict, user_id: str | None,
     conversation a turn belongs to is a routing concern, and agent_service has
     no business knowing about storage.
     """
+    if context and context.get("attachments"):
+        result = dict(result, attachment_references=context["attachments"])
     stored = conversation_service.record_turn(
         user_id, conversation_id, question, result, mode=mode, source_id=source_id,
         expected_head=prepared["expected_head"] if prepared else None,

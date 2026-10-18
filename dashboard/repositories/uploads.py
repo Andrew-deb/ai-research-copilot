@@ -90,7 +90,7 @@ def queue_extraction(owner, document_id):
 
 def get_owned(owner, document_id):
     rows = lakebase.run_query(
-        "SELECT *, expires_at <= now() AS expired FROM private_uploads WHERE document_id=%s AND user_id=%s",
+        "SELECT *, (retained_at IS NULL AND expires_at <= now()) AS expired FROM private_uploads WHERE document_id=%s AND user_id=%s",
         (document_id, owner),
     )
     return rows[0] if rows else None
@@ -98,7 +98,7 @@ def get_owned(owner, document_id):
 
 def list_owned(owner, conversation_id):
     return lakebase.run_query(
-        """SELECT *, expires_at <= now() AS expired FROM private_uploads
+        """SELECT *, (retained_at IS NULL AND expires_at <= now()) AS expired FROM private_uploads
         WHERE user_id=%s AND conversation_id=%s ORDER BY created_at DESC LIMIT 50""",
         (owner, conversation_id),
     )
@@ -153,7 +153,7 @@ def release_upload(owner, document_id):
 def enqueue_cleanup():
     with lakebase.get_connection() as conn, conn.cursor() as cur:
         condition = """status NOT IN ('deleted','deleting') AND
-            (expires_at<=now() OR user_id IS NULL OR conversation_id IS NULL
+            (user_id IS NULL OR (retained_at IS NULL AND (expires_at<=now() OR conversation_id IS NULL))
              OR (status='uploading' AND created_at<now()-interval '5 minutes'))"""
         cur.execute(
             f"SELECT document_id FROM private_uploads WHERE {condition} ORDER BY created_at LIMIT 50"
@@ -262,3 +262,23 @@ def finish(job, result=None, error=None):
             (job["document_id"],),
         )
         return True
+
+
+def retain(owner, document_id):
+    """Serialize with cleanup/delete; an expired or deleting file cannot be saved."""
+    with lakebase.get_connection() as conn, conn.cursor(cursor_factory=RealDictCursor) as cur:
+        _lock_document(cur, document_id)
+        cur.execute(
+            """UPDATE private_uploads SET retained_at=COALESCE(retained_at,now())
+            WHERE document_id=%s AND user_id=%s AND status='ready'
+              AND (retained_at IS NOT NULL OR expires_at>now())
+            RETURNING *, false AS expired""", (document_id, owner))
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def list_retained(owner, limit, offset):
+    return lakebase.run_query(
+        """SELECT *, false AS expired FROM private_uploads
+        WHERE user_id=%s AND retained_at IS NOT NULL AND status NOT IN ('deleted','deleting')
+        ORDER BY retained_at DESC, document_id LIMIT %s OFFSET %s""", (owner, limit, offset))

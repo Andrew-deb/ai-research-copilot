@@ -77,9 +77,9 @@ def append(owner: str, conversation_id: str, question: str, result: dict,
         seq = cur.fetchone()["last_seq"]
         if mode != "regenerate":
             cur.execute("""INSERT INTO conversation_messages
-                            (conversation_id, seq, parent_message_id, role, content)
-                           VALUES (%s, %s, %s, 'user', %s) RETURNING message_id""",
-                        (conversation_id, seq + 1, parent, question))
+                            (conversation_id, seq, parent_message_id, role, content, usage)
+                           VALUES (%s, %s, %s, 'user', %s, %s::jsonb) RETURNING message_id""",
+                        (conversation_id, seq + 1, parent, question, json.dumps({"attachment_references": result.get("attachment_references") or []})))
             parent = cur.fetchone()["message_id"]
             seq += 1
         cur.execute("""INSERT INTO conversation_messages

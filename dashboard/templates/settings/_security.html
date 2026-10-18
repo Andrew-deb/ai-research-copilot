@@ -109,8 +109,8 @@
       </p>
     </div>
 
-    <button type="button" class="btn btn-danger btn-sm" data-delete-open>
-      Delete account
+    <button type="button" class="btn btn-danger btn-sm" data-delete-open aria-label="Delete account" title="Delete account">
+      {{ icon('trash') }}
     </button>
   </div>
 
@@ -121,7 +121,7 @@
     <h2>Are you sure?</h2>
     <p data-confirm-message></p>
     <div class="modal-actions">
-      <button type="button" class="btn btn-ghost btn-sm" data-confirm-cancel>Cancel</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-confirm-cancel aria-label="Cancel" title="Cancel">{{ icon('close') }}</button>
       <button type="button" class="btn btn-primary btn-sm" data-confirm-proceed>Continue</button>
     </div>
   </dialog>
@@ -149,11 +149,11 @@
       </label>
 
       <div class="modal-actions">
-        <button type="button" class="btn btn-ghost btn-sm" data-delete-cancel>Cancel</button>
+        <button type="button" class="btn btn-ghost btn-sm" data-delete-cancel aria-label="Cancel" title="Cancel">{{ icon('close') }}</button>
         {# Disabled until the typed address matches, so the dangerous button is
            not the easiest thing to hit on the dialog. #}
-        <button type="submit" class="btn btn-danger btn-sm" data-delete-submit disabled>
-          Delete my account
+        <button type="submit" class="btn btn-danger btn-sm" data-delete-submit aria-label="Delete my account" title="Delete my account" disabled>
+          {{ icon('trash') }}
         </button>
       </div>
     </form>

@@ -1,0 +1,17 @@
+.document-library { width:100%; max-width:1000px; margin:0 auto; }
+.document-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(240px,100%),1fr)); gap:16px; }
+.document-card { min-width:0; border:1px solid var(--border); background:var(--surface); border-radius:12px; padding:16px; }
+.document-open { display:flex; flex-direction:column; gap:12px; color:var(--text); text-decoration:none; }
+.document-open strong { overflow-wrap:anywhere; }
+.document-open small { color:var(--text-muted); }
+.document-type { width:fit-content; color:var(--brand); font-size:11px; padding:6px; border:1px solid var(--border); border-radius:6px; }
+.document-actions { display:flex; justify-content:flex-end; gap:6px; margin-top:12px; }
+.document-pagination { display:flex; gap:24px; margin-top:24px; }
+.saved-document { display:flex; flex-direction:column; height:calc(100dvh - 160px); min-height:300px; }
+.saved-document-toolbar { display:flex; align-items:center; gap:6px; flex:none; }
+.saved-document-toolbar h1 { flex:1; min-width:0; margin:0; font-size:15px; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.saved-document-preview { flex:1; min-height:0; overflow:auto; overscroll-behavior:contain; touch-action:pan-x pan-y pinch-zoom; padding:8px; background:var(--surface-2); }
+.saved-document-preview pre { white-space:pre-wrap; overflow-wrap:anywhere; line-height:1.7; }
+.pdf-page { width:100%; margin:0 0 8px; background:white; }
+.pdf-page canvas { display:block; width:100%; height:auto; }
+@media(max-width:720px) { .saved-document { height:calc(100dvh - 130px); } .saved-document-toolbar .icon-btn { min-width:32px; padding:5px; } }

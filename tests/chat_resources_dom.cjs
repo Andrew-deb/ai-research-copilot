@@ -1,0 +1,94 @@
+/* Exercise the shared rail and finite file-card renderer together. */
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
+const {JSDOM}=require('jsdom');
+const dom=new JSDOM(`<main class="chat-page"><div class="chat-stage"><form id="chat-composer"><textarea id="chat-input"></textarea><button class="composer-send"></button><button class="composer-stop"></button></form></div></main>`,{url:'https://alfred.example/chat',runScripts:'outside-only'});
+const w=dom.window,d=w.document;
+let mobile=true;w.matchMedia=()=>({matches:mobile});w.HTMLElement.prototype.scrollIntoView=function(){};
+w.eval(fs.readFileSync(path.join(__dirname,'../dashboard/static/js/resource_panel.js'),'utf8'));
+w.eval(fs.readFileSync(path.join(__dirname,'../dashboard/static/js/chat.js'),'utf8'));
+w.eval(fs.readFileSync(path.join(__dirname,'../dashboard/static/js/wick_mentions.js'),'utf8'));
+const files=w.ChatResources.files(false);
+const rail=d.querySelector('.chat-rail'), handle=d.querySelector('.resource-resize');
+assert.equal(rail.hidden,true);assert.equal(d.querySelector('.chat-rail-launcher').hidden,true);
+w.ChatResources.files(true);assert.equal(rail.classList.contains('is-open'),false);
+w.ChatResources.setFileCount(1);assert.equal(rail.hidden,false);assert.equal(files.hidden,false);
+d.querySelector('.chat-with-rail').getBoundingClientRect=()=>({width:1200});
+assert.equal(rail.parentElement,d.body);
+assert.equal(d.querySelector('.chat-rail-scrim').parentElement,rail.parentElement);
+w.dispatchEvent(new w.Event('resize'));
+handle.dispatchEvent(new w.KeyboardEvent('keydown',{key:'End',bubbles:true}));
+assert.ok(Number(handle.getAttribute('aria-valuenow')) <= 780);
+handle.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Home',bubbles:true}));
+assert.equal(handle.getAttribute('aria-valuenow'),'280');
+w.ChatResources.preview(true);w.ChatResources.expand(true);
+assert.equal(rail.classList.contains('is-expanded'),true);
+w.ChatResources.preview(false);assert.equal(rail.classList.contains('is-expanded'),false);
+const previewHeader=d.createElement('div');previewHeader.className='file-preview-toolbar';files.append(previewHeader);
+w.ChatResources.files(true);assert.equal(rail.classList.contains('has-file-preview'),true);
+w.ChatResources.sources();assert.equal(rail.classList.contains('has-file-preview'),false);
+w.ChatResources.files(true);assert.equal(rail.classList.contains('has-file-preview'),true);
+previewHeader.remove();w.ChatResources.preview(false);
+
+assert.equal(d.querySelectorAll('.chat-rail').length,1);
+assert.equal(d.querySelectorAll('.chat-rail-launcher').length,1);
+w.ChatResources.files(true);
+assert.equal(files.hidden,false);assert.equal(d.querySelector('.chat-rail-body').hidden,true);
+assert.equal(d.querySelector('.chat-rail').classList.contains('is-open'),true);
+d.querySelector('#resource-tab-sources').click();
+assert.equal(files.hidden,true);assert.equal(d.querySelector('.chat-rail-body').hidden,false);
+assert.equal(rail.classList.contains('is-open'),true);
+assert.equal(d.querySelector('.chat-rail-launcher').hidden,true);
+d.querySelector('#resource-tab-sources').focus();
+d.querySelector('.resource-tabs').dispatchEvent(new w.KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));
+assert.equal(files.hidden,false);assert.equal(d.activeElement.id,'resource-tab-files');
+d.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Escape'}));
+assert.equal(d.querySelector('.chat-rail').classList.contains('is-open'),false);
+assert.equal(d.querySelector('.chat-rail-launcher').hidden,false);
+d.querySelector('.chat-rail-launcher').click(); // keyboard-equivalent click, not pointer drag
+assert.equal(d.querySelector('.chat-rail').classList.contains('is-open'),true);
+// Tablet taps must work through the click path, including after pointer events.
+const launcher=d.querySelector('.chat-rail-launcher');
+d.querySelector('.chat-rail-scrim').click();
+function pointer(type,x,y){const e=new w.MouseEvent(type,{button:0,clientX:x,clientY:y,bubbles:true});Object.defineProperty(e,'pointerId',{value:1});return e;}
+launcher.dispatchEvent(pointer('pointerdown',10,10));launcher.dispatchEvent(pointer('pointerup',10,10));launcher.dispatchEvent(new w.MouseEvent('click',{detail:1,bubbles:true}));
+assert.equal(rail.classList.contains('is-open'),true);
+d.querySelector('.chat-rail-scrim').click();
+launcher.dispatchEvent(pointer('pointerdown',10,10));launcher.dispatchEvent(pointer('pointermove',40,40));launcher.dispatchEvent(pointer('pointerup',40,40));launcher.dispatchEvent(new w.MouseEvent('click',{detail:1,bubbles:true}));
+assert.equal(rail.classList.contains('is-open'),false);
+launcher.click();assert.equal(rail.classList.contains('is-open'),true);
+const ids=['00000000-0000-0000-0000-000000000001','00000000-0000-0000-0000-000000000002'];
+const bubble=d.createElement('div');let opened=[];w.PrivateUploads={open:id=>opened.push(id)};
+w.WickMentions.render(bubble,`Compare [▤one.pdf](/uploads/${ids[0]}/download) with [▤two.txt](/uploads/${ids[1]}/download)`);
+assert.ok(bubble.querySelector('.message-file-card').href.endsWith('/pages/1'));
+assert.equal(bubble.firstChild.className,'message-files');assert.equal(bubble.querySelectorAll('.message-file-card').length,2);
+[...bubble.querySelectorAll('.message-file-card')].forEach(card=>card.click());
+assert.deepEqual(opened,ids);
+const unavailable=d.createElement('div');
+w.WickMentions.render(unavailable,`[▤one.pdf](/uploads/${ids[0]}/download)`,[{document_id:ids[0],available:false}]);
+assert.equal(unavailable.querySelector('a'),null);assert.ok(unavailable.textContent.includes('unavailable'));
+mobile=false;w.dispatchEvent(new w.Event('resize'));
+assert.equal(rail.parentElement,d.querySelector('.chat-with-rail'));
+assert.equal(rail.classList.contains('is-open'),false);
+mobile=true;w.dispatchEvent(new w.Event('resize'));
+assert.equal(rail.parentElement,d.body);
+assert.equal(d.querySelectorAll('.chat-rail').length,1);
+// Removing the last file hides an open drawer and releases its scroll lock.
+w.ChatResources.files(true);w.ChatResources.setFileCount(0);
+assert.equal(rail.hidden,true);assert.equal(rail.classList.contains('is-open'),false);
+assert.equal(d.body.classList.contains('rail-open'),false);
+assert.equal(d.querySelector('.chat-rail-scrim').hidden,true);
+assert.equal(d.querySelector('.chat-rail-launcher').hidden,true);
+w.ChatResources.files(false);assert.equal(rail.hidden,true);
+console.log('Shared resource rail: one drawer, tabs, keyboard launch, distinct file references and unavailable history passed.');w.close();
+
+// Reopening a sourced conversation keeps its rail when the file list is empty.
+const sourced=new JSDOM(`<main class="chat-page"><form id="chat-composer"><textarea id="chat-input"></textarea></form></main><script id="chat-history" type="application/json">[{"role":"assistant","content":"","sources":[{"paper_id":"paper-1","title":"A consulted paper"}]}]</script>`,{url:'https://alfred.example/chat',runScripts:'outside-only'});
+sourced.window.matchMedia=()=>({matches:false});
+sourced.window.HTMLElement.prototype.scrollIntoView=function(){};
+sourced.window.eval(fs.readFileSync(path.join(__dirname,'../dashboard/static/js/chat.js'),'utf8'));
+const api=sourced.window.ChatResources, sourcedRail=sourced.window.document.querySelector('.chat-rail');
+api.files(false);api.setFileCount(0);assert.equal(sourcedRail.hidden,false);
+assert.equal(sourced.window.document.querySelector('.chat-rail-body').hidden,false);
+api.setFileCount(1);api.files(true);api.setFileCount(0);
+assert.equal(sourcedRail.hidden,false);assert.equal(sourced.window.document.querySelector('.chat-rail-body').hidden,false);
+sourced.window.close();

@@ -106,6 +106,27 @@ function type(text) {
   type('email@example.com'); await tick(); assert.equal(d.getElementById('wick-asset-picker').hidden, true);
   type('@'); editor.dispatchEvent(new w.KeyboardEvent('keydown', {key:'Escape', bubbles:true, cancelable:true}));
   assert.equal(d.getElementById('wick-asset-picker').hidden, true);
+  // Attachments remain inline, separate from the workspace @ asset selection.
+  input.value='Before after';caret(editor.firstChild,7);
+  w.WickEditor.insert({kind:'attachment',id,label:'Private notes.md'});
+  assert.ok(input.value.startsWith('Before [▤Private notes.md](/uploads/'));
+  assert.ok(input.value.endsWith(' after'));
+  assert.equal(w.WickEditor.references().some(item=>item.kind==='attachment'),false);
+  w.WickEditor.sync([]);
+  assert.ok(editor.querySelector('[data-reference-kind="attachment"]'));
+  d.getElementById('chat-mode').value='research';d.getElementById('chat-mode').dispatchEvent(new w.Event('change'));
+  assert.ok(input.value.includes('/uploads/'+id+'/download'));
+  const files=d.createElement('div');files.id='private-files';d.body.appendChild(files);
+  d.getElementById('chat-mode').dispatchEvent(new w.Event('change'));
+  assert.equal(editor.hidden,false);assert.equal(input.hidden,true);
+  assert.ok(editor.querySelector('[data-reference-kind="attachment"]'));
+  assert.equal(w.WickEditor.shortcut(),null);
+  assert.equal(editor.querySelector('[data-reference-kind="attachment"]').dataset.referenceLabel,'Private notes.md');
+  d.getElementById('chat-mode').value='wick';d.getElementById('chat-mode').dispatchEvent(new w.Event('change'));
+  assert.ok(editor.querySelector('[data-reference-kind="attachment"]'));
+  const historical=d.createElement('div');
+  w.WickMentions.render(historical,input.value,[{document_id:id,available:false}]);
+  assert.equal(historical.querySelector('a'),null);assert.match(historical.textContent,/unavailable/);
   let submitted = 0; d.getElementById('chat-composer').requestSubmit = () => { submitted++; };
   editor.dispatchEvent(new w.KeyboardEvent('keydown', {key:'Enter', shiftKey:true, bubbles:true, cancelable:true}));
   assert.equal(submitted, 0);

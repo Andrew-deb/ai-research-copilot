@@ -1,0 +1,3 @@
+{% if private_uploads_enabled and is_authenticated %}
+  <input type="file" id="upload-input" accept=".pdf,.txt,.md" multiple hidden>
+{% endif %}

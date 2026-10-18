@@ -212,10 +212,7 @@ def test_the_starters_sit_between_the_greeting_and_the_composer():
     assert int(starters.group(1)) < int(composer.group(1))
 
 
-def test_the_conversation_layout_is_left_alone():
-    """
-    Only the empty state changed. A live thread already pins its composer by
-    sticking, which is the right mechanism when there is something to scroll.
-    """
-    assert ".chat-page.has-conversation .chat-stage" in CHAT_CSS
-    assert "position: sticky" in CHAT_CSS
+def test_the_conversation_has_an_independent_scroll_container():
+    assert "body.chat-viewport .chat-thread" in CHAT_CSS
+    assert "body.chat-viewport .chat-page.has-conversation .chat-stage" in CHAT_CSS
+    assert "position:static; flex:none" in CHAT_CSS
