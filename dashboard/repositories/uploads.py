@@ -99,8 +99,10 @@ def get_owned(owner, document_id):
 def list_owned(owner, conversation_id):
     return lakebase.run_query(
         """SELECT *, (retained_at IS NULL AND expires_at <= now()) AS expired FROM private_uploads
-        WHERE user_id=%s AND conversation_id=%s ORDER BY created_at DESC LIMIT 50""",
-        (owner, conversation_id),
+        WHERE user_id=%s AND (conversation_id=%s OR document_id IN
+        (SELECT document_id FROM private_upload_references WHERE user_id=%s AND conversation_id=%s))
+        ORDER BY created_at DESC LIMIT 50""",
+        (owner, conversation_id, owner, conversation_id),
     )
 
 
@@ -122,6 +124,15 @@ def request_delete(owner, document_id):
             (document_id, owner),
         )
         if cur.fetchone():
+            cur.execute(
+                "DELETE FROM document_chunks WHERE document_id=%s", (document_id,)
+            )
+            cur.execute(
+                "DELETE FROM document_index_jobs WHERE document_id=%s", (document_id,)
+            )
+            cur.execute(
+                "DELETE FROM collection_documents WHERE document_id=%s", (document_id,)
+            )
             _delete_job(cur, document_id)
 
 
@@ -167,6 +178,17 @@ def enqueue_cleanup():
                 (document_id,),
             )
             if cur.fetchone():
+                cur.execute(
+                    "DELETE FROM document_chunks WHERE document_id=%s", (document_id,)
+                )
+                cur.execute(
+                    "DELETE FROM document_index_jobs WHERE document_id=%s",
+                    (document_id,),
+                )
+                cur.execute(
+                    "DELETE FROM collection_documents WHERE document_id=%s",
+                    (document_id,),
+                )
                 _delete_job(cur, document_id)
 
 
@@ -236,7 +258,7 @@ def finish(job, result=None, error=None):
                 )
                 return False
             cur.execute(
-                "UPDATE private_uploads SET status='deleted',deleted_at=now(),reserved_bytes=0,artifact_bytes=0,error_code=NULL WHERE document_id=%s",
+                "UPDATE private_uploads SET status='deleted',deleted_at=now(),reserved_bytes=0,artifact_bytes=0,index_bytes=0,error_code=NULL WHERE document_id=%s",
                 (job["document_id"],),
             )
         elif error:
@@ -282,3 +304,24 @@ def list_retained(owner, limit, offset):
         """SELECT *, false AS expired FROM private_uploads
         WHERE user_id=%s AND retained_at IS NOT NULL AND status NOT IN ('deleted','deleting')
         ORDER BY retained_at DESC, document_id LIMIT %s OFFSET %s""", (owner, limit, offset))
+
+
+def bind_reference(owner, conversation_id, document_id):
+    return lakebase.run_write(
+        """INSERT INTO private_upload_references (conversation_id,document_id,user_id)
+        SELECT c.conversation_id,d.document_id,c.user_id FROM conversations c
+        JOIN private_uploads d ON d.user_id=c.user_id WHERE c.conversation_id=%s AND c.user_id=%s
+        AND d.document_id=%s AND d.status='ready'
+        AND (d.retained_at IS NOT NULL OR (d.conversation_id=c.conversation_id AND d.expires_at>now()))
+        ON CONFLICT DO NOTHING RETURNING document_id""",
+        (conversation_id, owner, document_id),
+    )
+
+
+def find_retained(owner, query, limit=20, offset=0):
+    return lakebase.run_query(
+        """SELECT *, false AS expired FROM private_uploads WHERE user_id=%s
+        AND retained_at IS NOT NULL AND status='ready' AND filename ILIKE %s
+        ORDER BY retained_at DESC,document_id LIMIT %s OFFSET %s""",
+        (owner, "%" + query + "%", limit, offset),
+    )

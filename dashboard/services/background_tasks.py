@@ -14,13 +14,15 @@ logger = logging.getLogger(__name__)
 _lock = threading.Lock()
 _started_pid = None
 _stop = None
+_index_stop = None
 
 
 def _after_fork():
-    global _lock, _started_pid, _stop
+    global _lock, _started_pid, _stop, _index_stop
     _lock = threading.Lock()
     _started_pid = None
     _stop = None
+    _index_stop = None
 
 
 if hasattr(os, "register_at_fork"):
@@ -29,13 +31,21 @@ if hasattr(os, "register_at_fork"):
 
 def start():
     """Idempotent per process; never called by the application factory."""
-    global _started_pid, _stop
+    global _started_pid, _stop, _index_stop
     with _lock:
         if _started_pid == os.getpid():
             return
         if upload_config.ENABLED and upload_config.WORKER_ENABLED:
             from services import upload_worker
             _stop = upload_worker.start()
+        if (
+            upload_config.ENABLED
+            and upload_config.WORKER_ENABLED
+            and upload_config.INDEXING_ENABLED
+        ):
+            from services import document_index_worker
+
+            _index_stop = document_index_worker.start()
         if EMBEDDING_PRELOAD:
             threading.Thread(target=embedding.warmup, name="embedding-warmup", daemon=True).start()
         if DB_KEEPWARM_SECONDS > 0:
@@ -52,3 +62,6 @@ def stop():
     """Signal durable upload work to stop; unfinished leases remain recoverable."""
     if _started_pid == os.getpid() and _stop is not None:
         _stop.set()
+
+    if _started_pid == os.getpid() and _index_stop is not None:
+        _index_stop.set()

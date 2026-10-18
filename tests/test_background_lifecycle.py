@@ -134,3 +134,21 @@ def test_pool_creation_has_bounded_database_waits(monkeypatch):
     lakebase._get_pool()
     assert constructor.call_args.kwargs["connect_timeout"] == 10
     assert constructor.call_args.kwargs["options"] == "-c statement_timeout=30000 -c lock_timeout=5000"
+
+
+def test_index_worker_is_independent_and_disabled_by_default(monkeypatch):
+    from services import background_tasks,document_index_worker,upload_worker
+    import threading
+    monkeypatch.setattr(background_tasks,'_started_pid',None)
+    monkeypatch.setattr(background_tasks,'_stop',None)
+    monkeypatch.setattr(background_tasks,'_index_stop',None)
+    monkeypatch.setattr(background_tasks,'EMBEDDING_PRELOAD',False)
+    monkeypatch.setattr(background_tasks,'DB_KEEPWARM_SECONDS',0)
+    monkeypatch.setattr(background_tasks.upload_config,'ENABLED',True)
+    monkeypatch.setattr(background_tasks.upload_config,'WORKER_ENABLED',True)
+    monkeypatch.setattr(background_tasks.upload_config,'INDEXING_ENABLED',True)
+    upload_stop=threading.Event();index_stop=threading.Event()
+    monkeypatch.setattr(upload_worker,'start',lambda:upload_stop)
+    monkeypatch.setattr(document_index_worker,'start',lambda:index_stop)
+    background_tasks.start();background_tasks.stop()
+    assert upload_stop.is_set() and index_stop.is_set()
