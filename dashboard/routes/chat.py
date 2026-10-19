@@ -77,6 +77,10 @@ def _context_for_view(owner, conversation_id=None):
 @bp.get("/chat/assistant/assets")
 @require_capability(AGENT_QUERY)
 def assistant_assets():
+    if request.args.get("kind") == "document" and not tier_can(
+        current_tier(), "uploads:write"
+    ):
+        abort(403)
     return jsonify(assistant_context.search(current_user_id(), request.args.get('q', ''),
                    request.args.get('kind') or None, request.args.get('cursor'), request.args.get('category')))
 
@@ -316,6 +320,14 @@ def ask():
     elif ids is None:
         ids = list(dict.fromkeys(re.findall(r'/uploads/([0-9a-fA-F-]{36})/download', question))) if mode == 'edit' else []
     attached = attachment_context.references(user_id, conversation_id, ids, strict=mode == 'new')
+    if attached:
+        from repositories import uploads as upload_repository
+
+        for reference in attached:
+            if reference["available"] and reference.get("retained"):
+                upload_repository.bind_reference(
+                    user_id, conversation_id, reference["document_id"]
+                )
     if attached:
         context = dict(context or {'label': 'Attached files'}, attachments=attached)
     if mode == "regenerate" and question != prepared["original_question"]:

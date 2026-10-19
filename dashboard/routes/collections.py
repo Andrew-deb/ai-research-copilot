@@ -35,7 +35,22 @@ def create_collection():
 @bp.get("/collection/<collection_id>")
 def collection_detail(collection_id: str):
     detail = collection_service.get_collection_detail(current_user_id(), collection_id)
-    return render_template("collection_detail.html", collection=detail)
+    import upload_config
+    from services import document_collections, document_library
+
+    documents = []
+    options = []
+    if upload_config.ENABLED and current_user_id() and not detail.get("is_curated"):
+        documents = document_collections.list_documents(
+            current_user_id(), collection_id
+        )
+        options = document_library.options(current_user_id())["items"]
+    return render_template(
+        "collection_detail.html",
+        collection=detail,
+        documents=documents,
+        document_options=options,
+    )
 
 
 @bp.post("/collection/<collection_id>/papers")
@@ -125,3 +140,38 @@ def import_external_paper(collection_id):
     data = form_or_json("openalex_id")
     # Import is explicit. Membership remains the existing add-paper operation.
     return jsonify(workspace_paper_service.import_external(current_user_id(), data.get("openalex_id")))
+
+
+@bp.post("/collection/<uuid:collection_id>/documents")
+@require_capability("uploads:write")
+def add_document(collection_id):
+    from services import document_collections
+
+    data = form_or_json("document_id")
+    result = document_collections.modify(
+        current_user_id(), str(collection_id), data.get("document_id")
+    )
+    return action_response(
+        result,
+        redirect_to=url_for(
+            "collections.collection_detail", collection_id=collection_id
+        ),
+        flash_message="Document added.",
+    )
+
+
+@bp.post("/collection/<uuid:collection_id>/documents/<uuid:document_id>/remove")
+@require_capability("uploads:write")
+def remove_document(collection_id, document_id):
+    from services import document_collections
+
+    result = document_collections.modify(
+        current_user_id(), str(collection_id), str(document_id), remove=True
+    )
+    return action_response(
+        result,
+        redirect_to=url_for(
+            "collections.collection_detail", collection_id=collection_id
+        ),
+        flash_message="Document removed from collection; original retained.",
+    )

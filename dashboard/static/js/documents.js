@@ -3,6 +3,29 @@
   "use strict";
   const status=document.getElementById("document-status");
   if(!status)return;
+  const timers=new Set();
+  window.addEventListener("pagehide",()=>timers.forEach(clearTimeout));
+  document.querySelectorAll("[data-index-document]").forEach(button=>{
+    button.addEventListener("click",async()=>{
+      if(!confirm("Index this document for private semantic retrieval? This uses the configured embedding service and storage allowance."))return;
+      button.disabled=true;
+      const url="/documents/"+encodeURIComponent(button.dataset.indexDocument)+"/index";
+      const display=button.closest('.document-card')?.querySelector('.document-index-state') || status;
+      async function poll(){
+        try{
+          const response=await fetch(url,{cache:"no-store"});if(!response.ok)throw new Error();
+          const state=await response.json();display.textContent=state.status==="ready" && !state.compatible ? "Index needs rebuilding" : "Index: "+state.status;
+          if(["queued","processing"].includes(state.status)){const timer=setTimeout(()=>{timers.delete(timer);poll();},3000);timers.add(timer);}
+          else button.disabled=false;
+        }catch(error){display.textContent="Could not check index status.";button.disabled=false;}
+      }
+      try{
+        const response=await fetch(url,{method:"POST",headers:{"X-CSRFToken":document.querySelector('meta[name="csrf-token"]').content,Accept:"application/json"}});
+        if(!response.ok){const body=await response.json();throw new Error(body.detail || 'Indexing unavailable.');}
+        await poll();
+      }catch(error){display.textContent=error.message;button.disabled=false;}
+    });
+  });
   document.querySelectorAll("[data-delete-document]").forEach(button=>{
     button.addEventListener("click",async()=>{
       if(!window.confirm("Delete this private file and its extracted text? This also makes its chat references unavailable."))return;

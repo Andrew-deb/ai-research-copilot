@@ -4,7 +4,7 @@
     <input id="wick-asset-query" type="search" maxlength="300" placeholder="Search assets" aria-label="Search context">
     <div id="wick-asset-kind" class="wick-asset-types" aria-label="Asset type">
       <button type="button" data-kind="" aria-pressed="true">All</button><button type="button" data-kind="paper" aria-pressed="false">Papers</button><button type="button" data-kind="note" aria-pressed="false">Notes</button><button type="button" data-kind="collection" aria-pressed="false">Collections</button><button type="button" data-kind="goal" aria-pressed="false">Goals</button>
-    </div>
+    {% if private_uploads_enabled and is_authenticated %}<button type="button" data-kind="document" aria-pressed="false">Documents</button>{% endif %}</div>
   </div>
   <p id="wick-asset-status" role="status" aria-live="polite"></p>
   <div id="wick-asset-results" aria-label="Matching context"></div>

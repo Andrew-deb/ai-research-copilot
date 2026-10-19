@@ -82,19 +82,20 @@
     document.dispatchEvent(new Event("wick:editor-reset"));
   }
   function shortcut() {
-    if(mode && mode.value !== "wick") { return null; }
+
     var selection = window.getSelection();
     if (!selection.rangeCount || !selection.isCollapsed || !editor.contains(selection.anchorNode) || selection.anchorNode.nodeType !== 3) { return null; }
     var node = selection.anchorNode;
     if (node.parentElement.closest("[data-reference-kind]")) { return null; }
     var prefix = node.textContent.slice(0, selection.anchorOffset), match = /(?:^|\s)([@#])([^\s@#]*)$/.exec(prefix);
+    if (mode && mode.value!=="wick" && match && match[1]==="#")return null;
     if (!match) { return null; }
     var range = document.createRange(); range.setStart(node, prefix.length - match[2].length - 1); range.setEnd(node, prefix.length);
     return { category: match[1] === "@" ? "assets" : "pages", query: match[2], range: range };
   }
   function enabled() { return !mode || mode.value === "wick" || !!document.getElementById("private-files"); }
   function updateMode() {
-    editor.dataset.placeholder = !mode || mode.value === "wick" ? "Type @ to include an asset and # for pages" : "Ask a research question…";
+    editor.dataset.placeholder = !mode || mode.value === "wick" ? "Type @ to include an asset and # for pages" : "Ask a research question… Type @ to include a saved document";
     editor.setAttribute("aria-label", !mode || mode.value === "wick" ? "Ask Wick" : "Ask a research question");
     editor.hidden = !enabled(); input.hidden = enabled();
     editor.setAttribute("contenteditable", String(!input.disabled)); editor.setAttribute("aria-disabled", String(input.disabled));

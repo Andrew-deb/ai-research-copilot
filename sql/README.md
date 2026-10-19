@@ -91,3 +91,12 @@ remain charged against the same storage reservations and survive original-chat
 removal. Explicit deletion and account deletion still queue cleanup. Deploy all
 upload workers from the matching release before using retention; an older worker
 does not recognize the new retention policy. No MCP migration is required.
+
+**Reusable/indexed documents:** migration `31_document_reuse_and_indexing.sql`
+follows migration 30 and must precede the corresponding Render release. It adds
+owner-scoped saved-file references, separate collection-document associations,
+private chunks and durable index jobs. Existing global paper vectors and reading
+plans are unchanged. Grant the restricted Render role access to the new tables.
+Keep `DOCUMENT_INDEXING_ENABLED=false` until embedding hosting, model/version
+compatibility, Lakebase capacity and provider cost limits are verified. Indexing
+is an explicit action, never an automatic consequence of upload/save.

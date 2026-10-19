@@ -136,7 +136,10 @@ def test_saved_view_remains_accessible_without_original_chat(client,monkeypatch,
     assert response.status_code==200 and 'saved-document-preview' in response.text
 
 
-def test_saved_document_does_not_grant_agent_access_in_another_chat(monkeypatch,enabled,row):
+def test_saved_document_requires_an_owned_target_conversation(
+    monkeypatch, enabled, row
+):
     row.update(retained_at=datetime.now(timezone.utc))
     monkeypatch.setattr(upload_service,'owned',lambda *a:row)
+    monkeypatch.setattr(upload_service.lakebase, "get_conversation", lambda *a: None)
     with pytest.raises(ValidationError):attachment_context.references('owner','different-chat',[row['document_id']])

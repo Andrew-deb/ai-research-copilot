@@ -76,6 +76,8 @@ def _l2_normalize(vector: list[float]) -> list[float]:
     a query vector of the wrong magnitude would skew every cosine distance. Doing
     it here costs microseconds and removes the doubt.
     """
+    if not all(math.isfinite(component) for component in vector):
+        raise EmbeddingError("Embedding backend returned non-finite components.")
     norm = math.sqrt(sum(component * component for component in vector))
     if norm == 0.0:
         raise EmbeddingError("Embedding backend returned a zero vector.")
@@ -236,4 +238,17 @@ def encode_query(text: str) -> list[float]:
     prefixed = EMBEDDING_QUERY_PREFIX + text.strip()
     backend = active_backend()
     raw = _encode_hf_api(prefixed) if backend == "hf_api" else _encode_local(prefixed)
+    return _validate(raw)
+
+
+def encode_document(text: str) -> list[float]:
+    """Document side of the same asymmetric embedding contract as query vectors."""
+    if not isinstance(text, str) or not text.strip():
+        raise EmbeddingError("Cannot embed an empty document passage.")
+    prefixed = "search_document: " + text.strip()
+    raw = (
+        _encode_hf_api(prefixed)
+        if active_backend() == "hf_api"
+        else _encode_local(prefixed)
+    )
     return _validate(raw)

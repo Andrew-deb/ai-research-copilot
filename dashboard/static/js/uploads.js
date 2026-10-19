@@ -121,11 +121,19 @@
     let match;while((match=pattern.exec(prompt.value)))if(!ids.includes(match[1]))ids.push(match[1]);
     return ids;
   }
-  window.PrivateUploads={label:function(id){const file=currentFiles.find(item=>item.document_id===id);return file ? file.filename : null;},references:selectedIds,open:async function(id,pageNumber){
+  window.PrivateUploads={select:async function(file,range){
+      await conversation();
+      const value={kind:"attachment",id:file.document_id,label:file.filename};
+      if(!currentFiles.some(item=>item.document_id===file.document_id))currentFiles.push(file);
+      if(window.WickEditor && prompt.hidden)window.WickEditor.insert(value,range);
+      else insertReference(file);
+      rendered="";render(currentFiles);
+    },label:function(id){const file=currentFiles.find(item=>item.document_id===id);return file ? file.filename : null;},references:selectedIds,open:async function(id,pageNumber){
       if(resources)window.ChatResources.files(true);
       let file=currentFiles.find(item=>item.document_id===id);
       if(!file){await refresh();file=currentFiles.find(item=>item.document_id===id);}
-      if(file)showDetails(file,pageNumber);
+      if(!file){try{file=await request("/uploads/"+encodeURIComponent(id)+"/metadata",{headers:{Accept:"application/json"}});currentFiles.push(file);}catch(error){}}
+      if(file){if(window.ChatResources.setFileCount)window.ChatResources.setFileCount(currentFiles.filter(item=>item.status!=="deleted").length);showDetails(file,pageNumber);}
       else {openLibrary();library.append(element("p","upload-details-error","This file is unavailable. It may have expired or been deleted."));}
     },
     assets:function(query){return currentFiles.filter(file=>file.status==="ready" && file.filename.toLowerCase().includes((query || "").toLowerCase())).map(file=>({kind:"attachment",id:file.document_id,label:file.filename}));},insert:insertReference};
@@ -235,7 +243,7 @@
   window.addEventListener("pagehide",()=>{clearTimeout(timer);generation++;const preview=library.querySelector(".file-preview-content");if(preview && preview.disposePreview)preview.disposePreview();});
   const picker=document.getElementById("chat-mode");
   function categoryVisibility() {
-    document.querySelectorAll("[data-context-category]").forEach(button=>{button.hidden=mode()!=="wick";});
+    document.querySelectorAll("[data-context-category]").forEach(button=>{button.hidden=mode()!=="wick" && button.dataset.contextCategory!=="assets";});
   }
   if(picker)picker.addEventListener("change",categoryVisibility);
   categoryVisibility();

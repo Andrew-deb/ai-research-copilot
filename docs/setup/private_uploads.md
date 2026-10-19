@@ -383,3 +383,104 @@ verify saved preview/download still work; test another user's refusal; delete th
 saved file and verify cleanup/capacity release. Separately verify that unsaved
 expiry still removes files and account deletion cleans retained files. Local SQL
 and mocked storage tests do not prove the production worker/migration was applied.
+
+### Increments D2–D4 — reusable documents, collections and opt-in indexing
+
+Apply `sql/31_document_reuse_and_indexing.sql` after migration 30 and BEFORE
+merging/deploying this release on Render. The migration adds private conversation
+references, collection-document memberships, bounded vector chunks/index jobs,
+and the per-file index byte reservation. Use the schema owner; restricted Render
+roles need SELECT/INSERT/UPDATE/DELETE on `private_upload_references`,
+`collection_documents`, `document_index_jobs`, `document_chunks`, plus existing
+uploads/conversations/collections permissions. No MCP tools were registered or
+removed, so MCP catalogs remain Research 13/Wick 18. Databricks MCP redeployment
+is not required for these dashboard-bound document capabilities.
+
+**Reuse:** Wick's @ Assets list includes up to five matching saved documents
+alongside its other assets; the Documents filter searches all saved documents
+with pagination. Research's @ / plus Assets picker searches saved documents.
+Selecting one creates an owned chat if necessary and inserts an inline attachment
+at the caret. Explicit per-message selection is still required, with a maximum
+of three attachments. The backend rechecks the target conversation and the file's
+owner/Ready/retained state. Only saved files cross chat boundaries; temporary
+files stay with their original chat. Successful validation records the reference
+so the file remains in that conversation's Files menu and history. Deleting a
+conversation removes its reference, not the saved original.
+
+**Collections:** private saved documents have their own membership table and
+Documents section. Paper ordering and reading-plan algorithms do not treat a
+document UUID as a paper ID. Add from the collection's saved-document selector
+(first 20 choices) or from any saved document's collection menu. The latter
+supports documents beyond the first picker page. Collections are capped at 100
+document memberships; repeated add is idempotent. Removing membership preserves
+the file/index. Curated examples reject private-document writes. This release
+provides manual operations and a reusable shared membership contract; it does
+not add new Wick MCP write tools for document membership.
+
+**Indexing is implemented but OFF:** keep `DOCUMENT_INDEXING_ENABLED=false`
+(the default) while the embedding service is unresolved. No document-index
+worker, document encoding or semantic-document query runs with this switch off.
+This flag does not disable the application's existing paper-query warmup or
+paper semantic search; those use the separate embedding settings.
+
+Later, after verifying capacity, cost/quotas and embedding equivalence, set:
+
+- `DOCUMENT_INDEXING_ENABLED=true`.
+- `DOCUMENT_INDEX_MODEL_VERSION=<verified deployed model revision/contract version>`.
+- Keep `UPLOADS_ENABLED=true` and `UPLOAD_WORKER_ENABLED=true` so the serving
+  process starts the independent index worker after fork, alongside (not inside)
+  the upload/expiry worker. Restart/redeploy Render when changing these values.
+
+The version is an explicit operator binding, not a claim that a remote provider
+has attested its weights. Pin/verify the actual deployed model/tokenizer/pooling
+before enabling; change this version and reindex when those semantics change.
+The contract also records model name, dimensions, query/document prefixes,
+normalization and chunk version. Same-dimension vectors from different contracts
+are never compared. No model/provider is changed by this release.
+
+Index only by selecting a saved document's Index icon and confirming. Saving does
+not enqueue indexing. Jobs have durable five-minute leases, renewal per chunk,
+three recovery attempts and a one-hour cooldown after failure before manual
+retry. No completed job is repeated for the same extraction hash/contract.
+Chunks preserve actual page/offset, use 1,200-character windows with 200-character
+overlap, and are capped at 400 per file. The verified extraction artifact is
+reused; there is no new PDF parse or OCR.
+
+Each queued index reserves 8 MiB against the existing user/deployment byte caps.
+On atomic publication this becomes an estimate of retained UTF-8 text, float32
+vectors and per-row overhead; failure drops stale chunks and releases the index
+reservation while preserving original/artifact bytes. This is application
+accounting, not an exact PostgreSQL disk-size measurement. Check actual Lakebase
+storage/vector capacity and provider rate/cost limits before enabling. Reindexing
+can temporarily retain obsolete MVCC tuples until database maintenance reclaims
+them. No approximate-nearest-neighbour index is provisioned: retrieval uses a
+bounded owner-filtered exact search appropriate to the current capacity.
+
+The Documents search form offers Filename search without embeddings and Semantic
+search only when enabled. Semantic results link to verified page previews; manual
+semantic queries consume the existing search allowance, not agent-turn quota.
+Explicitly selected, compatibly indexed documents can improve the existing
+`read_attached_document` lexical lookup using semantic passages. If query encoding
+fails, selected-file grounding falls back to lexical selection; it does not
+pretend semantic search succeeded. Page-specific reads remain exact page reads.
+
+Indexing has separate storage/chunk/attempt/cooldown controls and is not billed as
+an extra chat question. Before enabling a live provider, calibrate document
+processing cost and deployment limits; one index may encode many chunks. No paid
+service, trial, credit purchase or automatic model fallback is activated here.
+
+Deletion immediately blocks retrieval through owner/status joins, cancels index
+jobs and removes chunks/memberships under the document lock. A worker with an old
+lease cannot republish deleted or changed documents. Original/artifact cleanup
+remains retryable; capacity is retained until that cleanup completes. Account
+removal deletes owned chunks/references and the upload worker cleans orphaned
+objects. Source IDs and storage keys remain stable through provider migration.
+
+**Testing now:** verify cross-chat references, history, temporary-file refusal,
+private collection add/remove, paper-plan preservation and disabled Index UI.
+Mocked tests cover chunking, correct document prefixes, dimension/finite-vector
+checks, capacity, deduplication, lease loss, provider failure, atomic publication,
+owner/hash/contract filters, CSRF and preview safety. No real document embeddings
+were created during implementation. After hosting is resolved, live vector
+quality/latency/cost, actual database race behaviour and phone/browser acceptance
+still require testing. Do not label these live checks complete from unit tests.

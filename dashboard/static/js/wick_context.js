@@ -64,6 +64,8 @@
     if (controller) { controller.abort(); }
     controller = new AbortController(); var current = ++generation;
     if (!append) { results.replaceChildren(); activeQuery = query.value.trim(); activeKind = kind.value; next = null; }
+    var research=document.getElementById("chat-mode") && document.getElementById("chat-mode").value!=="wick";
+    if(research)activeKind="document";
     var params = new URLSearchParams({ q: activeQuery, kind: activeKind, category: category });
     if (append && next) { params.set("cursor", next); }
     notice.textContent = "Searching…"; more.hidden = true;
@@ -84,6 +86,10 @@
           var preview = document.createElement("span"); preview.textContent = item.kind + " · " + (item.snippet || "");
           button.append(label, preview);
           button.addEventListener("click", function () {
+            if(item.kind==="attachment"){
+              window.PrivateUploads.select(item,shortcutRange).catch(function(){status.textContent="Could not attach this saved file.";});
+              closePicker();return;
+            }
             var existing = selected.some(function (value) { return value.kind === item.kind && value.id === item.id; });
             if (!existing && selected.length >= 5) { notice.textContent = "Remove an item before adding another (maximum five)."; return; }
             if (!existing) { selected.push({ kind: item.kind, id: item.id, label: item.label }); }
@@ -109,8 +115,8 @@
     plus.setAttribute("aria-expanded", "true");
     document.getElementById("wick-asset-title").textContent = category === "pages" ? "# Pages" : "@ Assets";
     kind.hidden = category === "pages"; kind.value = ""; query.value = "";
-    kind.querySelectorAll("button").forEach(function (item) { item.setAttribute("aria-pressed", item.dataset.kind === "" ? "true" : "false"); });
-    query.placeholder = category === "pages" ? "Find a page…" : "Find a paper, note, collection or goal…";
+    kind.querySelectorAll("button").forEach(function (item) { item.hidden=document.getElementById("chat-mode") && document.getElementById("chat-mode").value!=="wick" && item.dataset.kind!=="document"; item.setAttribute("aria-pressed", item.dataset.kind === "" ? "true" : "false"); });
+    query.placeholder = category === "pages" ? "Find a page…" : "Find a paper, note, collection, goal or document…";
     var rect = controls.getBoundingClientRect(), top = formTop();
     dialog.style.bottom = String(rect.bottom - top + 8) + "px";
     dialog.style.maxHeight = String(Math.max(160, top - 16)) + "px";
@@ -129,7 +135,7 @@
   kind.addEventListener("click", function (event) {
     var button = event.target.closest("[data-kind]"); if (!button) { return; }
     kind.value = button.dataset.kind;
-    kind.querySelectorAll("button").forEach(function (item) { item.setAttribute("aria-pressed", item === button ? "true" : "false"); });
+    kind.querySelectorAll("button").forEach(function (item) { item.hidden=document.getElementById("chat-mode") && document.getElementById("chat-mode").value!=="wick" && item.dataset.kind!=="document"; item.setAttribute("aria-pressed", item === button ? "true" : "false"); });
     search(false);
   });
   more.addEventListener("click", function () { search(true); });

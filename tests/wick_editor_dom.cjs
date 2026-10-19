@@ -135,5 +135,14 @@ function type(text) {
   editor.dispatchEvent(new w.Event('compositionend'));
   editor.dispatchEvent(new w.KeyboardEvent('keydown', {key:'Escape', bubbles:true, cancelable:true}));
   editor.dispatchEvent(new w.KeyboardEvent('keydown', {key:'Enter', bubbles:true, cancelable:true})); assert.equal(submitted, 1);
+  // Saved documents insert inline through the attachment path, not Wick's
+  // five-item conversation context (and therefore work in Research too).
+  let selectedDocument=null;
+  w.PrivateUploads={assets:()=>[],select:async function(file,range){selectedDocument=file;w.WickEditor.insert({kind:'attachment',id:file.document_id,label:file.filename},range);}};
+  w.fetch=async()=>({ok:true,json:async()=>({items:[{kind:'attachment',id,document_id:id,filename:'Saved.pdf',label:'Saved.pdf',status:'ready',retained:true}],next_cursor:null})});
+  type('Compare @sav');await tick();d.querySelector('.wick-asset-result').click();await tick();
+  assert.equal(selectedDocument.document_id,id);
+  assert.match(input.value,/Compare \[▤Saved.pdf\]/);
+  assert.equal(w.WickContext.references().some(ref=>ref.kind==='attachment'),false);
   dom.window.close();
 })().catch(error => { console.error(error); dom.window.close(); process.exitCode = 1; });

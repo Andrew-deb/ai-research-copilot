@@ -15,3 +15,9 @@
 .pdf-page { width:100%; margin:0 0 8px; background:white; }
 .pdf-page canvas { display:block; width:100%; height:auto; }
 @media(max-width:720px) { .saved-document { height:calc(100dvh - 130px); } .saved-document-toolbar .icon-btn { min-width:32px; padding:5px; } }
+
+.document-search { display:flex; align-items:end; gap:12px; flex-wrap:wrap; margin-bottom:20px; }
+.document-index-state { display:block; font-size:12px; color:var(--text-muted); margin-top:8px; }
+.document-organise { position:relative; }
+.document-organise form { position:absolute; right:0; top:100%; z-index:5; min-width:240px; padding:12px; background:var(--surface); border:1px solid var(--border); border-radius:8px; }
+.document-organise summary { list-style:none; }

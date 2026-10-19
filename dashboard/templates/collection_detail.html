@@ -63,11 +63,31 @@
       <p class="hint">Drag rows to reorder, or generate a reading plan to sequence by publication year and citation impact.</p>
     {% endif %}
   {% else %}
-    <div class="empty"><p>This collection is empty.</p>
+    <div class="empty"><p>No papers in this collection.</p>
       {% if editable %}<button type="button" class="btn btn-primary js-add-papers">Add papers</button>
       <p>Search the corpus or choose from your saved papers.</p>{% endif %}
     </div>
   {% endif %}
+{% if editable and private_uploads_enabled %}
+<section class="panel" aria-label="Collection documents">
+  <h2>Documents</h2><p class="hint">Private saved files. Paper reading plans are unchanged.</p>
+  {% for document in documents %}<div class="reading-item">
+    <a href="{{ url_for('uploads.document_view',document_id=document.document_id) }}">{{ document.filename }}</a>
+    <form method="post" action="{{ url_for('collections.remove_document',collection_id=collection.collection_id,document_id=document.document_id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="icon-btn" aria-label="Remove document from collection" title="Remove from collection">{{ icon('trash') }}</button>
+    </form>
+  </div>{% else %}<p>No documents in this collection.</p>{% endfor %}
+  <form method="post" action="{{ url_for('collections.add_document',collection_id=collection.collection_id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>Saved document<select name="document_id" required>
+      {% for document in document_options %}<option value="{{ document.document_id }}">{{ document.filename }}</option>{% endfor %}
+    </select></label>
+    <button class="icon-btn" title="Add document" aria-label="Add document" {% if not document_options %}disabled{% endif %}>{{ icon('plus') }}</button>
+    <a href="{{ url_for('uploads.documents_page') }}">Browse all saved documents</a>
+  </form>
+</section>
+{% endif %}
 {% if editable %}
 <dialog id="paper-picker" class="paper-picker"
         data-search-url="{{ url_for('collections.paper_options', collection_id=collection.collection_id) }}"

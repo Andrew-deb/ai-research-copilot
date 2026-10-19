@@ -25,6 +25,8 @@ import uuid
 # baseline those fixtures assume.
 # ---------------------------------------------------------------------------
 os.environ["EMBEDDING_PRELOAD"] = "false"
+os.environ["DOCUMENT_INDEXING_ENABLED"] = "false"
+os.environ["DOCUMENT_INDEX_MODEL_VERSION"] = ""
 os.environ["APP_ENV"] = "local"
 # No keep-warm thread during the suite.
 #

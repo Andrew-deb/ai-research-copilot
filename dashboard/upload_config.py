@@ -40,3 +40,7 @@ def validate():
         raise ValueError("Upload capacity must cover files and derived artifacts.")
     if not LOCATION_ID or len(LOCATION_ID) > 100:
         raise ValueError("Configure a valid upload storage location.")
+
+# Explicit opt-in after verifying the embedding deployment and storage capacity.
+INDEXING_ENABLED = os.getenv("DOCUMENT_INDEXING_ENABLED", "false").lower() == "true"
+INDEX_MODEL_VERSION = os.getenv("DOCUMENT_INDEX_MODEL_VERSION", "").strip()

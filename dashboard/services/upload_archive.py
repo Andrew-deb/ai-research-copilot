@@ -13,18 +13,26 @@ def build(owner, conversation_id):
              if item['status'] in ('ready', 'failed', 'queued', 'processing')]
     if not items:
         raise ValidationError('No downloadable files remain in this conversation.')
-    if len(items) > upload_config.LIMITS.per_conversation_files:
+    if len(items) > 50:
         raise ValidationError('This export exceeds the supported conversation file limit.')
     output = SpooledTemporaryFile(max_size=4 * 1024 * 1024, mode='w+b')
     try:
         used = set()
+        total_bytes = 0
         with ZipFile(output, 'w', compression=ZIP_STORED) as archive:
             for item in items:
                 row, content = upload_service.download(owner, item['document_id'])
-                if str(row.get('conversation_id')) != str(conversation_id):
+                if str(row.get("conversation_id")) != str(
+                    conversation_id
+                ) and not row.get("retained_at"):
                     raise ValidationError('A file is no longer part of this conversation.')
                 if len(content) > upload_config.LIMITS.max_file_bytes:
                     raise ValidationError('A file exceeds the export size limit.')
+                total_bytes += len(content)
+                if total_bytes > 30 * 1024 * 1024:
+                    raise ValidationError(
+                        "This export exceeds 30 MiB. Download files individually."
+                    )
                 name = PurePosixPath(row['filename'].replace('\\', '/')).name
                 if not name or name in ('.', '..'):
                     name = 'document'
