@@ -1,0 +1,190 @@
+# Keeps Lakebase from being disabled, and wakes Render when nothing else can.
+#
+# WHY THIS EXISTS, rather than another HTTP pinger.
+#
+# Render's free tier stops an idle service and takes about 42 seconds to start
+# it again (measured 18-19 October 2026). cron-job.org abandons a request after
+# 30 seconds and cannot be configured higher on a free account, and Render
+# appears to tear down a half-started container shortly after the requester
+# disconnects. So its pings never finished a wake: six consecutive failures,
+# five minutes apart, recovered only when a human opened the page in a browser
+# and waited. Nothing reached Lakebase for days, its compute was suspended and
+# then disabled, and the branch had to be recreated.
+#
+# A GitHub runner can wait as long as it likes, and it can reach Postgres
+# directly - which is the part that matters, because `SELECT 1` from here needs
+# nothing from Render at all. It works while the app is asleep, which is exactly
+# when the app cannot run it for us.
+#
+# THE DIVISION OF LABOUR. cron-job.org is not replaced; it is given work it can
+# actually do.
+#
+#   05:50 Lagos  here        wake the app, so the 06:00 pings land on a warm one
+#   06:00-22:55  cron-job.org  keep an already-awake app awake - cheap, and it
+#                              never has to perform a cold start
+#   06:00-22:55  the app      keeps Lakebase warm itself every 4 minutes
+#                              (DB_KEEPWARM_SECONDS), so nothing here need do it
+#   11:00, 16:00 here        fail-safe: if the cron job has died, wake the app
+#   23:00, 02:00, 05:00  here  touch Lakebase while the app sleeps
+#
+# Overnight runs deliberately do NOT wake Render. A free service that never
+# sleeps consumes about 744 of the 750 monthly instance hours, and exceeding
+# that suspends every free service until the next month - a worse outage than
+# the one this prevents.
+#
+# Three touches a night is not about keeping the database warm; it suspends
+# about five minutes after each one regardless. It resets the inactivity clock
+# that leads to permanent disablement, and three independent attempts mean one
+# transient failure costs nothing.
+
+name: Keep Lakebase and Render alive
+
+on:
+  schedule:
+    # All times UTC. The deployment's own timezone is Africa/Lagos (UTC+1).
+    - cron: '50 4 * * *'    # 05:50 Lagos - wake before the cron window opens
+    - cron: '0 10 * * *'    # 11:00 Lagos - fail-safe
+    - cron: '0 15 * * *'    # 16:00 Lagos - fail-safe
+    - cron: '0 22 * * *'    # 23:00 Lagos - database only, app asleep
+    - cron: '0 1 * * *'     # 02:00 Lagos - database only
+    - cron: '0 4 * * *'     # 05:00 Lagos - database only
+  workflow_dispatch:        # and by hand, for testing
+
+permissions:
+  contents: read
+
+concurrency:
+  group: keepalive
+  cancel-in-progress: false
+
+env:
+  APP_URL: https://alfred-fe1r.onrender.com
+  # Long enough to outlast a cold start with room to spare. The whole point of
+  # using a runner rather than an HTTP pinger is that this can exceed 30s.
+  WAKE_TIMEOUT_SECONDS: 120
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Touch Lakebase directly
+        # The same `SELECT 1` that /readyz runs, but issued straight to Postgres
+        # so it does not need Render to be awake. This is the step that actually
+        # prevents the compute being disabled.
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DATABASE_URL:-}" ]; then
+            echo "::error::DATABASE_URL secret is not set - the database cannot be reached."
+            exit 1
+          fi
+          command -v psql >/dev/null 2>&1 || {
+            echo "psql not present; installing postgresql-client"
+            sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
+          }
+          started=$(date +%s)
+          # -q and a bare SELECT: nothing of the connection string is echoed, and
+          # GitHub masks the secret in logs regardless.
+          psql "$DATABASE_URL" -qtAX -c 'SELECT 1;' > /dev/null
+          echo "Lakebase reachable in $(( $(date +%s) - started ))s"
+
+      - name: Decide whether to wake the app
+        id: plan
+        # Overnight runs leave Render asleep on purpose: waking it would spend
+        # instance hours to no benefit, and the quota is the tighter constraint.
+        run: |
+          case "${{ github.event.schedule }}" in
+            '50 4 * * *'|'0 10 * * *'|'0 15 * * *') echo "wake=true"  >> "$GITHUB_OUTPUT" ;;
+            '')                                      echo "wake=true"  >> "$GITHUB_OUTPUT" ;;  # manual run
+            *)                                       echo "wake=false" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+      - name: Wake the app and wait for it
+        if: steps.plan.outputs.wake == 'true'
+        # Waiting is the entire reason this step is here rather than in
+        # cron-job.org. A cold start takes ~42s; anything that gives up sooner
+        # starts a wake it will not see finish, and Render discards it.
+        run: |
+          set -uo pipefail
+          for attempt in 1 2 3; do
+            started=$(date +%s)
+            code=$(curl -s -o /tmp/body -w '%{http_code}' \
+                     --max-time "${WAKE_TIMEOUT_SECONDS}" \
+                     "${APP_URL}/healthz" || echo 000)
+            elapsed=$(( $(date +%s) - started ))
+            if [ "$code" = "200" ]; then
+              echo "Awake after ${elapsed}s (attempt ${attempt}): $(cat /tmp/body)"
+              exit 0
+            fi
+            echo "Attempt ${attempt}: HTTP ${code} after ${elapsed}s"
+            [ "$attempt" -lt 3 ] && sleep 15
+          done
+          echo "::error::The app did not answer after 3 attempts."
+          exit 1
+
+      - name: Confirm the database through the app
+        if: steps.plan.outputs.wake == 'true'
+        # Only once the app is up, and only as a report: /readyz returns 503
+        # when the database is slow, which is information rather than a failure
+        # of this workflow - the direct touch above already succeeded.
+        continue-on-error: true
+        run: |
+          curl -s --max-time 60 "${APP_URL}/readyz" || true
+          echo
+
+  # ---------------------------------------------------------------------------
+  # Keeping the schedule itself alive
+  # ---------------------------------------------------------------------------
+  #
+  # GitHub disables scheduled workflows in a PUBLIC repository after 60 days
+  # with no commits, and the runs here do not count as activity. A repository
+  # that goes quiet between releases would therefore switch this off silently,
+  # at exactly the point nobody is watching.
+  #
+  # The file written below contains the current month, so it changes once a
+  # month and commits once a month. That is frequent enough to reset a 60-day
+  # clock and rare enough not to clutter the history.
+  heartbeat:
+    runs-on: ubuntu-latest
+    needs: keepalive
+    if: github.event_name == 'schedule'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Record the month, and commit only if it changed
+        run: |
+          set -euo pipefail
+          mkdir -p .github
+          cat > .github/keepalive-heartbeat.md <<EOF
+          # Keep-alive heartbeat
+
+          Last recorded: $(date -u +%Y-%m)
+
+          Written by \`.github/workflows/keepalive.yml\`. Its only purpose is to
+          be a commit: GitHub disables scheduled workflows in a public
+          repository after 60 days without one, and the keep-alive schedule is
+          what stops Lakebase's compute being disabled.
+
+          It records the month rather than the day, so it changes once a month.
+          Nothing reads it.
+          EOF
+          # `git status --porcelain`, not `git diff --quiet`: diff only compares
+          # TRACKED files, so on the first run - when the file is new and
+          # untracked - it reports no change, nothing is committed, the file
+          # never becomes tracked, and the heartbeat is silently dead forever.
+          if [ -z "$(git status --porcelain -- .github/keepalive-heartbeat.md)" ]; then
+            echo "Same month; nothing to commit."
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/keepalive-heartbeat.md
+          # [skip ci] because this pushes to the default branch, and
+          # mcp-deployment.yml triggers on every push to it with no path
+          # filter. Without this, a file nobody reads would run the whole test
+          # suite and republish the deployment branches, once a month, forever.
+          git commit -m "chore: keep-alive heartbeat for $(date -u +%Y-%m) [skip ci]"
+          git push

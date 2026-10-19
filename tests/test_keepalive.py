@@ -221,20 +221,74 @@ def test_the_deployment_agrees_with_the_code_default():
 # The gap keep-warm cannot cover
 # ---------------------------------------------------------------------------
 
-def test_the_overnight_schedule_is_documented_against_readyz():
+def test_overnight_cover_does_not_depend_on_an_http_pinger():
     """
-    The keep-warm thread lives in the app process, so it stops when Render
-    sleeps — 6.75 h of total silence every night against a platform that may
-    disable an endpoint within hours. That gap cost this project its first
-    Lakebase endpoint.
+    This test used to require the guide to prescribe `0 */4 * * *` against
+    `/readyz`, and that schedule never once succeeded.
 
-    It has to be `/readyz`: `/healthz` never touches the database, so pinging it
-    would wake Render and leave Lakebase exactly as idle as it was.
+    An HTTP pinger reaches the database only through the app, so it needs Render
+    awake — and it cannot wake it. Measured 18-19 October 2026: a cold start
+    takes ~42 s, cron-job.org abandons a request at 30 s and cannot be set
+    higher on a free account, and Render discards a half-started container
+    shortly after the requester disconnects. Six consecutive failures, five
+    minutes apart, recovering only when a human waited in a browser. Lakebase's
+    compute was disabled twice.
+
+    So the assertion is inverted: the guide must NOT send somebody back to an
+    HTTP schedule for the overnight gap, and must point at the workflow that
+    talks to Postgres directly.
     """
     guide = (ROOT / "docs" / "setup"
              / "pinger_setup.md").read_text(encoding="utf-8")
     overnight = guide.split("## 3. Lakebase, overnight")[1]
 
-    assert "/readyz" in overnight
-    assert "0 */4 * * *" in overnight
-    assert "/healthz" in overnight      # and why it is NOT the target
+    assert "keepalive.yml" in overnight, (
+        "the guide does not point at the workflow that covers the overnight gap")
+    assert "0 */4 * * *" not in overnight.split("earlier revision")[0], (
+        "the guide still prescribes the HTTP schedule that never worked")
+
+
+def test_the_overnight_workflow_exists_and_reaches_postgres_directly():
+    """
+    The property that makes it work at all: `SELECT 1` issued to the database,
+    not to the application. Everything else here is scheduling.
+    """
+    workflow = (ROOT / ".github" / "workflows"
+                / "keepalive.yml").read_text(encoding="utf-8")
+
+    assert "psql" in workflow, "nothing connects to Postgres directly"
+    assert "SELECT 1" in workflow
+    assert "secrets.DATABASE_URL" in workflow
+
+
+def test_the_overnight_runs_leave_render_asleep():
+    """
+    Waking Render overnight would spend instance hours to no benefit: the
+    database suspends ~5 minutes after each touch regardless, and a service that
+    never sleeps uses ~744 of the 750 monthly hours. Exceeding that suspends
+    every free service until the next month.
+    """
+    workflow = (ROOT / ".github" / "workflows"
+                / "keepalive.yml").read_text(encoding="utf-8")
+
+    plan = workflow.split("Decide whether to wake the app")[1].split("- name:")[0]
+    # The three overnight schedules must not appear among the waking cases.
+    for overnight in ("0 22 * * *", "0 1 * * *", "0 4 * * *"):
+        assert f"'{overnight}'" not in plan, (
+            f"{overnight} would wake Render overnight")
+
+
+def test_the_wake_outlasts_a_cold_start():
+    """
+    The whole reason this is a workflow and not another HTTP ping. A cold start
+    was measured at ~42 s; anything that gives up sooner starts a wake it will
+    not see finish, and Render throws it away.
+    """
+    workflow = (ROOT / ".github" / "workflows"
+                / "keepalive.yml").read_text(encoding="utf-8")
+    import re
+
+    timeout = re.search(r"WAKE_TIMEOUT_SECONDS:\s*(\d+)", workflow)
+    assert timeout, "the wake step has no timeout"
+    assert int(timeout.group(1)) >= 60, (
+        f"{timeout.group(1)}s does not reliably outlast a ~42s cold start")
