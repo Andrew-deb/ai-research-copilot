@@ -19,13 +19,14 @@
 # THE DIVISION OF LABOUR. cron-job.org is not replaced; it is given work it can
 # actually do.
 #
-#   05:50 Lagos  here        wake the app, so the 06:00 pings land on a warm one
+#   05:43, 05:53 Lagos  here   wake the app twice, so the 06:00 pings land on a
+#                              warm one even if the first wake is delayed
 #   06:00-22:55  cron-job.org  keep an already-awake app awake - cheap, and it
 #                              never has to perform a cold start
 #   06:00-22:55  the app      keeps Lakebase warm itself every 4 minutes
 #                              (DB_KEEPWARM_SECONDS), so nothing here need do it
-#   11:00, 16:00 here        fail-safe: if the cron job has died, wake the app
-#   23:00, 02:00, 05:00  here  touch Lakebase while the app sleeps
+#   11:17, 16:23 Lagos  here   fail-safe: if the cron job has died, wake the app
+#   23:13, 02:37, 05:07 Lagos  here   touch Lakebase while the app sleeps
 #
 # Overnight runs deliberately do NOT wake Render. A free service that never
 # sleeps consumes about 744 of the 750 monthly instance hours, and exceeding
@@ -42,12 +43,31 @@ name: Keep Lakebase and Render alive
 on:
   schedule:
     # All times UTC. The deployment's own timezone is Africa/Lagos (UTC+1).
-    - cron: '50 4 * * *'    # 05:50 Lagos - wake before the cron window opens
-    - cron: '0 10 * * *'    # 11:00 Lagos - fail-safe
-    - cron: '0 15 * * *'    # 16:00 Lagos - fail-safe
-    - cron: '0 22 * * *'    # 23:00 Lagos - database only, app asleep
-    - cron: '0 1 * * *'     # 02:00 Lagos - database only
-    - cron: '0 4 * * *'     # 05:00 Lagos - database only
+    #
+    # NOTHING ON THE HOUR. GitHub's `schedule` is best-effort and the top of the
+    # hour is its most contended minute; runs there are delayed and sometimes
+    # dropped with no error and no log entry. Observed on this repository on
+    # 19-20 October 2026: of three overnight runs scheduled at :00, one arrived
+    # between 48 minutes and nearly 3 hours late and one never appeared at all.
+    # Odd minutes are not a guarantee - the redundancy below is what protects
+    # the database - but they are free.
+    - cron: '13 22 * * *'   # 23:13 Lagos - database only, app asleep
+    - cron: '37 1 * * *'    # 02:37 Lagos - database only
+    - cron: '7 4 * * *'     # 05:07 Lagos - database only
+    # Two wakes, not one, and the gap between them is the point.
+    #
+    # Render stops a service after 15 minutes without inbound traffic. A single
+    # wake at 05:43 finishes about 05:44 and the first cron-job.org ping arrives
+    # at 06:00 - sixteen minutes later, so the service would spin down with a
+    # minute to spare and the ping would meet a cold app, which is the whole
+    # failure this workflow exists to prevent.
+    #
+    # The second wake closes that gap to seven minutes, and doubles as cover for
+    # the first one being delayed or dropped.
+    - cron: '43 4 * * *'    # 05:43 Lagos - wake (first attempt)
+    - cron: '53 4 * * *'    # 05:53 Lagos - wake, 7 min before the ping window
+    - cron: '17 10 * * *'   # 11:17 Lagos - fail-safe
+    - cron: '23 15 * * *'   # 16:23 Lagos - fail-safe
   workflow_dispatch:        # and by hand, for testing
 
 permissions:
@@ -94,10 +114,23 @@ jobs:
         # Overnight runs leave Render asleep on purpose: waking it would spend
         # instance hours to no benefit, and the quota is the tighter constraint.
         run: |
+          # Every cron in the schedule above must appear in exactly one branch
+          # here. tests/test_keepalive.py fails if one is missing, because a
+          # schedule nobody classified falls through to `*)` and silently stops
+          # waking the app - which looks like nothing at all until the morning
+          # ping meets a cold service.
           case "${{ github.event.schedule }}" in
-            '50 4 * * *'|'0 10 * * *'|'0 15 * * *') echo "wake=true"  >> "$GITHUB_OUTPUT" ;;
-            '')                                      echo "wake=true"  >> "$GITHUB_OUTPUT" ;;  # manual run
-            *)                                       echo "wake=false" >> "$GITHUB_OUTPUT" ;;
+            # Wake: before the ping window, and the two daytime fail-safes.
+            '43 4 * * *'|'53 4 * * *'|'17 10 * * *'|'23 15 * * *')
+              echo "wake=true"  >> "$GITHUB_OUTPUT" ;;
+            # Database only: Render stays asleep overnight, on purpose.
+            '13 22 * * *'|'37 1 * * *'|'7 4 * * *')
+              echo "wake=false" >> "$GITHUB_OUTPUT" ;;
+            '')
+              echo "wake=true"  >> "$GITHUB_OUTPUT" ;;  # manual run
+            *)
+              echo "::warning::Unclassified schedule '${{ github.event.schedule }}'; not waking."
+              echo "wake=false" >> "$GITHUB_OUTPUT" ;;
           esac
 
       - name: Wake the app and wait for it

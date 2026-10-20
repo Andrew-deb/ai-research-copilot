@@ -261,21 +261,113 @@ def test_the_overnight_workflow_exists_and_reaches_postgres_directly():
     assert "secrets.DATABASE_URL" in workflow
 
 
+def _workflow() -> str:
+    return (ROOT / ".github" / "workflows" / "keepalive.yml").read_text(encoding="utf-8")
+
+
+def _scheduled_crons() -> list[str]:
+    """Every cron in the `on: schedule:` block, in file order."""
+    import yaml
+
+    loaded = yaml.safe_load(_workflow())
+    # 'on' is YAML 1.1's boolean True; accept either spelling.
+    triggers = loaded.get("on") or loaded.get(True)
+    return [entry["cron"] for entry in triggers["schedule"]]
+
+
+def _classified_crons() -> tuple[set[str], set[str]]:
+    """The crons the wake decision names explicitly, split by what it decides."""
+    import re
+
+    block = _workflow().split("Decide whether to wake the app")[1].split("- name:")[0]
+    waking, sleeping = set(), set()
+    for branch, output in re.findall(r"^\s*((?:'[^']*'\|?)+)\)\s*$\n(.*?)(?=^\s*'|\Z)",
+                                     block, re.M | re.S):
+        crons = {c.strip("'") for c in branch.split("|") if c.strip("'")}
+        (waking if "wake=true" in output else sleeping).update(crons)
+    return waking, sleeping
+
+
+def test_every_scheduled_run_is_explicitly_classified():
+    """
+    The guard against the mistake this file keeps nearly making: adding a cron
+    to the schedule and forgetting the wake decision.
+
+    An unclassified schedule falls through to the catch-all and silently stops
+    waking the app. Nothing fails, nothing logs, and the first symptom is a
+    morning ping meeting a cold service — which is the outage this whole
+    workflow exists to prevent.
+
+    So the assertion is exhaustive rather than a list of known names: every cron
+    in the schedule must be named in the decision, and every name in the
+    decision must still be in the schedule.
+    """
+    scheduled = set(_scheduled_crons())
+    waking, sleeping = _classified_crons()
+    classified = waking | sleeping
+
+    assert not (scheduled - classified), (
+        f"scheduled but never classified, so they would not wake the app: "
+        f"{sorted(scheduled - classified)}")
+    assert not (classified - scheduled), (
+        f"classified but no longer scheduled — dead branches that will mislead "
+        f"the next reader: {sorted(classified - scheduled)}")
+
+
+def test_no_schedule_sits_on_the_hour():
+    """
+    GitHub's `schedule` is best-effort and the top of the hour is its most
+    contended minute. Measured here on 19–20 October 2026: of three overnight
+    runs at :00, one arrived up to ~3 hours late and one never appeared at all.
+    """
+    on_the_hour = [cron for cron in _scheduled_crons()
+                   if cron.split()[0] in ("0", "00")]
+
+    assert not on_the_hour, (
+        f"scheduled at the most contended minute of the hour: {on_the_hour}")
+
+
 def test_the_overnight_runs_leave_render_asleep():
     """
     Waking Render overnight would spend instance hours to no benefit: the
     database suspends ~5 minutes after each touch regardless, and a service that
     never sleeps uses ~744 of the 750 monthly hours. Exceeding that suspends
     every free service until the next month.
-    """
-    workflow = (ROOT / ".github" / "workflows"
-                / "keepalive.yml").read_text(encoding="utf-8")
 
-    plan = workflow.split("Decide whether to wake the app")[1].split("- name:")[0]
-    # The three overnight schedules must not appear among the waking cases.
-    for overnight in ("0 22 * * *", "0 1 * * *", "0 4 * * *"):
-        assert f"'{overnight}'" not in plan, (
-            f"{overnight} would wake Render overnight")
+    Overnight is defined by the clock rather than by a list, so a new 03:00 run
+    cannot be added to the waking branch without this noticing.
+    """
+    waking, _ = _classified_crons()
+
+    for cron in waking:
+        minute, hour = cron.split()[0], cron.split()[1]
+        # UTC. Lagos is UTC+1, so 22:00–04:00 UTC is 23:00–05:00 Lagos.
+        assert not (int(hour) >= 21 or int(hour) < 4), (
+            f"'{cron}' ({hour}:{minute} UTC) would wake Render overnight")
+
+
+def test_the_two_wakes_close_the_spin_down_gap():
+    """
+    Render stops a service after 15 minutes without inbound traffic, and
+    cron-job.org's window opens at 06:00 Lagos (05:00 UTC).
+
+    A single wake at 05:43 Lagos finishes about 05:44 and leaves sixteen minutes
+    of silence — the service spins down with a minute to spare and the first
+    ping meets a cold app. The last wake must therefore land well inside that
+    window, and there must be more than one in case the first is dropped.
+    """
+    waking, _ = _classified_crons()
+    # Wakes in the hour before the 05:00 UTC window opens.
+    pre_window = sorted(int(c.split()[0]) for c in waking if c.split()[1] == "4")
+
+    assert len(pre_window) >= 2, (
+        f"only {len(pre_window)} wake before the ping window; a dropped run "
+        f"would leave the morning ping facing a cold start")
+
+    gap = 60 - pre_window[-1]          # minutes from the last wake to 05:00 UTC
+    assert gap < 15, (
+        f"the last wake is {gap} min before the window opens, which exceeds "
+        f"Render's 15-minute spin-down — it would be asleep again by then")
 
 
 def test_the_wake_outlasts_a_cold_start():
