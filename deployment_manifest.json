@@ -51,7 +51,7 @@
     "shared_resource/storage/azure_blob.py": "539ae4b4e1de472566a36f047eef3fe317d776beb1237aa0e7eb40358d2b83c2",
     "shared_resource/storage/contract.py": "2163eacf66d996ff92f1957b91a90a300ac56c07c5438ff4f591ccb8f8fc3891"
   },
-  "source_revision": "5b473d1e80e417919fbed926d61bcccf96f64d3c",
+  "source_revision": "8e66f9949a39f04c5003ccff2ff1fc636b607051",
   "target": "research",
   "tools": [
     "add_paper_to_collection",
