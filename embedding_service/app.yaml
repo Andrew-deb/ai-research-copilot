@@ -1,0 +1,11 @@
+command: ["python", "server.py"]
+env:
+  - name: PYTHONUNBUFFERED
+    value: "1"
+  - name: TOKENIZERS_PARALLELISM
+    value: "false"
+  - name: HF_HUB_OFFLINE
+    value: "1"
+  - name: TRANSFORMERS_OFFLINE
+    value: "1"
+# Configure EMBEDDING_MODEL_PATH and EMBEDDING_MODEL_VERSION before deployment.
