@@ -108,11 +108,15 @@ def main():
             )
 
     threading.Thread(target=load, daemon=True).start()
-    create_app(encoder, version).run(
+    from waitress import serve
+
+    serve(
+        create_app(encoder, version),
         host="0.0.0.0",
         port=int(os.getenv("DATABRICKS_APP_PORT", "8000")),
-        threaded=True,
-        use_reloader=False,
+        threads=4,
+        max_request_body_size=65536,
+        channel_timeout=60,
     )
 
 
