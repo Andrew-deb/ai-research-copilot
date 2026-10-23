@@ -24,7 +24,10 @@ class Encoder:
         started = time.perf_counter()
         # Never download an unpinned Hub model silently.
         self.model = SentenceTransformer(path, device="cpu", local_files_only=True)
-        if self.model.get_sentence_embedding_dimension() != DIMENSION:
+        dimension = getattr(self.model, "get_embedding_dimension", None)
+        if dimension is None:
+            dimension = self.model.get_sentence_embedding_dimension
+        if dimension() != DIMENSION:
             raise ValueError("Incompatible embedding dimension")
         self.load_seconds = time.perf_counter() - started
         self.state = "ready"
