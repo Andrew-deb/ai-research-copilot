@@ -15,6 +15,7 @@ from werkzeug.exceptions import HTTPException
 from exceptions import (
     CollectionNotFoundError,
     ExternalAPIError,
+    EmbeddingServiceError,
     GoalNotFoundError,
     NoteNotFoundError,
     UploadNotFoundError,
@@ -41,6 +42,7 @@ _STATUS_MAP: list[tuple[type[Exception], int, str]] = [
     (GoalNotFoundError, 404, "Learning goal not found"),
     (NoteNotFoundError, 404, "Note not found"),
     (UploadNotFoundError, 404, "File unavailable"),
+    (EmbeddingServiceError, 503, "Semantic search unavailable"),
     (ExternalAPIError, 502, "Service unavailable"),
     (ResearchCopilotError, 500, "Something went wrong"),
 ]
@@ -89,7 +91,7 @@ def speaks_to_the_visitor(exc: Exception) -> bool:
       and a module path end up in front of somebody researching proteins.
     - Anything else is not ours and made no promise at all.
     """
-    if isinstance(exc, ExternalAPIError):
+    if isinstance(exc, (ExternalAPIError, EmbeddingServiceError)):
         return True
     if not isinstance(exc, ResearchCopilotError):
         return False

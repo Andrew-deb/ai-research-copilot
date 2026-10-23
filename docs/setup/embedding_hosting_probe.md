@@ -111,8 +111,8 @@ loading; `/api/ready` returns 503 until ready and also returns 503 after load
 failure. No fallback to a different model is allowed.
 
 All `/api/` endpoints are protected by Databricks App ingress OAuth and CAN USE.
-The included Flask development server is for this controlled benchmark only;
-production serving/hardening belongs to the later routing increment. Do not
+The initial probe used Flask development serving; the Render integration update
+switches the App to one-process Waitress serving. Do not
 expose this process directly on an unprotected host. Request bodies are not
 logged. Admission is nonblocking: one inference at a time; simultaneous calls get
 429/Retry-After. Payloads are capped at 64 KiB/16,000 characters and the saved
@@ -221,3 +221,6 @@ Sources checked 22 October 2026:
 - https://docs.databricks.com/aws/en/dev-tools/databricks-apps/connect-local
 - https://docs.databricks.com/aws/en/dev-tools/databricks-apps/uc-volumes
 - https://huggingface.co/nomic-ai/modernbert-embed-base
+
+
+Render integration and staged activation: see [databricks_embeddings.md](databricks_embeddings.md).

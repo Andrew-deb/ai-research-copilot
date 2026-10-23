@@ -58,7 +58,12 @@ class LLMTimeoutError(ExternalAPIError):
 class EmbeddingError(ResearchCopilotError):
     """Raised when the embedding model fails to produce a vector."""
 
+class EmbeddingServiceError(EmbeddingError):
+    """Unavailable embedding backend with a sanitized visitor-facing message."""
+
+
 __all__ = [
+    "EmbeddingServiceError",
     "ResearchCopilotError",
     "PaperNotFoundError",
     "CollectionNotFoundError",
