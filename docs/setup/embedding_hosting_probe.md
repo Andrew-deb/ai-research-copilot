@@ -47,15 +47,19 @@ print('Local model:', local)
 print('EMBEDDING_MODEL_VERSION:', fingerprint)
 ```
 
-Run the local baseline from that same Python process (so `/tmp` is the same host):
+Run the baseline inside that notebook process:
 
 ```python
-import subprocess
-subprocess.run([
-    sys.executable, str(Path(repo) / 'embedding_service/probe.py'),
-    '--model-path', local, '--output', '/tmp/embedding-local.json'
-], check=True)
+import probe
+probe.main(['--model-path', local, '--output', '/tmp/embedding-local.json'])
 ```
+
+The dependency pins now match the user's successful notebook baseline:
+`transformers==5.17.0` and `sentence-transformers==6.0.1`. That run measured
+0.45 s model load, 0.14–0.17 s short-query medians, 0.65 s for a 1,188-character
+passage and 1,088 MiB process peak RSS. This proves local repeated-vector
+consistency, not historical-vector or remote-App compatibility. Live App
+installation/measurements with these dependency versions remain pending.
 
 This is notebook CPU evidence, **not App CPU evidence**. Save the JSON output
 outside `/tmp` if needed. It contains timings and fixture comparisons, no private
@@ -85,6 +89,12 @@ preferred). Paths and fingerprint are configuration, not credentials:
     value: THE_SHA256_FROM_STEP_2
 ```
 
+The fingerprint is a SHA-256 identifier of model artifacts, **not an access
+credential**. It is safe to keep in `app.yaml` and Git for this public model.
+Knowing it grants no Volume, App, Azure or database access. It verifies content
+consistency; it is not a signature or a defense against someone who can modify
+both model files and the configured fingerprint. Credentials stay separate.
+
 Append these under the existing `env` list. Create an App such as
 `alfred-embeddings-probe`, with that source folder. Add the Volume as a resource
 with read permission; the App principal needs USE CATALOG, USE SCHEMA and
@@ -110,22 +120,68 @@ model token limit, with rejection instead of silent truncation.
 
 ## 4. Run the end-to-end comparison
 
-From a Linux environment holding the staged reference model, configure Databricks
-SDK authentication for a caller with CAN USE on the probe (notebook auto-auth or
-an existing OAuth profile/service principal). Never paste access tokens into
-commands. The probe uses refreshed SDK headers per request, HTTPS and no redirects.
+**Notebook authentication needs an exchange.** A notebook's default
+`WorkspaceClient().config.authenticate()` headers are not sufficient for this
+App request. Databricks documents exchanging the notebook's internal token for
+an OAuth token scoped to the App's OAuth client ID. The original guide omitted
+this step; a 401 here does not diagnose model loading or the fingerprint.
 
-Run in the notebook's Python process as in Step 2, adding:
+After pulling this fix into your Git folder, run these cells in the same notebook
+as the staged `local` model and `fingerprint` variables. If you previously imported
+`probe`, reload it after pulling the change:
 
 ```python
-subprocess.run([
-    sys.executable, str(Path(repo) / 'embedding_service/probe.py'),
-    '--model-path', local,
-    '--url', 'https://YOUR_APP.aws.databricksapps.com',
-    '--version', fingerprint,
-    '--output', '/tmp/embedding-app.json'
-], check=True)
+import importlib
+import requests
+from databricks.sdk import WorkspaceClient
+from notebook_auth import NotebookAppAuth
+import probe
+importlib.reload(probe)
+
+app_name = 'alfred-embeddings-probe'
+app_url = 'https://YOUR_APP.aws.databricksapps.com'
+client = WorkspaceClient()
+
+def notebook_token():
+    return (dbutils.notebook.entry_point.getDbutils()
+            .notebook().getContext().apiToken().get())
+
+app_auth = NotebookAppAuth(client, app_name, notebook_token)
+response = requests.get(
+    app_url.rstrip('/') + '/api/ready',
+    headers=app_auth.authenticate(),
+    timeout=30, allow_redirects=False,
+)
+print('HTTP status:', response.status_code)
+print(response.text)
 ```
+
+The helper keeps credentials only in memory and exchanges again before expiry.
+Do not print tokens or authentication headers. `200` with `state=ready` permits
+the benchmark. `503/loading` means wait and retry readiness. `503/failed` means
+check App logs. A remaining 401 or 403 requires checking App access/scopes and
+the exchange status. A token-exchange failure is distinct from an App 401.
+Your notebook identity needs CAN USE on the App. A Py4J/notebook context error
+means that runtime cannot expose the documented notebook token; use an OAuth
+CLI profile or service principal from a supported environment instead of
+printing/reusing credentials from notebook internals.
+
+Then run:
+
+```python
+probe.main([
+    '--model-path', local,
+    '--url', app_url,
+    '--version', fingerprint,
+    '--output', '/tmp/embedding-app.json',
+], auth=app_auth)
+```
+
+`auth=app_auth` is essential: omitting it reverts to SDK default authentication.
+The regular CLI remains supported for environments configured with actual OAuth
+credentials. The notebook test does not require any App or Render redeployment
+if only the client/helper changed. Ensure the App itself deploys the updated
+model dependency pins before using its results for compatibility acceptance.
 
 The client sends **unprefixed** text and query/document kind. Only the encoder
 adds the prefix. It tests two short queries and two document passages, five
