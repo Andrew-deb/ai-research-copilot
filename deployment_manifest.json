@@ -44,7 +44,7 @@
     "shared_resource/storage/azure_blob.py": "539ae4b4e1de472566a36f047eef3fe317d776beb1237aa0e7eb40358d2b83c2",
     "shared_resource/storage/contract.py": "2163eacf66d996ff92f1957b91a90a300ac56c07c5438ff4f591ccb8f8fc3891"
   },
-  "source_revision": "240cdfd136776aec3a6b0c1cdf05f6fea02f54f3",
+  "source_revision": "a60e7a13756fc0ec2f311847e56ef174c99cd130",
   "target": "assistant",
   "tools": [
     "add_paper_to_collection",
