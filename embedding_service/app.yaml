@@ -1,0 +1,18 @@
+command: ["python", "server.py"]
+env:
+  - name: PYTHONUNBUFFERED
+    value: "1"
+  - name: TOKENIZERS_PARALLELISM
+    value: "false"
+  - name: HF_HUB_OFFLINE
+    value: "1"
+  - name: TRANSFORMERS_OFFLINE
+    value: "1"
+  - name: EMBEDDING_VOLUME_PATH
+    value: "/Volumes/workspace/default/models/modernbert-embed-base"
+
+  - name: EMBEDDING_MODEL_PATH
+    value: "/tmp/alfred-embedding-model"
+
+  - name: EMBEDDING_MODEL_VERSION
+    value: "7b774cd490e6bf9a05c7667c082ff183db1e30547184360a2e86270408571112"
