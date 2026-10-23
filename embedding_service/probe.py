@@ -48,7 +48,7 @@ def compare(reference, candidate):
     }
 
 
-def main():
+def main(argv=None, auth=None):
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--model-path", required=True, help="Existing ingestion model snapshot"
@@ -60,7 +60,7 @@ def main():
         "--version", help="Expected App snapshot fingerprint; required with --url"
     )
     parser.add_argument("--output", required=True)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     if args.url:
         url = urlparse(args.url)
         if (
@@ -74,9 +74,10 @@ def main():
             or not args.version
         ):
             parser.error("Provide an HTTPS App origin and --version")
-        from databricks.sdk.core import Config
+        if auth is None:
+            from databricks.sdk.core import Config
 
-        auth = Config()
+            auth = Config()
     encoder = Encoder()
     encoder.load(args.model_path)
     report = {"local_load_seconds": encoder.load_seconds, "results": []}

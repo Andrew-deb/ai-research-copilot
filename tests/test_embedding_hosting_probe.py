@@ -199,3 +199,114 @@ def test_staging_rejects_escape_and_byte_overflow(tmp_path, monkeypatch):
     monkeypatch.setattr(stage, "MAX_BYTES", 2)
     with pytest.raises(ValueError, match="limit"):
         stage.stage_model(source, tmp_path / "oversize", client)
+
+
+def test_notebook_oauth_exchange_scope_cache_and_refresh():
+    auth_module = module("notebook_auth")
+    calls = []
+    now = [0]
+    client = SimpleNamespace(
+        config=SimpleNamespace(host="https://workspace.example/"),
+        apps=SimpleNamespace(
+            get=lambda name: SimpleNamespace(oauth2_app_client_id="app-audience")
+        ),
+    )
+
+    def post(url, **kwargs):
+        calls.append((url, kwargs))
+        return SimpleNamespace(
+            status_code=200,
+            json=lambda: {"access_token": "private-oauth", "expires_in": 3600},
+        )
+
+    auth = auth_module.NotebookAppAuth(
+        client,
+        "probe",
+        lambda: "private-notebook",
+        session=SimpleNamespace(post=post),
+        clock=lambda: now[0],
+    )
+    assert auth.authenticate() == {"Authorization": "Bearer private-oauth"}
+    auth.authenticate()
+    assert len(calls) == 1
+    url, request = calls[0]
+    assert url == "https://workspace.example/oidc/v1/token"
+    assert request["data"]["audience"] == "app-audience"
+    assert request["data"]["subject_token"] == "private-notebook"
+    assert request["allow_redirects"] is False
+    assert request["timeout"] == 30
+    now[0] = 3540
+    auth.authenticate()
+    assert len(calls) == 2
+
+
+@pytest.mark.parametrize("status", [302, 401, 403, 500])
+def test_notebook_oauth_failure_does_not_expose_response(status):
+    auth_module = module("notebook_auth")
+    client = SimpleNamespace(
+        config=SimpleNamespace(host="https://workspace.example"),
+        apps=SimpleNamespace(
+            get=lambda name: SimpleNamespace(oauth2_app_client_id="audience")
+        ),
+    )
+    auth = auth_module.NotebookAppAuth(
+        client,
+        "probe",
+        lambda: "secret",
+        session=SimpleNamespace(
+            post=lambda *a, **k: SimpleNamespace(status_code=status, text="secret")
+        ),
+    )
+    with pytest.raises(RuntimeError, match=f"HTTP {status}") as failure:
+        auth.authenticate()
+    assert "secret" not in str(failure.value)
+
+
+def test_notebook_probe_uses_supplied_auth(monkeypatch, tmp_path):
+    monkeypatch.setitem(sys.modules, "runtime", module("runtime"))
+    probe = module("probe")
+    monkeypatch.setattr(probe, "FIXTURES", [("query", "example")])
+
+    class Encoder:
+        load_seconds = 0.1
+
+        def load(self, path):
+            pass
+
+        def encode(self, text, kind):
+            return [1.0] + [0.0] * 767
+
+    monkeypatch.setattr(probe, "Encoder", Encoder)
+    seen = []
+
+    def response(*args, **kwargs):
+        seen.append(kwargs["headers"])
+        return SimpleNamespace(
+            raise_for_status=lambda: None,
+            json=lambda: {
+                "state": "ready",
+                "version": "snapshot",
+                "embedding": [1.0] + [0.0] * 767,
+            },
+        )
+
+    monkeypatch.setattr(
+        probe.requests, "Session", lambda: SimpleNamespace(get=response, post=response)
+    )
+    probe.main(
+        [
+            "--model-path",
+            "unused",
+            "--url",
+            "https://app.example",
+            "--version",
+            "snapshot",
+            "--output",
+            str(tmp_path / "report.json"),
+        ],
+        auth=SimpleNamespace(
+            authenticate=lambda: {"Authorization": "Bearer app-oauth"}
+        ),
+    )
+    assert len(seen) == 7
+    assert all(headers == {"Authorization": "Bearer app-oauth"} for headers in seen)
