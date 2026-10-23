@@ -110,9 +110,10 @@ services:
         sync: false
       - key: FLASK_SECRET_KEY
         generateValue: true
-      # No torch in this image — embed via the hosted model instead.
+      # Operator-selected remote backend; do not reset a verified Databricks
+      # rollout back to hf_api when the Blueprint is synchronized.
       - key: EMBEDDING_BACKEND
-        value: hf_api
+        sync: false
       # Wake the hosted model in a background thread at boot so the first
       # semantic search isn't the one that pays for it.
       - key: EMBEDDING_PRELOAD
