@@ -68,6 +68,28 @@ on:
     - cron: '53 4 * * *'    # 05:53 Lagos - wake, 7 min before the ping window
     - cron: '17 10 * * *'   # 11:17 Lagos - fail-safe
     - cron: '23 15 * * *'   # 16:23 Lagos - fail-safe
+
+  # The punctual trigger, and the reason the schedule above cannot be trusted
+  # for anything time-sensitive.
+  #
+  # A GitHub cron is not an alarm clock; it is a request to join a queue. On
+  # this repository the queue runs about FIVE HOURS behind: measured on 21 and
+  # 22 October 2026, the 04:43 wake arrived at 09:35 and 09:36, matching to
+  # within four minutes two days running. Moving the minutes off the hour
+  # changed nothing, because contention was never the cause.
+  #
+  # Event triggers on the same repository, same runners, same free tier, start
+  # in 3 to 46 seconds - measured across six push and pull_request runs. So the
+  # fix is to have something punctual raise an EVENT rather than wait for the
+  # schedule: cron-job.org fires on time and POSTs to this repository's
+  # dispatches endpoint, which starts this workflow within seconds. It cannot
+  # ping Render itself, because it abandons a request at 30 s and a cold start
+  # takes ~42 s - but asking GitHub to do the waiting takes under a second.
+  #
+  # See docs/setup/github_actions_operations.md for the cron-job.org side.
+  repository_dispatch:
+    types: [wake-render]
+
   workflow_dispatch:        # and by hand, for testing
 
 permissions:
@@ -114,6 +136,16 @@ jobs:
         # Overnight runs leave Render asleep on purpose: waking it would spend
         # instance hours to no benefit, and the quota is the tighter constraint.
         run: |
+          # A dispatch exists ONLY to wake Render on time, so it is decided by
+          # event rather than by clock. Deciding it by schedule would have meant
+          # falling through the empty-string branch by accident - correct today,
+          # and silently wrong the moment that branch is edited.
+          if [ "${{ github.event_name }}" = "repository_dispatch" ] || \
+             [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "wake=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           # Every cron in the schedule above must appear in exactly one branch
           # here. tests/test_keepalive.py fails if one is missing, because a
           # schedule nobody classified falls through to `*)` and silently stops
@@ -126,8 +158,6 @@ jobs:
             # Database only: Render stays asleep overnight, on purpose.
             '13 22 * * *'|'37 1 * * *'|'7 4 * * *')
               echo "wake=false" >> "$GITHUB_OUTPUT" ;;
-            '')
-              echo "wake=true"  >> "$GITHUB_OUTPUT" ;;  # manual run
             *)
               echo "::warning::Unclassified schedule '${{ github.event.schedule }}'; not waking."
               echo "wake=false" >> "$GITHUB_OUTPUT" ;;

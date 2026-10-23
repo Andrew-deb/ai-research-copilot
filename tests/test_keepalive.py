@@ -370,6 +370,50 @@ def test_the_two_wakes_close_the_spin_down_gap():
         f"Render's 15-minute spin-down — it would be asleep again by then")
 
 
+def test_an_external_trigger_can_start_the_workflow():
+    """
+    The punctual path, and the reason it exists.
+
+    A GitHub cron is a request to join a queue, not an alarm clock. Measured on
+    this repository 21-22 October 2026, the queue ran about FIVE HOURS behind:
+    the 04:43 wake arrived at 09:35 and 09:36 on consecutive days. Meanwhile
+    push and pull_request runs on the same repository started in 3 to 46
+    seconds. The difference is the trigger, not the runners.
+
+    So something punctual has to raise an EVENT. cron-job.org fires on time but
+    abandons a request after 30 s, and a Render cold start takes ~42 s - it can
+    never wake the app itself. Asking GitHub to do the waiting takes under a
+    second, which it can do.
+    """
+    import yaml
+
+    loaded = yaml.safe_load(_workflow())
+    triggers = loaded.get("on") or loaded.get(True)
+
+    assert "repository_dispatch" in triggers, (
+        "nothing punctual can start this workflow; the ~5h schedule queue is "
+        "the only way in, and the morning wake would arrive after lunch")
+    assert triggers["repository_dispatch"]["types"] == ["wake-render"], (
+        "the dispatch type must be named, or any dispatch to this repository "
+        "would start it")
+
+
+def test_a_dispatch_always_wakes_the_app():
+    """
+    A dispatch exists only to wake Render on time, so it must never be treated
+    as a database-only run — whatever the clock says.
+
+    Decided on the event name rather than by falling through the schedule
+    branches, because the latter was correct only by accident of ordering.
+    """
+    block = _workflow().split("Decide whether to wake the app")[1].split("- name:")[0]
+
+    assert "repository_dispatch" in block, (
+        "the wake decision never looks at the dispatch event")
+    decision = block.split("repository_dispatch")[1].split("fi")[0]
+    assert "wake=true" in decision, "a dispatch would not wake the app"
+
+
 def test_the_wake_outlasts_a_cold_start():
     """
     The whole reason this is a workflow and not another HTTP ping. A cold start
