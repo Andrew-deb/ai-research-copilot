@@ -19,6 +19,9 @@ def contract():
         raise ValidationError(
             "Configure a verified document embedding model version before indexing."
         )
+    backend_version = embedding.model_version()
+    if backend_version is not None and backend_version != upload_config.INDEX_MODEL_VERSION:
+        raise ValidationError("Document indexing must use the verified embedding service version.")
     return json.dumps(
         {
             "model": EMBEDDING_MODEL,

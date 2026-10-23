@@ -99,6 +99,7 @@ EMBEDDING_QUERY_PREFIX: str = "search_query: "
 # How to produce query vectors:
 #   "local"  - sentence-transformers in-process (needs torch, ~500 MB RAM)
 #   "hf_api" - Hugging Face Inference API (no torch; fits small containers)
+#   "databricks" - dedicated CPU embedding App with backend OAuth
 #   "auto"   - hf_api when HF_API_TOKEN is set, else local
 EMBEDDING_BACKEND: str = os.getenv("EMBEDDING_BACKEND", "auto").strip().lower()
 HF_API_TOKEN: str | None = _get_secret("huggingface", "api-token", "HF_API_TOKEN")
@@ -112,6 +113,12 @@ HF_TIMEOUT_SECONDS: int = int(os.getenv("HF_TIMEOUT_SECONDS", "30"))
 EMBEDDING_PRELOAD: bool = os.getenv(
     "EMBEDDING_PRELOAD", "false" if os.getenv("FLASK_DEBUG", "false").lower() == "true" else "true"
 ).lower() == "true"
+
+# Dedicated Databricks embedding App. Reuses the backend service principal;
+# no new secret lookup and no network access while importing configuration.
+DATABRICKS_EMBEDDING_URL: str = os.getenv("DATABRICKS_EMBEDDING_URL", "").strip()
+DATABRICKS_EMBEDDING_VERSION: str = os.getenv("DATABRICKS_EMBEDDING_VERSION", "").strip()
+DATABRICKS_EMBEDDING_TIMEOUT_SECONDS: str = os.getenv("DATABRICKS_EMBEDDING_TIMEOUT_SECONDS", "15")
 
 # --- Support / donations ---
 # Where "Support the project" points: GitHub Sponsors, Ko-fi, Buy Me a Coffee.

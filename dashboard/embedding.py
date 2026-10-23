@@ -13,7 +13,7 @@ distance in pgvector silently stops meaning anything — results still come back
 just badly ranked. Everything here exists to
 keep that guarantee while letting the web tier run somewhere small.
 
-Two backends, one guarantee
+Embedding backends, one guarantee
 ---------------------------
   local   Runs sentence-transformers in-process. Exact, offline, but drags in
           torch: ~2 GB image and ~500 MB RAM per worker. Fine on a laptop or a
@@ -24,7 +24,9 @@ Two backends, one guarantee
           the response ourselves rather than trusting the endpoint to do it,
           which is what keeps the two backends interchangeable.
 
-Selected by `EMBEDDING_BACKEND` (local | hf_api | auto). "auto" picks hf_api
+  databricks Calls the dedicated App with backend OAuth and a verified snapshot.
+
+Selected by `EMBEDDING_BACKEND` (local | hf_api | databricks | auto). "auto" picks hf_api
 when an HF token is configured, else local.
 """
 
@@ -33,6 +35,7 @@ import math
 import threading
 
 import requests
+import embedding_databricks
 
 from config import (
     EMBEDDING_BACKEND,
@@ -58,7 +61,7 @@ _api_ready = False
 
 def active_backend() -> str:
     """Resolve "auto" to a concrete backend name."""
-    if EMBEDDING_BACKEND in ("local", "hf_api"):
+    if EMBEDDING_BACKEND in ("local", "hf_api", "databricks"):
         return EMBEDDING_BACKEND
     return "hf_api" if HF_API_TOKEN else "local"
 
@@ -200,6 +203,8 @@ def is_loaded() -> bool:
     True when a query can be embedded without paying a cold-start cost.
     Reported by /healthz.
     """
+    if active_backend() == "databricks":
+        return embedding_databricks.is_loaded()
     return _api_ready if active_backend() == "hf_api" else _model is not None
 
 
@@ -213,7 +218,9 @@ def warmup() -> None:
     """
     backend = active_backend()
     try:
-        if backend == "hf_api":
+        if backend == "databricks":
+            embedding_databricks.warmup()
+        elif backend == "hf_api":
             _encode_hf_api(EMBEDDING_QUERY_PREFIX + "warmup")
             logger.info("Embedding backend ready (hf_api, %s)", EMBEDDING_MODEL)
         else:
@@ -235,6 +242,8 @@ def encode_query(text: str) -> list[float]:
     if not text or not text.strip():
         raise EmbeddingError("Cannot embed an empty query.")
 
+    if active_backend() == "databricks":
+        return _validate(embedding_databricks.encode(text.strip(), "query"))
     prefixed = EMBEDDING_QUERY_PREFIX + text.strip()
     backend = active_backend()
     raw = _encode_hf_api(prefixed) if backend == "hf_api" else _encode_local(prefixed)
@@ -245,6 +254,8 @@ def encode_document(text: str) -> list[float]:
     """Document side of the same asymmetric embedding contract as query vectors."""
     if not isinstance(text, str) or not text.strip():
         raise EmbeddingError("Cannot embed an empty document passage.")
+    if active_backend() == "databricks":
+        return _validate(embedding_databricks.encode(text.strip(), "document"))
     prefixed = "search_document: " + text.strip()
     raw = (
         _encode_hf_api(prefixed)
@@ -252,3 +263,10 @@ def encode_document(text: str) -> list[float]:
         else _encode_local(prefixed)
     )
     return _validate(raw)
+
+
+def model_version():
+    """Configured snapshot binding; remote responses are checked against this value."""
+    if active_backend() == "databricks":
+        return embedding_databricks.model_version()
+    return None

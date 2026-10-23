@@ -16,7 +16,7 @@ bp = Blueprint("search", __name__)
 
 def _embedding_provider() -> str:
     """Who ran the embedding, in the vocabulary of the ai_operations column."""
-    return "huggingface" if embedding.active_backend() == "hf_api" else "local"
+    return {"hf_api": "huggingface", "databricks": "databricks"}.get(embedding.active_backend(), "local")
 
 
 @bp.get("/search")
